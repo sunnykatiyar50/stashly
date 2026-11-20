@@ -108,18 +108,19 @@ test('changing the password cancels the share links and clears a lockout', async
 test('this browser keeps the time it had left, and other pages are told to ask again', async () => {
     const ctx = makeApp();
     const base = await protectedStash(ctx);
-    const me = await signedIn(ctx, base, '1h');
+    const me = await signedIn(ctx, base, '2h');
     ctx.clock.time = new Date(ctx.clock.time.getTime() + 30 * 60 * 1000);
 
     const closed = [];
     ctx.events.closeAll = (slug, event, data) => closed.push({ slug, event, origin: data.origin });
     const res = await me.post(`${base}/password`).set('X-Tab-Id', 'tab-1').send({ currentPassword: PASSWORD, newPassword: NEW }).expect(200);
-    assert.equal(maxAge(res), 1800);
-    assert.equal(res.body.sessionEndsAt, new Date(ctx.clock.time.getTime() + 30 * 60 * 1000).toISOString());
+    // Two hours, less the half hour already used
+    assert.equal(maxAge(res), 5400);
+    assert.equal(res.body.sessionEndsAt, new Date(ctx.clock.time.getTime() + 90 * 60 * 1000).toISOString());
     // The page that made the change is named, so it does not sign itself out
     assert.deepEqual(closed, [{ slug: 'vault', event: 'access-changed', origin: 'tab-1' }]);
 
-    ctx.clock.time = new Date(ctx.clock.time.getTime() + 31 * 60 * 1000);
+    ctx.clock.time = new Date(ctx.clock.time.getTime() + 91 * 60 * 1000);
     await me.get(base).expect(401);
 });
 

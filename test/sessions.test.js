@@ -20,14 +20,37 @@ async function protectedStash(ctx, slug = 'vault', extra = {}) {
 test('the person picks how long to stay signed in; the default is 12 hours', async () => {
     const ctx = makeApp();
     const base = await protectedStash(ctx);
-    const short = await request(ctx.app).post(`${base}/unlock`).send({ password: PASSWORD, session: '1h' }).expect(200);
-    assert.equal(maxAge(short), 3600);
-    assert.equal(short.body.sessionEndsAt, new Date(ctx.clock.time.getTime() + HOUR).toISOString());
+    const short = await request(ctx.app).post(`${base}/unlock`).send({ password: PASSWORD, session: '30m' }).expect(200);
+    assert.equal(maxAge(short), 1800);
+    assert.equal(short.body.sessionEndsAt, new Date(ctx.clock.time.getTime() + 30 * 60 * 1000).toISOString());
 
-    const four = await request(ctx.app).post(`${base}/unlock`).send({ password: PASSWORD, session: '4h' }).expect(200);
-    assert.equal(maxAge(four), 4 * 3600);
+    const two = await request(ctx.app).post(`${base}/unlock`).send({ password: PASSWORD, session: '2h' }).expect(200);
+    assert.equal(maxAge(two), 2 * 3600);
     const normal = await request(ctx.app).post(`${base}/unlock`).send({ password: PASSWORD }).expect(200);
     assert.equal(maxAge(normal), 12 * 3600);
+});
+
+test('7 and 30 day sessions work on a long-lived stash, and are cut short by a short-lived one', async () => {
+    const ctx = makeApp();
+    const long = await protectedStash(ctx, 'long-lived', { ttl: '30d' });
+    const week = await request(ctx.app).post(`${long}/unlock`).send({ password: PASSWORD, session: '7d' }).expect(200);
+    assert.equal(maxAge(week), 7 * 86400);
+    const month = await request(ctx.app).post(`${long}/unlock`).send({ password: PASSWORD, session: '30d' }).expect(200);
+    assert.equal(maxAge(month), 30 * 86400);
+
+    // The default stash lives one day, so even a 30 day sign-in ends with the stash
+    const base = await protectedStash(ctx, 'one-day');
+    const capped = await request(ctx.app).post(`${base}/unlock`).send({ password: PASSWORD, session: '30d' }).expect(200);
+    assert.ok(maxAge(capped) <= 86400);
+    assert.equal(capped.body.sessionEndsAt, new Date(ctx.clock.time.getTime() + 30 * 86400 * 1000).toISOString());
+});
+
+test('the removed 1 hour and 4 hour choices are no longer accepted', async () => {
+    const ctx = makeApp();
+    const base = await protectedStash(ctx);
+    for (const session of ['1h', '4h']) {
+        await request(ctx.app).post(`${base}/unlock`).send({ password: PASSWORD, session }).expect(400);
+    }
 });
 
 test('a session length that is not on the list is refused, and does not count as a wrong password', async () => {
@@ -51,9 +74,9 @@ test('the sign-in ends when its time is up', async () => {
     const ctx = makeApp();
     const base = await protectedStash(ctx);
     const agent = request.agent(ctx.app);
-    await agent.post(`${base}/unlock`).send({ password: PASSWORD, session: '1h' }).expect(200);
+    await agent.post(`${base}/unlock`).send({ password: PASSWORD, session: '30m' }).expect(200);
     await agent.get(base).expect(200);
-    ctx.clock.time = new Date(ctx.clock.time.getTime() + 61 * 60 * 1000);
+    ctx.clock.time = new Date(ctx.clock.time.getTime() + 31 * 60 * 1000);
     await agent.get(base).expect(401);
 });
 
@@ -61,9 +84,9 @@ test('the stash page can see when its sign-in ends; a stash with no password has
     const ctx = makeApp();
     const base = await protectedStash(ctx);
     const agent = request.agent(ctx.app);
-    await agent.post(`${base}/unlock`).send({ password: PASSWORD, session: '4h' }).expect(200);
+    await agent.post(`${base}/unlock`).send({ password: PASSWORD, session: '2h' }).expect(200);
     const got = await agent.get(base).expect(200);
-    assert.equal(got.body.sessionEndsAt, new Date(ctx.clock.time.getTime() + 4 * HOUR).toISOString());
+    assert.equal(got.body.sessionEndsAt, new Date(ctx.clock.time.getTime() + 2 * HOUR).toISOString());
 
     await request(ctx.app).post('/api/stashes').send({ slug: 'no-password' }).expect(201);
     assert.equal((await request(ctx.app).get('/api/stashes/no-password').expect(200)).body.sessionEndsAt, null);
@@ -71,7 +94,7 @@ test('the stash page can see when its sign-in ends; a stash with no password has
 
 test('the public config lists the session lengths', async () => {
     const res = await request(makeApp().app).get('/api/config').expect(200);
-    assert.deepEqual(res.body.sessionOptions.map(o => o.key), ['1h', '4h', '12h']);
+    assert.deepEqual(res.body.sessionOptions.map(o => o.key), ['30m', '2h', '12h', '7d', '30d']);
     assert.equal(res.body.defaultSession, '12h');
 });
 
@@ -84,26 +107,26 @@ test('a signed-in person can shorten their session, and the new end shows at onc
     await agent.post(`${base}/unlock`).send({ password: PASSWORD }).expect(200);
 
     ctx.clock.time = new Date(ctx.clock.time.getTime() + 30 * 60 * 1000);
-    const res = await agent.post(`${base}/session`).send({ session: '1h' }).expect(200);
-    assert.equal(maxAge(res), 3600);
-    assert.equal(res.body.sessionEndsAt, new Date(ctx.clock.time.getTime() + HOUR).toISOString());
+    const res = await agent.post(`${base}/session`).send({ session: '30m' }).expect(200);
+    assert.equal(maxAge(res), 1800);
+    assert.equal(res.body.sessionEndsAt, new Date(ctx.clock.time.getTime() + 30 * 60 * 1000).toISOString());
     assert.equal((await agent.get(base)).body.sessionEndsAt, res.body.sessionEndsAt);
 
-    ctx.clock.time = new Date(ctx.clock.time.getTime() + 61 * 60 * 1000);
+    ctx.clock.time = new Date(ctx.clock.time.getTime() + 31 * 60 * 1000);
     await agent.get(base).expect(401);
 });
 
 test('changing the session needs a sign-in, a listed length and a password on the stash', async () => {
     const ctx = makeApp();
     const base = await protectedStash(ctx);
-    await request(ctx.app).post(`${base}/session`).send({ session: '1h' }).expect(401);
+    await request(ctx.app).post(`${base}/session`).send({ session: '30m' }).expect(401);
     const agent = request.agent(ctx.app);
     await agent.post(`${base}/unlock`).send({ password: PASSWORD }).expect(200);
     await agent.post(`${base}/session`).send({ session: '9y' }).expect(400);
     await agent.post(`${base}/session`).send({}).expect(400);
 
     await request(ctx.app).post('/api/stashes').send({ slug: 'no-password' }).expect(201);
-    await request(ctx.app).post('/api/stashes/no-password/session').send({ session: '1h' }).expect(400);
+    await request(ctx.app).post('/api/stashes/no-password/session').send({ session: '30m' }).expect(400);
 });
 
 test('a share-link visitor can shorten their session too, and stays read-only', async () => {
@@ -114,10 +137,10 @@ test('a share-link visitor can shorten their session too, and stays read-only', 
     const link = (await owner.post(`${base}/share-links`).send({ kind: 'view' }).expect(201)).body;
     const viewer = request.agent(ctx.app);
     await viewer.post(`${base}/redeem`).send({ token: link.token, session: '12h' }).expect(200);
-    const res = await viewer.post(`${base}/session`).send({ session: '1h' }).expect(200);
+    const res = await viewer.post(`${base}/session`).send({ session: '30m' }).expect(200);
     assert.match(res.headers['set-cookie'].join(';'), /stashlyv_vault=/);
     assert.equal((await viewer.get(base)).body.role, 'view');
-    ctx.clock.time = new Date(ctx.clock.time.getTime() + 61 * 60 * 1000);
+    ctx.clock.time = new Date(ctx.clock.time.getTime() + 31 * 60 * 1000);
     await viewer.get(base).expect(401);
 });
 

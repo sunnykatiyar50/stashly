@@ -1080,6 +1080,8 @@
         var minutes = Math.ceil(ms / 60000);
         if (minutes < 60) return 'in ' + minutes + ' min';
         var hours = Math.floor(minutes / 60);
+        // Days for the long sessions, so it reads "in 6 d 23 h" and not "in 167 h"
+        if (hours >= 24) return 'in ' + Math.floor(hours / 24) + ' d ' + (hours % 24) + ' h';
         return 'in ' + hours + ' h ' + (minutes % 60) + ' min';
     }
 
