@@ -67,6 +67,8 @@ function createStashRoutes({ controller, config }) {
     router.post('/:slug/items/:id/pin', ...full, c.setPinned);
     router.put('/:slug/keep-last', ...full, c.setKeepLast);
     router.post('/:slug/extend', ...full, c.extend);
+    // The wrong-password limit applies here too: a stranger at an unlocked browser cannot guess the current password
+    router.post('/:slug/password', unlockLimiter, ...full, c.changePassword);
     router.post('/:slug/share-links', ...full, c.createShareLink);
     router.delete('/:slug/share-links/:kind', ...full, c.revokeShareLink);
     router.delete('/:slug', ...full, c.remove);

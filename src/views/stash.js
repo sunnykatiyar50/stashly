@@ -867,8 +867,15 @@
             if (state.stash) { state.stash.expiresAt = JSON.parse(event.data).expiresAt; updateExpiry(); }
         });
         es.addEventListener('stash-gone', gone);
-        // The stash's password was changed: this page's sign-in is no longer good, so ask again
-        es.addEventListener('access-changed', function () { closeStream(); load(true); });
+        // The stash's password was changed: this page's sign-in is no longer good, so ask again. (Not when this very
+        // page changed it: it was given a new sign-in with the answer.)
+        es.addEventListener('access-changed', function (event) {
+            var data = {};
+            try { data = JSON.parse(event.data); } catch (e) { /* no details */ }
+            if (data.origin && data.origin === tabId) return;
+            closeStream();
+            load(true);
+        });
     }
 
     // ---- actions ----
@@ -1061,6 +1068,48 @@
     $('logoutButton').addEventListener('click', leaveStash);
     $('logoutNow').addEventListener('click', leaveStash);
 
+    // Change the stash's password. Whoever knows the current one is the owner, so it is asked for again here.
+    var passwordForm = $('changePasswordForm');
+    function closePasswordForm() {
+        passwordForm.classList.add('hidden');
+        passwordForm.reset();
+        $('changePasswordError').textContent = '';
+        $('changePasswordToggle').classList.remove('hidden');
+    }
+    $('changePasswordToggle').addEventListener('click', function (event) {
+        passwordForm.classList.remove('hidden');
+        event.currentTarget.classList.add('hidden');
+        $('currentPasswordInput').focus();
+    });
+    $('changePasswordCancel').addEventListener('click', closePasswordForm);
+    passwordForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var error = $('changePasswordError');
+        error.textContent = '';
+        var current = $('currentPasswordInput').value;
+        var next = $('newPasswordInput').value;
+        if (!current) { error.textContent = 'Enter the current password.'; $('currentPasswordInput').focus(); return; }
+        if (next.length < 4) { error.textContent = 'The new password must be at least 4 characters.'; $('newPasswordInput').focus(); return; }
+        if (next !== $('repeatPasswordInput').value) { error.textContent = 'The two new passwords do not match.'; $('repeatPasswordInput').focus(); return; }
+        $('changePasswordSave').disabled = true;
+        api(base + '/password', { method: 'POST', body: { currentPassword: current, newPassword: next } }).then(function (res) {
+            $('changePasswordSave').disabled = false;
+            if (res.ok) {
+                state.stash.sessionEndsAt = res.body.sessionEndsAt;
+                // The stash had share links; they were cancelled with the old password
+                if (state.stash.shareLinks) state.stash.shareLinks = { view: false, drop: false };
+                closePasswordForm();
+                updateSessionInfo();
+                toast('Password changed. Everyone else was signed out.');
+            } else if (res.status === 401 && res.body && res.body.field !== 'currentPassword') {
+                locked();
+            } else {
+                error.textContent = (res.body && res.body.error) || 'Could not change the password.';
+                if (res.status === 401) { $('currentPasswordInput').select(); }
+            }
+        }).catch(function () { $('changePasswordSave').disabled = false; error.textContent = 'Could not reach the server.'; });
+    });
+
     // ---- options: what to do with items that arrive from other devices, and how many to keep ----
     // Auto-copy and notifications are per tab (kept for this tab only, and off until you turn them on).
 
@@ -1125,6 +1174,9 @@
     function renderOptions() {
         var protectedStash = Boolean(state.stash && state.stash.hasPassword);
         document.querySelector('[data-option="session"]').classList.toggle('hidden', !protectedStash);
+        // Only someone with full access can change the password (a read-only link cannot)
+        closePasswordForm();
+        $('changePasswordToggle').classList.toggle('hidden', role() !== 'full');
         if (protectedStash) {
             updateSessionInfo();
             var change = $('sessionChange');

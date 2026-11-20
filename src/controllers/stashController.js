@@ -322,6 +322,48 @@ class StashController {
         res.json({ ok: true, sessionEndsAt: new Date(Math.min(this.now().getTime() + session.ms, stashEnd)).toISOString() });
     };
 
+    // Changes the stash's password. Stashly has no accounts, so there is no separate "owner": the owner is whoever knows
+    // the current password, and they prove it again here (so a browser someone walked away from cannot be used to take
+    // the stash over). Wrong guesses count towards the same lockout as unlocking.
+    //
+    // Only a stash that already has a password can be changed. On a stash without one, anyone with its name could set a
+    // password and lock everyone else out, so that is not offered (the admin can do it).
+    changePassword = async (req, res) => {
+        const stash = req.stash;
+        if (!stash.password_hash) return res.status(400).json({ error: 'This stash has no password to change.' });
+        const { currentPassword, newPassword } = req.body || {};
+        if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORD || newPassword.length > MAX_PASSWORD) {
+            return res.status(400).json({ error: `The new password must be ${MIN_PASSWORD} to ${MAX_PASSWORD} characters.`, field: 'newPassword' });
+        }
+        const wait = this.lockedFor(stash.slug);
+        if (wait) {
+            const minutes = Math.max(1, Math.ceil(wait / 60000));
+            return res
+                .status(429)
+                .set('Retry-After', String(Math.ceil(wait / 1000)))
+                .json({ error: `Too many wrong passwords for this stash. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.` });
+        }
+        if (!(await verifyPassword(currentPassword, stash.password_hash, stash.password_salt))) {
+            this.noteFailure(stash.slug);
+            return res.status(401).json({ error: 'That is not the current password.', field: 'currentPassword' });
+        }
+        if (newPassword === currentPassword) {
+            return res.status(400).json({ error: 'The new password is the same as the current one.', field: 'newPassword' });
+        }
+
+        // This browser stays signed in for as long as it had left; everyone else is signed out (a new password means a
+        // new salt, which the sign-in cookies are tied to), and the read-only and drop-box links are cancelled
+        const end = this.sessionEnd(req, stash, 'full');
+        const remaining = end ? Math.max(0, new Date(end).getTime() - this.now().getTime()) : this.sessionMs(null);
+        const hashed = await hashPassword(newPassword);
+        const updated = this.model.setPassword(stash.id, hashed.hash, hashed.salt);
+        this.failures.delete(stash.slug);
+        this.setAccessCookie(req, res, updated, 'full', remaining);
+        this.events.closeAll(stash.slug, 'access-changed', { origin: this.withOrigin({}, req).origin });
+        const stashEnd = updated.expires_at ? new Date(updated.expires_at).getTime() : Infinity;
+        res.json({ ok: true, sessionEndsAt: new Date(Math.min(this.now().getTime() + remaining, stashEnd)).toISOString() });
+    };
+
     // ---- share links (password-protected stashes only) ----
     // Without a password the name already gives full access, so a limited link would limit nothing.
 

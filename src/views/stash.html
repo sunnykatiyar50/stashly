@@ -239,7 +239,22 @@
                     <select id="sessionChange"></select>
                 </label>
                 <span class="muted">Counted from now, so it can only be made shorter or longer for this browser. Other browsers are not affected.</span>
-                <div class="share-actions"><button type="button" id="logoutNow" class="danger-ghost small">Log out now</button></div>
+                <div class="share-actions">
+                    <button type="button" id="changePasswordToggle" class="ghost small">Change password</button>
+                    <button type="button" id="logoutNow" class="danger-ghost small">Log out now</button>
+                </div>
+                <!-- Anyone who knows the current password can change it (there is no separate owner account) -->
+                <form id="changePasswordForm" class="edit-form hidden" novalidate>
+                    <span class="muted">Everyone else is signed out and the read-only and drop-box links are cancelled. You stay signed in here.</span>
+                    <input type="password" id="currentPasswordInput" autocomplete="current-password" maxlength="200" placeholder="Current password" aria-label="Current password" />
+                    <input type="password" id="newPasswordInput" autocomplete="new-password" maxlength="200" placeholder="New password" aria-label="New password" />
+                    <input type="password" id="repeatPasswordInput" autocomplete="new-password" maxlength="200" placeholder="New password again" aria-label="New password again" />
+                    <small class="field-error" id="changePasswordError" role="alert"></small>
+                    <div class="share-actions">
+                        <button type="submit" id="changePasswordSave" class="primary small">Change password</button>
+                        <button type="button" id="changePasswordCancel" class="ghost small">Cancel</button>
+                    </div>
+                </form>
             </div>
             <div class="share-row" data-option="keep">
                 <strong>Keep only the last</strong>
