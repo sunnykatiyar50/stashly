@@ -320,6 +320,13 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .detail-image { align-self: flex-start; max-width: 100%; }
 .detail-image img { display: block; max-width: 100%; max-height: 70vh; border-radius: var(--radius); border: 1px solid var(--border); background: var(--code-bg); }
 .file-card { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-alt); }
+.detail-media { display: block; width: 100%; max-height: 70vh; border-radius: var(--radius); background: var(--code-bg); }
+audio.detail-media { max-height: none; }
+.zip-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; max-height: 50vh; overflow-y: auto; }
+.zip-title { padding: 8px 12px; font-weight: 600; background: var(--surface-alt); border-bottom: 1px solid var(--border); position: sticky; top: 0; }
+.zip-row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.zip-row:last-child { border-bottom: none; }
+.zip-name { font-family: var(--mono); overflow-wrap: anywhere; }
 .file-icon.large { width: 56px; height: 56px; font-size: 13px; border-radius: 10px; }
 
 /* The composer: one small row that is always on the page: a small title box, the note box, buttons.
@@ -412,6 +419,7 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .settings-text label { font-weight: 600; }
 .settings-control { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; align-content: flex-start; }
 .settings-control input[type="number"] { width: 130px; }
+.settings-control select { width: 100%; }
 .settings-control .field-hint, .settings-control .field-error { flex-basis: 100%; }
 
 /* ===== Small screens: the sidebar becomes a top bar ===== */

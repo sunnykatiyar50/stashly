@@ -4,9 +4,31 @@ const { signToken, verifyToken, parseCookies } = require('../utils/token');
 const { detectFile, cleanFileName } = require('../utils/fileType');
 const { dateRange } = require('../utils/time');
 const { parseTitle, deriveTitle } = require('../utils/title');
+const { listZip } = require('../utils/zip');
 
 const cookieName = slug => `stashly_${slug}`;
 const MAX_COOKIE_MS = 12 * 60 * 60 * 1000;
+
+// "bytes=START-END", "bytes=START-" or "bytes=-SUFFIX" for one range. Returns { start, end }, 'invalid', or null when
+// there is no range to honour (no header, or several ranges, which are served whole).
+function parseRange(header, size) {
+    if (typeof header !== 'string') return null;
+    const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+    if (!match || (match[1] === '' && match[2] === '')) return header.startsWith('bytes=') && header.includes(',') ? null : 'invalid';
+    let start;
+    let end;
+    if (match[1] === '') {
+        const suffix = Number(match[2]);
+        if (suffix === 0) return 'invalid';
+        start = Math.max(0, size - suffix);
+        end = size - 1;
+    } else {
+        start = Number(match[1]);
+        end = match[2] === '' ? size - 1 : Math.min(Number(match[2]), size - 1);
+    }
+    if (start >= size || start > end) return 'invalid';
+    return { start, end };
+}
 
 class StashController {
     constructor({ model, events, config, secret, now = () => new Date(), isAdmin = () => false }) {
@@ -84,6 +106,7 @@ class StashController {
             defaultTtl: this.config.defaultTtl,
             limits: this.limits(),
             allowNoExpiry: this.config.allowNoExpiry,
+            fileTypes: this.config.fileTypes,
             // false when only the admin may create stashes and the visitor is not signed in as admin
             canCreate: this.canCreate(req),
             adminEnabled: Boolean(this.config.adminPassword),
@@ -227,7 +250,7 @@ class StashController {
         const fileName = cleanFileName(rawName);
         if (!fileName) return res.status(400).json({ error: 'The file needs a name (X-File-Name header).' });
 
-        const detected = detectFile(fileName, content);
+        const detected = detectFile(fileName, content, this.config.fileTypes);
         if (detected.error) return res.status(415).json({ error: detected.error });
 
         const usage = this.model.usage(stash.id);
@@ -251,25 +274,62 @@ class StashController {
         res.status(201).json(item);
     };
 
-    getFile = (req, res) => {
-        const stash = req.stash;
+    // Reads one file of this stash, or null
+    fileRow(req) {
         const id = Number(req.params.id);
-        const row = Number.isInteger(id) ? this.model.getItem(stash.id, id) : null;
-        if (!row || row.kind !== 'file') return res.status(404).json({ error: 'File not found.' });
+        const row = Number.isInteger(id) ? this.model.getItem(req.stash.id, id) : null;
+        return row && row.kind === 'file' ? row : null;
+    }
+
+    getFile = (req, res) => {
+        const row = this.fileRow(req);
+        if (!row) return res.status(404).json({ error: 'File not found.' });
         const content = this.model.getFileContent(row.id);
         if (!content) return res.status(404).json({ error: 'File not found.' });
 
-        const inline = row.file_type.startsWith('image/') && req.query.download !== '1';
+        const type = row.file_type;
+        const download = req.query.download === '1';
+        // Images show in the page. A PDF opens in its own tab on request (?view=1), because the browser's PDF
+        // viewer does not run under the sandbox policy every other file gets.
+        const viewPdf = req.query.view === '1' && type === 'application/pdf';
+        const inline = (type.startsWith('image/') && !download) || viewPdf;
         const encoded = encodeURIComponent(row.file_name).replace(/['()]/g, escape);
         res.set({
-            'Content-Type': row.file_type,
-            'Content-Length': String(content.length),
+            'Content-Type': type,
             'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encoded}`,
             'X-Content-Type-Options': 'nosniff',
-            'Content-Security-Policy': "default-src 'none'; sandbox",
+            'Content-Security-Policy': viewPdf ? "default-src 'none'" : "default-src 'none'; sandbox",
             'Cache-Control': 'private, no-store',
+            'Accept-Ranges': 'bytes',
         });
+
+        // Audio and video players ask for byte ranges so they can seek
+        const range = parseRange(req.headers.range, content.length);
+        if (range === 'invalid') {
+            res.set('Content-Range', `bytes */${content.length}`);
+            return res.status(416).end();
+        }
+        if (range) {
+            res.status(206).set({
+                'Content-Range': `bytes ${range.start}-${range.end}/${content.length}`,
+                'Content-Length': String(range.end - range.start + 1),
+            });
+            return res.end(content.subarray(range.start, range.end + 1));
+        }
+        res.set('Content-Length', String(content.length));
         res.send(content);
+    };
+
+    // The names inside a zip file, for the preview. Nothing is unpacked.
+    listArchive = (req, res) => {
+        const row = this.fileRow(req);
+        if (!row) return res.status(404).json({ error: 'File not found.' });
+        if (row.file_type !== 'application/zip') return res.status(400).json({ error: 'Only zip files can be listed.' });
+        const content = this.model.getFileContent(row.id);
+        if (!content) return res.status(404).json({ error: 'File not found.' });
+        const listing = listZip(content);
+        if (listing.error) return res.status(422).json({ error: listing.error });
+        res.json(listing);
     };
 
     latest = (req, res) => {

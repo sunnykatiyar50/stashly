@@ -37,6 +37,8 @@ function loadConfig(env = process.env, overrides = {}) {
         maxFilesPerStash: num(env.MAX_FILES_PER_STASH, 500),
         maxStashes: num(env.MAX_STASHES, 1000),
         allowNoExpiry,
+        // Which files can be uploaded: 'safe', 'no-programs' or 'any' (see utils/fileType.js)
+        fileTypes: ['safe', 'no-programs', 'any'].includes(env.FILE_TYPES) ? env.FILE_TYPES : 'safe',
         // The admin area is only on when a password is set
         adminPassword,
         requireAdminToCreate: Boolean(adminPassword) && flag(env.REQUIRE_ADMIN_TO_CREATE),

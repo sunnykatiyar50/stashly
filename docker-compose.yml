@@ -20,6 +20,7 @@ services:
       # MAX_FILES_PER_STASH: "500"
       # MAX_STASH_MB: "100"
       # ALLOW_NO_EXPIRY: "false"
+      # FILE_TYPES: "safe"   # safe | no-programs | any (also in Admin > Settings)
     volumes:
       - stashly-data:/data
     restart: unless-stopped
