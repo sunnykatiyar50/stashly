@@ -37,6 +37,15 @@ class StashModel {
         return this.db.prepare('SELECT * FROM stashes WHERE slug = ?').get(slug) || null;
     }
 
+    // A new password (a new salt too, which signs everyone out). The read-only and drop-box links are cancelled
+    // with it, since they were given out under the old password.
+    setPassword(id, hash, salt) {
+        this.db
+            .prepare('UPDATE stashes SET password_hash = ?, password_salt = ?, view_token_hash = NULL, drop_token_hash = NULL WHERE id = ?')
+            .run(hash, salt, id);
+        return this.getStashById(id);
+    }
+
     // kind is 'view' or 'drop'; a null hash revokes the link
     setShareToken(id, kind, hash) {
         const column = kind === 'view' ? 'view_token_hash' : 'drop_token_hash';

@@ -17,7 +17,11 @@ function createApp({ config, model, events, secret, now }) {
     // Applies any limits the admin saved earlier on top of the environment's values
     const settings = new SettingsStore({ model, config });
     const controller = new StashController({ model, events, config, secret, now, isAdmin: adminAuth.isAdmin });
-    const adminController = new AdminController({ model, events, config, adminAuth, settings, now });
+    const adminController = new AdminController({
+        model, events, config, adminAuth, settings, now,
+        // A new password clears the wrong-password count the stash controller keeps
+        resetFailures: slug => controller.failures.delete(slug),
+    });
 
     const trust = String(config.trustProxy || '').trim();
     if (trust && !['false', 'no', 'off'].includes(trust.toLowerCase())) {

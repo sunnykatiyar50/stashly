@@ -71,6 +71,11 @@
                     <input type="password" id="unlockInput" autocomplete="current-password" maxlength="200" />
                     <small class="field-error" id="unlockError" role="alert"></small>
                 </div>
+                <div class="field">
+                    <label for="sessionSelect">Stay signed in for</label>
+                    <select id="sessionSelect"><option value="12h">12 hours</option></select>
+                    <small class="field-hint">You are signed out in this browser after that. You can also log out any time.</small>
+                </div>
                 <button type="submit" id="unlockButton" class="primary">Unlock</button>
             </form>
         </section>
@@ -104,6 +109,7 @@
                     <button type="button" id="copyLinkButton" class="ghost small">Copy link</button>
                     <button type="button" id="extendButton" class="ghost small">Extend</button>
                     <button type="button" id="deleteStashButton" class="danger-ghost small">Delete stash</button>
+                    <button type="button" id="logoutButton" class="ghost small" title="Leave this stash">Exit</button>
                 </div>
             </header>
 
@@ -225,6 +231,15 @@
                 <span class="muted">When a note arrives from another device it goes straight to this computer's clipboard. Stays on in this tab until you turn it off or close the tab. Browsers only allow it while this tab is in front; otherwise it is copied the moment you come back.</span>
                 <label class="opt"><input type="checkbox" id="notifyInput" /> Notify me about new items</label>
                 <span class="muted" id="notifyHint">A desktop notification when something arrives while this tab is in the background. Secret and burn-after-reading notes show no text.</span>
+            </div>
+            <div class="share-row" data-option="session">
+                <strong>Sign-in</strong>
+                <span class="muted" id="sessionInfo"></span>
+                <label class="opt">Sign me out of this browser after
+                    <select id="sessionChange"></select>
+                </label>
+                <span class="muted">Counted from now, so it can only be made shorter or longer for this browser. Other browsers are not affected.</span>
+                <div class="share-actions"><button type="button" id="logoutNow" class="danger-ghost small">Log out now</button></div>
             </div>
             <div class="share-row" data-option="keep">
                 <strong>Keep only the last</strong>

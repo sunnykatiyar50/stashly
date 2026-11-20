@@ -22,6 +22,7 @@
         autoCopy: false,   // copy notes that arrive from other devices (this tab only, off by default)
         notify: false,     // desktop notifications for new items (this tab only)
         pendingCopy: null, // text waiting for the tab to be in front so it can be copied
+        sessionOptions: [], // how long a sign-in can last, from the server
         started: false,    // the first successful load picks what to show
     };
     var sections = { loading: $('stateLoading'), gone: $('stateGone'), locked: $('stateLocked'), main: $('stateMain') };
@@ -581,6 +582,9 @@
         banner.textContent = r === 'view'
             ? 'You opened a read-only link. You can read and copy, but not add or delete anything.'
             : r === 'drop' ? 'You opened a drop-box link. You can add notes and files here, but you cannot see what is in the stash.' : '';
+        // Log out of a password-protected stash, or just leave an open one
+        $('logoutButton').textContent = state.stash.hasPassword ? 'Log out' : 'Exit';
+        updateSessionInfo();
         // Share links only make sense on a password-protected stash, and only for someone with full access
         $('shareButton').classList.toggle('hidden', !(r === 'full' && state.stash.hasPassword));
     }
@@ -620,6 +624,7 @@
             el.textContent = (el.dataset.base ? el.dataset.base + ' · ' : '') + expiryText(el.dataset.expires);
         });
         updateExpiry();
+        updateSessionInfo();
     }
 
     // ---- loading ----
@@ -862,6 +867,8 @@
             if (state.stash) { state.stash.expiresAt = JSON.parse(event.data).expiresAt; updateExpiry(); }
         });
         es.addEventListener('stash-gone', gone);
+        // The stash's password was changed: this page's sign-in is no longer good, so ask again
+        es.addEventListener('access-changed', function () { closeStream(); load(true); });
     }
 
     // ---- actions ----
@@ -945,7 +952,7 @@
         var password = $('unlockInput').value;
         if (!password) { error.textContent = 'Enter the password.'; return; }
         $('unlockButton').disabled = true;
-        api(base + '/unlock', { method: 'POST', body: { password: password } }).then(function (res) {
+        api(base + '/unlock', { method: 'POST', body: { password: password, session: $('sessionSelect').value } }).then(function (res) {
             $('unlockButton').disabled = false;
             if (res.ok) {
                 $('unlockInput').value = '';
@@ -1024,6 +1031,36 @@
         });
     });
 
+    // ---- signing out ----
+
+    function untilText(iso) {
+        var ms = new Date(iso).getTime() - Date.now();
+        if (ms <= 0) return 'now';
+        var minutes = Math.ceil(ms / 60000);
+        if (minutes < 60) return 'in ' + minutes + ' min';
+        var hours = Math.floor(minutes / 60);
+        return 'in ' + hours + ' h ' + (minutes % 60) + ' min';
+    }
+
+    // The button's hint and the Options text say when this browser is signed out
+    function updateSessionInfo() {
+        var stash = state.stash;
+        if (!stash) return;
+        var end = stash.hasPassword && stash.sessionEndsAt;
+        $('logoutButton').title = end ? 'Log out of this stash. You are signed out ' + untilText(end) + ' anyway.' : 'Leave this stash';
+        $('sessionInfo').textContent = end ? 'Signed in until ' + new Date(end).toLocaleString() + ' (' + untilText(end) + ').' : '';
+        // The sign-in ran out while the page was open: ask for the password again
+        if (end && new Date(end).getTime() <= Date.now()) load(true);
+    }
+
+    // "Log out" clears this browser's sign-in for the stash and goes home. An open stash has nothing to clear: Exit just goes home.
+    function leaveStash() {
+        if (!state.stash || !state.stash.hasPassword) { location.href = '/'; return; }
+        api(base + '/logout', { method: 'POST' }).then(function () { location.href = '/'; }).catch(function () { location.href = '/'; });
+    }
+    $('logoutButton').addEventListener('click', leaveStash);
+    $('logoutNow').addEventListener('click', leaveStash);
+
     // ---- options: what to do with items that arrive from other devices, and how many to keep ----
     // Auto-copy and notifications are per tab (kept for this tab only, and off until you turn them on).
 
@@ -1086,6 +1123,17 @@
     var KEEP_CHOICES = [5, 10, 20, 50, 100, 200, 500];
 
     function renderOptions() {
+        var protectedStash = Boolean(state.stash && state.stash.hasPassword);
+        document.querySelector('[data-option="session"]').classList.toggle('hidden', !protectedStash);
+        if (protectedStash) {
+            updateSessionInfo();
+            var change = $('sessionChange');
+            change.textContent = '';
+            var keep = make('option', null, 'choose...');
+            keep.value = '';
+            change.appendChild(keep);
+            state.sessionOptions.forEach(function (option) { var el = make('option', null, option.label); el.value = option.key; change.appendChild(el); });
+        }
         $('autoCopyInput').checked = state.autoCopy;
         var ready = notificationsReady();
         var denied = ready && Notification.permission === 'denied';
@@ -1128,6 +1176,23 @@
             box.checked = state.notify;
             setTabFlag('notify', state.notify);
             if (!state.notify) { toast('Notifications were not allowed', true); renderOptions(); }
+        });
+    });
+
+    $('sessionChange').addEventListener('change', function (event) {
+        var select = event.target;
+        if (!select.value) return;
+        api(base + '/session', { method: 'POST', body: { session: select.value } }).then(function (res) {
+            select.value = '';
+            if (res.ok) {
+                state.stash.sessionEndsAt = res.body.sessionEndsAt;
+                updateSessionInfo();
+                toast('You will be signed out ' + untilText(res.body.sessionEndsAt));
+            } else if (res.status === 401) {
+                locked();
+            } else {
+                toast((res.body && res.body.error) || 'Could not change that.', true);
+            }
         });
     });
 
@@ -1393,6 +1458,18 @@
 
     api('/api/config').then(function (res) {
         if (!res.ok) return;
+        // How long to stay signed in: on the unlock form, and in Options to change it later
+        var sessionOptions = res.body.sessionOptions || [];
+        if (sessionOptions.length) {
+            $('sessionSelect').textContent = '';
+            sessionOptions.forEach(function (option) {
+                var el = make('option', null, option.label);
+                el.value = option.key;
+                if (option.key === res.body.defaultSession) el.selected = true;
+                $('sessionSelect').appendChild(el);
+            });
+            state.sessionOptions = sessionOptions;
+        }
         (res.body.itemTtlOptions || []).forEach(function (option) {
             var el = make('option', null, option.label);
             el.value = option.key;

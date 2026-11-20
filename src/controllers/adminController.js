@@ -1,8 +1,12 @@
-// Admin: sign in, see every stash, delete or extend one, change the limits.
-// The admin can manage stashes but never reads them: no note text or file content is exposed here, and the
-// admin session does not unlock a password-protected stash.
+// Admin: sign in, see every stash, delete or extend one, set a stash's password, change the limits.
+// No note text or file content is exposed here, and the admin session does not unlock a password-protected stash.
+// Setting a new password is the one way in: it signs everyone out of that stash, but whoever knows the new password
+// (the admin included) can open it. That is what makes it a reset for a forgotten password.
+const { hashPassword, MIN_PASSWORD, MAX_PASSWORD } = require('../utils/password');
+
 class AdminController {
-    constructor({ model, events, config, adminAuth, settings, now = () => new Date() }) {
+    constructor({ model, events, config, adminAuth, settings, now = () => new Date(), resetFailures = () => {} }) {
+        this.resetFailures = resetFailures;
         this.model = model;
         this.events = events;
         this.config = config;
@@ -72,6 +76,23 @@ class AdminController {
         if (!extended) return res.status(400).json({ error: 'This stash never expires, so there is nothing to extend.' });
         this.events.publish(stash.slug, 'stash-extended', { expiresAt: extended.expires_at });
         res.json({ expiresAt: extended.expires_at });
+    };
+
+    // Sets (or replaces) a stash's password. Everyone signed in to it is signed out, its read-only and drop-box links
+    // are cancelled, and any wrong-password lockout is cleared.
+    setPassword = async (req, res) => {
+        const stash = this.findStash(req, res);
+        if (!stash) return;
+        const password = req.body && req.body.password;
+        if (typeof password !== 'string' || password.length < MIN_PASSWORD || password.length > MAX_PASSWORD) {
+            return res.status(400).json({ error: `The password must be ${MIN_PASSWORD} to ${MAX_PASSWORD} characters.`, field: 'password' });
+        }
+        const hashed = await hashPassword(password);
+        this.model.setPassword(stash.id, hashed.hash, hashed.salt);
+        this.resetFailures(stash.slug);
+        // Open pages hold cookies for the old password: end their streams so they are asked again
+        this.events.closeAll(stash.slug, 'access-changed', {});
+        res.json({ ok: true, hasPassword: true });
     };
 
     getSettings = (req, res) => {

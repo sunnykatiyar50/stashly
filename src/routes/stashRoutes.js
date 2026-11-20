@@ -51,6 +51,9 @@ function createStashRoutes({ controller, config }) {
     router.get('/:slug', ...anyRole, c.get);
     router.post('/:slug/unlock', unlockLimiter, c.loadStash, c.unlock);
     router.post('/:slug/redeem', unlockLimiter, c.loadStash, c.redeem);
+    // Always allowed: signing out must work even when the session has already ended
+    router.post('/:slug/logout', c.loadStash, c.logout);
+    router.post('/:slug/session', ...anyRole, c.setSession);
     router.get('/:slug/events', ...read, c.stream);
     router.get('/:slug/latest', ...read, c.latest);
     router.post('/:slug/notes', postLimiter, ...write, textBody, c.addNote);
