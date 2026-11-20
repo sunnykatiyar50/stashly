@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#2563eb">
+    <title>Share to Stashly</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/theme.js"></script>
+</head>
+<body class="app">
+    <main class="content">
+        <section class="view">
+            <div class="home-stack">
+                <header class="view-header">
+                    <div class="view-title">
+                        <h1>Share to a stash</h1>
+                        <span class="muted">Sends what you shared as a note.</span>
+                    </div>
+                </header>
+
+                <form id="shareForm" class="card form-card" novalidate>
+                    <div class="field">
+                        <label for="shareTitle">Title <span class="optional">optional</span></label>
+                        <input type="text" id="shareTitle" maxlength="150" autocomplete="off" />
+                    </div>
+                    <div class="field">
+                        <label for="shareText">Note</label>
+                        <textarea id="shareText" rows="5"></textarea>
+                    </div>
+                    <div class="field">
+                        <label for="shareStash">Stash</label>
+                        <input type="text" id="shareStash" class="mono" list="recentStashes" autocomplete="off" autocapitalize="off"
+                               spellcheck="false" maxlength="64" placeholder="stash name" />
+                        <datalist id="recentStashes"></datalist>
+                        <small class="field-hint" id="shareHint">Stashes you opened on this device are suggested.</small>
+                    </div>
+                    <small class="field-error" id="shareError" role="alert"></small>
+                    <div class="form-actions">
+                        <button type="submit" id="shareSend" class="primary">Send</button>
+                        <a id="shareOpen" class="button-link hidden" href="/">Open stash</a>
+                        <a class="button-link" href="/">Home</a>
+                    </div>
+                    <p id="shareStatus" class="form-status" role="status"></p>
+                </form>
+            </div>
+        </section>
+    </main>
+    <script src="/pwa.js"></script>
+    <script src="/share.js"></script>
+</body>
+</html>
