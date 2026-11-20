@@ -605,6 +605,44 @@
         });
     });
 
+    // ---- QR code: open this stash on a phone or another device ----
+
+    function isLocalHost(host) {
+        return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || /\.localhost$/.test(host);
+    }
+
+    function showQr() {
+        var url = location.origin + location.pathname;
+        var qr = window.qrcode(0, 'M');
+        qr.addData(url);
+        qr.make();
+        $('qrImage').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+        $('qrLink').textContent = url;
+        // A phone can't reach "localhost": that is the computer showing this page
+        var warn = $('qrWarn');
+        var local = isLocalHost(location.hostname);
+        warn.classList.toggle('hidden', !local);
+        warn.textContent = local
+            ? "This address only works on this computer. Open Stashly with the computer's network address or its domain name (not localhost), then show the code again."
+            : '';
+        $('qrLockNote').classList.toggle('hidden', !(state.stash && state.stash.hasPassword));
+        var dialog = $('qrDialog');
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+        else dialog.setAttribute('open', '');
+    }
+
+    $('qrButton').addEventListener('click', showQr);
+    $('qrClose').addEventListener('click', function () { $('qrDialog').close(); });
+    $('qrCopy').addEventListener('click', function () {
+        Promise.resolve(copyText($('qrLink').textContent)).then(function (ok) {
+            toast(ok ? 'Link copied' : 'Could not copy the link.', !ok);
+        });
+    });
+    // A click on the dimmed backdrop closes it
+    $('qrDialog').addEventListener('click', function (event) {
+        if (event.target === event.currentTarget) event.currentTarget.close();
+    });
+
     $('extendButton').addEventListener('click', function () {
         api(base + '/extend', { method: 'POST' }).then(function (res) {
             if (res.ok) {

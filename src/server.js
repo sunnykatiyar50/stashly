@@ -72,6 +72,9 @@ function createApp({ config, model, events, secret, now }) {
     app.use('/api/admin', createAdminRoutes({ controller: adminController, adminAuth, config }));
     app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
+    // The QR code library, served from node_modules (the page's CSP only allows scripts from this server)
+    app.get('/vendor/qrcode.js', (req, res) => res.sendFile(require.resolve('qrcode-generator')));
+
     // The stash page is one HTML file; the script reads the name from the URL
     app.get('/s/:slug', (req, res) => res.sendFile(path.join(viewsDir, 'stash.html')));
     app.get('/admin', (req, res) => res.sendFile(path.join(viewsDir, 'admin.html')));

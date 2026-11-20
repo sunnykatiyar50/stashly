@@ -90,6 +90,10 @@
                     </button>
                 </div>
                 <div class="header-actions">
+                    <button type="button" id="qrButton" class="ghost small" title="Show a QR code to open this stash on a phone">
+                        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="14.01"/><line x1="18" y1="14" x2="21" y2="14"/><line x1="14" y1="18" x2="14" y2="21"/><line x1="18" y1="18" x2="21" y2="18"/><line x1="21" y1="21" x2="21" y2="21.01"/></svg>
+                        QR code
+                    </button>
                     <button type="button" id="copyLinkButton" class="ghost small">Copy link</button>
                     <button type="button" id="extendButton" class="ghost small">Extend</button>
                     <button type="button" id="deleteStashButton" class="danger-ghost small">Delete stash</button>
@@ -176,10 +180,25 @@
         </section>
     </main>
 
+    <dialog id="qrDialog" class="qr-dialog" aria-labelledby="qrTitle">
+        <div class="qr-body">
+            <h2 id="qrTitle">Open on another device</h2>
+            <p class="muted">Scan this with a phone camera to open the stash.</p>
+            <div id="qrImage" class="qr-image"></div>
+            <code id="qrLink" class="code qr-link"></code>
+            <p id="qrWarn" class="qr-warn hidden"></p>
+            <p id="qrLockNote" class="muted hidden">The password is not part of the code. Whoever scans it will be asked for it.</p>
+            <div class="qr-actions">
+                <button type="button" id="qrCopy" class="ghost">Copy link</button>
+                <button type="button" id="qrClose" class="primary">Close</button>
+            </div>
+        </div>
+    </dialog>
     <div id="dropOverlay" class="drop-overlay hidden">Drop files to add them</div>
     <div id="toast" class="toast hidden" role="status"></div>
     <script src="/shell.js"></script>
     <script src="/upload.js"></script>
+    <script src="/vendor/qrcode.js"></script>
     <script src="/stash.js"></script>
 </body>
 </html>

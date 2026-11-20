@@ -6,6 +6,7 @@ A self-hosted shared stash. Two machines that can't reach each other open the sa
 - **Items** are notes, images and files. The new-note box sits above the list and stays small; the expand button opens a bigger box with a title and a drop zone. Add files with the paperclip, by dragging them onto the page, or by pasting a screenshot (Ctrl+V).
 - **Titles**: a note can have an optional title (up to 150 characters). Without one, the first five words of the note are used. The list shows the title and two lines of the note; search matches titles too.
 - **Live**: items appear on every open page without a refresh (Server-Sent Events).
+- **QR code**: the "QR code" button in a stash's header shows a code that opens the stash on a phone or another device. It is made in the browser from the address you are using, so open Stashly by its network address or domain (not `localhost`) for a code a phone can reach; the page says so when the address is `localhost`. A stash password is not part of the code.
 - **Password** (optional, per stash): stored as a salted scrypt hash; unlocking sets an HttpOnly cookie for that stash only.
 - **Auto-expiry**: pick 1 hour to 30 days. A stash is deleted with everything in it when its time is up. "Extend" restarts the timer.
 - **Search and date range** inside every stash, matching note text and file names.
