@@ -247,10 +247,18 @@
 
             var control = document.createElement('div');
             control.className = 'settings-control';
-            var input = document.createElement('input');
+            var input = document.createElement(field.type === 'choice' ? 'select' : 'input');
             input.id = 'setting-' + field.key;
             input.dataset.key = field.key;
-            if (field.type === 'bool') {
+            if (field.type === 'choice') {
+                field.options.forEach(function (option) {
+                    var el = document.createElement('option');
+                    el.value = option.value;
+                    el.textContent = option.label;
+                    if (option.value === field.value) el.selected = true;
+                    input.appendChild(el);
+                });
+            } else if (field.type === 'bool') {
                 input.type = 'checkbox';
                 input.checked = Boolean(field.value);
             } else {
@@ -269,7 +277,12 @@
             }
             var note = document.createElement('small');
             note.className = 'field-hint';
-            note.textContent = 'Default: ' + (field.type === 'bool' ? (field.default ? 'on' : 'off') : field.default);
+            var defaultText = field.default;
+            if (field.type === 'bool') defaultText = field.default ? 'on' : 'off';
+            if (field.type === 'choice') {
+                defaultText = field.options.filter(function (option) { return option.value === field.default; })[0].label;
+            }
+            note.textContent = 'Default: ' + defaultText;
             control.appendChild(note);
 
             var error = document.createElement('small');
@@ -288,7 +301,8 @@
         var values = {};
         fields.forEach(function (field) {
             var input = $('setting-' + field.key);
-            values[field.key] = field.type === 'bool' ? input.checked : (input.value === '' ? NaN : Number(input.value));
+            if (field.type === 'choice') values[field.key] = input.value;
+            else values[field.key] = field.type === 'bool' ? input.checked : (input.value === '' ? NaN : Number(input.value));
         });
         return values;
     }

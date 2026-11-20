@@ -99,14 +99,21 @@ Set these as environment variables (or in `.env`, see [.env.example](.env.exampl
 | `MAX_TOTAL_MB` | 2048 | Total file size on the whole server |
 | `MAX_STASHES` | 1000 | Stashes on the whole server |
 
-Allowed file types:
+### File types
 
-- **Any text file**, whatever its extension (yaml, yml, conf, py, properties, html, js, sh, sql, txt, log, a `Dockerfile`, and so on). The content must really be text, so a renamed binary is refused. Text is stored and served as plain text.
-- **Certificates**: pem, cer and crt, as PEM text or binary DER.
-- **Binary formats**: png, jpg, gif, webp, pdf, zip, docx, xlsx, pptx. The extension **and** the content must match.
-- **Refused**: SVG, programs and Windows launchers (exe, dll, msi, scr, com, hta, vbs, wsf, lnk, jar) and macro-enabled Office files (docm, xlsm, pptm), even if their content is text.
+Set `FILE_TYPES` (or change it in Admin > Settings, no restart needed):
 
-Files are always downloaded as attachments, except images, which are shown inline. Every file is served with `nosniff` and a sandboxing CSP, so an uploaded HTML file is never rendered by the server.
+| Mode | What can be uploaded |
+|---|---|
+| `safe` (default) | Any **text file**, whatever its extension (yaml, yml, conf, py, properties, html, js, sh, sql, txt, log, a `Dockerfile`, and so on), certificates (pem, cer, crt, as PEM text or binary DER), and these formats, whose content must match the extension: png, jpg, gif, webp, pdf, zip, docx, xlsx, pptx, and audio and video (mp4, m4v, mov, webm, ogv, mp3, m4a, wav, ogg, oga, opus, flac) |
+| `no-programs` | Everything above, plus any other file: archives (tar.gz, 7z), apk, bin and so on. Still refused: SVG, programs and Windows launchers (exe, dll, msi, scr, com, hta, vbs, wsf, lnk, jar), macro-enabled Office files (docm, xlsm, pptm), and any file whose content is a Windows, Linux or macOS executable, under any name |
+| `any` | Every file, nothing refused |
+
+The text check means the content must really be text, so a renamed binary is refused on the safe list. In the other modes a file with a known extension but the wrong content is stored as an unknown file, not as that type.
+
+**Previews** in the open clip: images, text files up to 512 KB, audio and video play in the page (and can seek), a zip shows the names inside it (nothing is unpacked), and a PDF has an **Open** button that shows it in its own browser tab.
+
+Whatever the mode, files are downloaded as attachments (images show inline), and every file is served with `nosniff` and a sandboxing CSP. Unrecognised files are stored as `application/octet-stream` and text as `text/plain`, so an uploaded HTML or SVG file is never rendered or run by the server. The one exception is the PDF **Open** button, which drops the sandbox for that response only, because the browser's PDF viewer cannot run under it. No virus scanning is done in any mode.
 
 ## Security notes
 

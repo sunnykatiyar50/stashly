@@ -39,6 +39,16 @@ const FIELDS = {
         help: 'New stashes are refused once this many exist.',
         read: c => c.maxStashes, write: (c, v) => { c.maxStashes = v; },
     },
+    fileTypes: {
+        label: 'File types', type: 'choice',
+        options: [
+            { value: 'safe', label: 'Safe list: images, audio, video, PDF, zip, Office files, certificates, text' },
+            { value: 'no-programs', label: 'Any file except programs' },
+            { value: 'any', label: 'Any file at all' },
+        ],
+        help: 'Which files can be uploaded. "Except programs" also allows archives and other binaries, but still refuses executables, SVG and macro-enabled Office files. Uploads are never run or shown by Stashly, whatever the type.',
+        read: c => c.fileTypes, write: (c, v) => { c.fileTypes = v; },
+    },
     allowNoExpiry: {
         label: 'Allow stashes that never expire', type: 'bool',
         help: 'Adds a "Never" choice to the expiry list.',
@@ -83,8 +93,8 @@ class SettingsStore {
     describe() {
         const values = this.values();
         return Object.keys(FIELDS).map(key => {
-            const { label, unit, type, min, max, help } = FIELDS[key];
-            return { key, label, unit, type, min, max, help, value: values[key], default: this.defaults[key] };
+            const { label, unit, type, min, max, help, options } = FIELDS[key];
+            return { key, label, unit, type, min, max, help, options, value: values[key], default: this.defaults[key] };
         });
     }
 
@@ -92,6 +102,7 @@ class SettingsStore {
     check(key, value) {
         const field = FIELDS[key];
         if (field.type === 'bool') return typeof value === 'boolean' ? null : 'Must be on or off.';
+        if (field.type === 'choice') return field.options.some(option => option.value === value) ? null : 'Pick one of the choices.';
         if (!Number.isInteger(value)) return 'Enter a whole number.';
         if (value < field.min || value > field.max) return `Enter a number from ${field.min} to ${field.max}.`;
         return null;

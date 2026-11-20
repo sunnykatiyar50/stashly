@@ -1,13 +1,19 @@
 const path = require('path');
 
-// What can be uploaded:
-//   - images, PDF, zip and Office files, whose content must match the extension (magic bytes), so a
-//     renamed file is refused;
-//   - any text file: the content must be valid text, whatever the extension (yaml, conf, py, html, ...).
-// Stored text files are served as plain text and always as attachments with a sandboxing CSP, so even
-// HTML or a script is never rendered or run by the server's pages.
-// Refused outright: SVG (an image format browsers render), programs and Windows script launchers,
-// and macro-enabled Office files.
+// What can be uploaded depends on the "file types" mode (Admin > Settings, or FILE_TYPES):
+//
+//   safe         images, audio and video, PDF, zip and Office files (content must match the extension),
+//                certificates, and any text file. The default.
+//   no-programs  everything above, plus any other file: archives, media, binaries. Programs and Windows
+//                script launchers, SVG and macro-enabled Office files are still refused, and so is any
+//                file whose content is a program (Windows, Linux or macOS executable), whatever its name.
+//   any          every file, with nothing refused.
+//
+// Whatever the mode, stored files are served as attachments with a sandboxing CSP and nosniff, and a file
+// whose type is not recognised is stored as application/octet-stream (or text/plain for text), so nothing
+// uploaded is ever rendered or run by this server's pages.
+const MODES = ['safe', 'no-programs', 'any'];
+
 const startsWith = (buf, bytes, offset = 0) => buf.length >= offset + bytes.length && bytes.every((b, i) => buf[offset + i] === b);
 const ascii = text => [...text].map(c => c.charCodeAt(0));
 
@@ -17,6 +23,13 @@ const isGif = buf => startsWith(buf, ascii('GIF87a')) || startsWith(buf, ascii('
 const isWebp = buf => startsWith(buf, ascii('RIFF')) && startsWith(buf, ascii('WEBP'), 8);
 const isPdf = buf => startsWith(buf, ascii('%PDF'));
 const isZip = buf => startsWith(buf, [0x50, 0x4b, 0x03, 0x04]) || startsWith(buf, [0x50, 0x4b, 0x05, 0x06]);
+// Audio and video containers
+const isIsoMedia = buf => startsWith(buf, ascii('ftyp'), 4); // mp4, m4a, m4v, mov
+const isWebm = buf => startsWith(buf, [0x1a, 0x45, 0xdf, 0xa3]);
+const isOgg = buf => startsWith(buf, ascii('OggS'));
+const isWav = buf => startsWith(buf, ascii('RIFF')) && startsWith(buf, ascii('WAVE'), 8);
+const isFlac = buf => startsWith(buf, ascii('fLaC'));
+const isMp3 = buf => startsWith(buf, ascii('ID3')) || (buf.length > 1 && buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0);
 // Text: no NUL bytes and valid UTF-8 in the first 8 KB (a cut in the middle of a character is tolerated)
 const isText = buf => {
     const head = buf.subarray(0, 8192);
@@ -27,8 +40,17 @@ const isText = buf => {
 };
 // A DER certificate is an ASN.1 SEQUENCE with a long-form length
 const isDer = buf => buf.length > 4 && buf[0] === 0x30 && buf[1] >= 0x81 && buf[1] <= 0x84;
+// Windows (MZ), Linux (ELF) and macOS (Mach-O) executables, whatever the file is called
+const isProgram = buf =>
+    startsWith(buf, [0x4d, 0x5a]) ||
+    startsWith(buf, [0x7f, 0x45, 0x4c, 0x46]) ||
+    startsWith(buf, [0xcf, 0xfa, 0xed, 0xfe]) || startsWith(buf, [0xce, 0xfa, 0xed, 0xfe]) ||
+    startsWith(buf, [0xfe, 0xed, 0xfa, 0xce]) || startsWith(buf, [0xfe, 0xed, 0xfa, 0xcf]);
 
 const PLAIN = 'text/plain; charset=utf-8';
+const OCTET = 'application/octet-stream';
+const certMime = buf => (isText(buf) ? PLAIN : 'application/x-x509-ca-cert');
+const certCheck = buf => isText(buf) || isDer(buf);
 
 const TYPES = {
     '.png': { mime: 'image/png', image: true, check: isPng },
@@ -41,23 +63,35 @@ const TYPES = {
     '.docx': { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', check: isZip },
     '.xlsx': { mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', check: isZip },
     '.pptx': { mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', check: isZip },
+    '.mp4': { mime: 'video/mp4', check: isIsoMedia },
+    '.m4v': { mime: 'video/mp4', check: isIsoMedia },
+    '.mov': { mime: 'video/quicktime', check: isIsoMedia },
+    '.webm': { mime: 'video/webm', check: isWebm },
+    '.ogv': { mime: 'video/ogg', check: isOgg },
+    '.mp3': { mime: 'audio/mpeg', check: isMp3 },
+    '.m4a': { mime: 'audio/mp4', check: isIsoMedia },
+    '.wav': { mime: 'audio/wav', check: isWav },
+    '.ogg': { mime: 'audio/ogg', check: isOgg },
+    '.oga': { mime: 'audio/ogg', check: isOgg },
+    '.opus': { mime: 'audio/ogg', check: isOgg },
+    '.flac': { mime: 'audio/flac', check: isFlac },
     '.csv': { mime: 'text/csv; charset=utf-8', check: isText },
     '.json': { mime: 'application/json', check: isText },
     '.md': { mime: 'text/markdown; charset=utf-8', check: isText },
     // Certificates are PEM text, or binary DER
-    '.pem': { mime: buf => (isText(buf) ? PLAIN : 'application/x-x509-ca-cert'), check: buf => isText(buf) || isDer(buf) },
-    '.cer': { mime: buf => (isText(buf) ? PLAIN : 'application/x-x509-ca-cert'), check: buf => isText(buf) || isDer(buf) },
-    '.crt': { mime: buf => (isText(buf) ? PLAIN : 'application/x-x509-ca-cert'), check: buf => isText(buf) || isDer(buf) },
+    '.pem': { mime: certMime, check: certCheck },
+    '.cer': { mime: certMime, check: certCheck },
+    '.crt': { mime: certMime, check: certCheck },
 };
 
-// Never accepted, whatever the content
+// Refused in "safe" and "no-programs"
 const BLOCKED = new Set([
     '.svg', '.svgz',
     '.exe', '.dll', '.msi', '.scr', '.com', '.pif', '.hta', '.vbs', '.vbe', '.wsf', '.wsh', '.lnk', '.jar',
     '.docm', '.xlsm', '.pptm', '.dotm', '.xlam',
 ]);
 
-const ALLOWED_SUMMARY = 'images (png, jpg, gif, webp), pdf, zip, docx, xlsx, pptx, certificates, and any text file';
+const ALLOWED_SUMMARY = 'images, audio and video, pdf, zip, docx, xlsx, pptx, certificates, and any text file';
 
 // Makes a safe display name: no path parts, no control characters, bounded length
 function cleanFileName(raw) {
@@ -71,19 +105,29 @@ function cleanFileName(raw) {
 }
 
 // Returns { mime, image } when the file is allowed, otherwise { error }
-function detectFile(fileName, buffer) {
+function detectFile(fileName, buffer, mode = 'safe') {
+    if (!MODES.includes(mode)) mode = 'safe';
     const ext = path.extname(fileName).toLowerCase();
-    if (BLOCKED.has(ext)) return { error: `${ext} files aren't allowed.` };
+
+    if (BLOCKED.has(ext)) {
+        if (mode !== 'any') return { error: `${ext} files aren't allowed.` };
+        return { mime: OCTET, image: false };
+    }
 
     const type = TYPES[ext];
     if (type) {
-        if (!type.check(buffer)) return { error: `The content doesn't look like a ${ext} file.` };
-        return { mime: typeof type.mime === 'function' ? type.mime(buffer) : type.mime, image: Boolean(type.image) };
+        if (type.check(buffer)) {
+            return { mime: typeof type.mime === 'function' ? type.mime(buffer) : type.mime, image: Boolean(type.image) };
+        }
+        // A known extension with the wrong content: the safe list refuses it, the others store it as an unknown file
+        if (mode === 'safe') return { error: `The content doesn't look like a ${ext} file.` };
     }
 
-    // Any other extension (or none): fine when the content is text
+    // Any other file: text is always fine; other content depends on the mode
     if (isText(buffer)) return { mime: PLAIN, image: false };
-    return { error: `This file type isn't allowed. Allowed: ${ALLOWED_SUMMARY}.` };
+    if (mode === 'safe') return { error: `This file type isn't allowed. Allowed: ${ALLOWED_SUMMARY}.` };
+    if (mode === 'no-programs' && isProgram(buffer)) return { error: "Programs aren't allowed." };
+    return { mime: OCTET, image: false };
 }
 
-module.exports = { detectFile, cleanFileName };
+module.exports = { detectFile, cleanFileName, MODES };

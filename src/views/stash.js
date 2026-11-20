@@ -275,6 +275,31 @@
     function isTextType(type) { return /^text\//.test(type || '') || /^application\/json/.test(type || ''); }
     var TEXT_PREVIEW_MAX = 512 * 1024;
 
+    // The names inside a zip file (the server reads the directory only, nothing is unpacked)
+    function showZipContents(item, body) {
+        var box = make('div', 'zip-list');
+        box.appendChild(make('div', 'muted', 'Reading the zip file...'));
+        body.appendChild(box);
+        fetch(item.url + '/contents', { credentials: 'same-origin' })
+            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (result) {
+                if (state.selectedId !== item.id) return;
+                box.textContent = '';
+                if (!result.ok) { box.remove(); return; }
+                var data = result.data;
+                var files = data.entries.filter(function (entry) { return !entry.isDir; }).length;
+                box.appendChild(make('div', 'zip-title', data.total + (data.total === 1 ? ' entry' : ' entries') + (files !== data.total ? ' (' + files + ' files)' : '')));
+                data.entries.forEach(function (entry) {
+                    var row = make('div', 'zip-row');
+                    row.appendChild(make('span', 'zip-name', entry.name));
+                    row.appendChild(make('span', 'muted', entry.isDir ? '' : window.StashlyUpload.formatSize(entry.size)));
+                    box.appendChild(row);
+                });
+                if (data.truncated) box.appendChild(make('div', 'muted', 'And ' + (data.total - data.entries.length) + ' more.'));
+            })
+            .catch(function () { box.remove(); });
+    }
+
     function renderDetail(item) {
         var actions = $('detailActions');
         var body = $('detailBody');
@@ -328,6 +353,24 @@
                 info.appendChild(make('div', 'muted', window.StashlyUpload.formatSize(item.fileSize) + (item.fileType ? ' · ' + item.fileType : '')));
                 card.appendChild(info);
                 body.appendChild(card);
+
+                // Audio and video play in the page, a PDF opens in its own tab, a zip shows what is inside
+                var mediaType = (item.fileType || '').split(';')[0];
+                if (/^(video|audio)\//.test(mediaType)) {
+                    var player = make(mediaType.indexOf('video') === 0 ? 'video' : 'audio', 'detail-media');
+                    player.controls = true;
+                    player.preload = 'metadata';
+                    player.src = item.url;
+                    body.insertBefore(player, card);
+                } else if (mediaType === 'application/pdf') {
+                    var open = make('a', 'button-link', 'Open');
+                    open.href = item.url + '?view=1';
+                    open.target = '_blank';
+                    open.rel = 'noopener';
+                    actions.appendChild(open);
+                } else if (mediaType === 'application/zip' && /\.zip$/i.test(item.fileName)) {
+                    showZipContents(item, body);
+                }
 
                 if (isTextType(item.fileType) && item.fileSize <= TEXT_PREVIEW_MAX) {
                     var pre = make('pre', 'detail-text', 'Loading preview...');
