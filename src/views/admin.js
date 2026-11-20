@@ -183,6 +183,12 @@
             extend.addEventListener('click', function () { extendStash(stash); });
             actions.appendChild(extend);
         }
+        var pw = document.createElement('button');
+        pw.type = 'button';
+        pw.className = 'ghost small';
+        pw.textContent = stash.hasPassword ? 'Change password' : 'Set password';
+        pw.addEventListener('click', function () { openPasswordDialog(stash); });
+        actions.appendChild(pw);
         var del = document.createElement('button');
         del.type = 'button';
         del.className = 'danger-ghost small';
@@ -200,6 +206,48 @@
             else toast((res.body && res.body.error) || 'Could not extend.', true);
         });
     }
+
+    // ---- set or change a stash's password ----
+
+    var passwordDialog = $('passwordDialog');
+    var passwordTarget = null;
+
+    function openPasswordDialog(stash) {
+        passwordTarget = stash;
+        $('passwordTitle').textContent = (stash.hasPassword ? 'Change the password of ' : 'Set a password on ') + stash.slug;
+        $('passwordIntro').textContent = stash.hasPassword
+            ? 'Use this when the owner has forgotten the password.'
+            : 'This stash has no password yet, so anyone with its name can open it. Setting one locks it.';
+        $('passwordInput').value = '';
+        $('passwordError').textContent = '';
+        if (typeof passwordDialog.showModal === 'function') passwordDialog.showModal(); else passwordDialog.setAttribute('open', '');
+        $('passwordInput').focus();
+    }
+
+    $('passwordCancel').addEventListener('click', function () { passwordDialog.close(); });
+    passwordDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
+    $('passwordForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        var password = $('passwordInput').value;
+        $('passwordError').textContent = '';
+        if (password.length < 4) { $('passwordError').textContent = 'The password must be at least 4 characters.'; $('passwordInput').focus(); return; }
+        $('passwordSave').disabled = true;
+        api('/api/admin/stashes/' + encodeURIComponent(passwordTarget.slug) + '/password', { method: 'PUT', body: { password: password } }).then(function (res) {
+            $('passwordSave').disabled = false;
+            if (res.status === 401) { passwordDialog.close(); return expired(); }
+            if (res.ok) {
+                passwordDialog.close();
+                $('passwordInput').value = '';
+                toast('Password set for "' + passwordTarget.slug + '". Everyone was signed out.');
+                loadStashes();
+            } else {
+                $('passwordError').textContent = (res.body && res.body.error) || 'Could not set the password.';
+            }
+        }).catch(function () {
+            $('passwordSave').disabled = false;
+            $('passwordError').textContent = 'Could not reach the server.';
+        });
+    });
 
     function deleteStash(stash) {
         var message = 'Delete "' + stash.slug + '" with its ' + stash.items + (stash.items === 1 ? ' item' : ' items') + '? This cannot be undone.';

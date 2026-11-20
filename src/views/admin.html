@@ -130,6 +130,22 @@
             </form>
         </section>
     </main>
+    <dialog id="passwordDialog" class="qr-dialog share-dialog" aria-labelledby="passwordTitle">
+        <form id="passwordForm" class="qr-body share-body" novalidate>
+            <h2 id="passwordTitle">Set password</h2>
+            <p class="muted" id="passwordIntro"></p>
+            <p class="muted">Setting a password signs everyone out of the stash and cancels its read-only and drop-box links. The notes and files are not touched. Whoever knows the new password can open the stash, you included, so only do this when the owner asks or the stash must be recovered.</p>
+            <div class="field">
+                <label for="passwordInput">New password</label>
+                <input type="password" id="passwordInput" autocomplete="new-password" maxlength="200" />
+                <small class="field-error" id="passwordError" role="alert"></small>
+            </div>
+            <div class="qr-actions">
+                <button type="button" id="passwordCancel" class="ghost">Cancel</button>
+                <button type="submit" id="passwordSave" class="primary">Set password</button>
+            </div>
+        </form>
+    </dialog>
     <div id="toast" class="toast hidden" role="status"></div>
     <script src="/shell.js"></script>
     <script src="/admin.js"></script>

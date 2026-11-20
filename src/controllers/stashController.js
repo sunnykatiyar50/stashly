@@ -12,7 +12,6 @@ const cookieName = slug => `stashly_${slug}`;
 const ROLE_COOKIES = { view: slug => `stashlyv_${slug}`, drop: slug => `stashlyd_${slug}` };
 // What a share link signs: its own label plus the hash of its token, so a new link voids cookies from the old one
 const roleSubject = (slug, kind) => `${slug}:${kind}`;
-const MAX_COOKIE_MS = 12 * 60 * 60 * 1000;
 
 // "bytes=START-END", "bytes=START-" or "bytes=-SUFFIX" for one range. Returns { start, end }, 'invalid', or null when
 // there is no range to honour (no header, or several ranges, which are served whole).
@@ -137,6 +136,8 @@ class StashController {
             limits: this.limits(),
             allowNoExpiry: this.config.allowNoExpiry,
             minOpenNameLength: this.config.minOpenNameLength,
+            sessionOptions: this.config.sessionOptions.map(({ key, label }) => ({ key, label })),
+            defaultSession: this.config.defaultSession,
             itemTtlOptions: this.config.itemTtlOptions.map(({ key, label }) => ({ key, label })),
             fileTypes: this.config.fileTypes,
             // false when only the admin may create stashes and the visitor is not signed in as admin
@@ -216,10 +217,11 @@ class StashController {
 
     // Always HttpOnly and SameSite=Strict. Secure follows the connection, or is forced with COOKIE_SECURE=true
     // (for a TLS proxy that Express was not told about).
-    setAccessCookie(req, res, stash, kind = 'full') {
+    // durationMs is how long this browser stays signed in (the person's choice), never past the end of the stash.
+    setAccessCookie(req, res, stash, kind = 'full', durationMs = this.sessionMs(null)) {
         const now = this.now().getTime();
         const stashEnd = stash.expires_at ? new Date(stash.expires_at).getTime() : Infinity;
-        const expiresAt = Math.min(now + MAX_COOKIE_MS, stashEnd);
+        const expiresAt = Math.min(now + durationMs, stashEnd);
         const [name, subject, salt] =
             kind === 'full'
                 ? [cookieName(stash.slug), stash.slug, stash.password_salt]
@@ -232,6 +234,30 @@ class StashController {
             path: '/',
             maxAge: Math.max(0, expiresAt - now),
         });
+    }
+
+    // How long a session lasts, from one of the listed choices (the default when none is given). null when the choice
+    // is not on the list.
+    sessionOptionFor(key) {
+        const wanted = key === undefined || key === null || key === '' ? this.config.defaultSession : key;
+        return this.config.sessionOptions.find(option => option.key === wanted) || null;
+    }
+
+    sessionMs(key) {
+        const option = this.sessionOptionFor(key) || this.config.sessionOptions[this.config.sessionOptions.length - 1];
+        return option.ms;
+    }
+
+    cookieFor(slug, kind) {
+        return kind === 'full' ? cookieName(slug) : ROLE_COOKIES[kind](slug);
+    }
+
+    // When this browser's session for the stash ends. The cookie's first part is its (signed) expiry time.
+    sessionEnd(req, stash, role) {
+        if (!stash.password_hash || !role) return null;
+        const token = parseCookies(req.headers.cookie)[this.cookieFor(stash.slug, role)];
+        const expiresAt = Number(String(token || '').split('.')[0]);
+        return Number.isFinite(expiresAt) && expiresAt > 0 ? new Date(expiresAt).toISOString() : null;
     }
 
     // Wrong passwords for one stash, counted across every visitor. Held in memory, so a restart clears it.
@@ -267,13 +293,33 @@ class StashController {
                 .json({ error: `Too many wrong passwords for this stash. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`, locked: true });
         }
         const password = req.body && req.body.password;
+        const session = this.sessionOptionFor(req.body && req.body.session);
+        if (!session) return res.status(400).json({ error: 'Pick one of the listed session lengths.', field: 'session' });
         if (!(await verifyPassword(password, stash.password_hash, stash.password_salt))) {
             this.noteFailure(stash.slug);
             return res.status(401).json({ error: 'That password is not right.', locked: true });
         }
         this.failures.delete(stash.slug);
-        this.setAccessCookie(req, res, stash);
+        this.setAccessCookie(req, res, stash, 'full', session.ms);
+        res.json({ ok: true, sessionEndsAt: new Date(this.now().getTime() + session.ms).toISOString() });
+    };
+
+    // Signs this browser out of the stash: every cookie it holds for it is cleared. It works whatever the role, and
+    // even when the cookie is already invalid, so the button never fails.
+    logout = (req, res) => {
+        for (const kind of ['full', 'view', 'drop']) res.clearCookie(this.cookieFor(req.stash.slug, kind), { path: '/' });
         res.json({ ok: true });
+    };
+
+    // Changes how much longer this browser stays signed in (a new session length from now, never past the stash's end)
+    setSession = (req, res) => {
+        const stash = req.stash;
+        const session = this.sessionOptionFor(req.body && req.body.session);
+        if (!session || !(req.body && req.body.session)) return res.status(400).json({ error: 'Pick one of the listed session lengths.', field: 'session' });
+        if (!stash.password_hash) return res.status(400).json({ error: 'This stash has no password, so there is no session to change.' });
+        this.setAccessCookie(req, res, stash, req.role, session.ms);
+        const stashEnd = stash.expires_at ? new Date(stash.expires_at).getTime() : Infinity;
+        res.json({ ok: true, sessionEndsAt: new Date(Math.min(this.now().getTime() + session.ms, stashEnd)).toISOString() });
     };
 
     // ---- share links (password-protected stashes only) ----
@@ -285,7 +331,7 @@ class StashController {
         const token = req.body && req.body.token;
         const kind = ['view', 'drop'].find(k => linkTokenMatches(token, stash[`${k}_token_hash`]));
         if (!stash.password_hash || !kind) return res.status(401).json({ error: 'That link is not valid any more.' });
-        this.setAccessCookie(req, res, stash, kind);
+        this.setAccessCookie(req, res, stash, kind, this.sessionMs(req.body && req.body.session));
         res.json({ ok: true, role: kind });
     };
 
@@ -326,6 +372,8 @@ class StashController {
             expiresAt: stash.expires_at,
             // Only someone with full access sees which share links exist
             shareLinks: req.role === 'full' ? { view: Boolean(stash.view_token_hash), drop: Boolean(stash.drop_token_hash) } : null,
+            // When this browser's sign-in ends (only a password-protected stash has one)
+            sessionEndsAt: this.sessionEnd(req, stash, req.role),
             canExtend: req.role === 'full' && Boolean(stash.ttl_ms),
             keepLast: stash.keep_last || null,
             usage: dropOnly ? { items: 0, files: 0, bytes: 0 } : this.model.usage(stash.id),

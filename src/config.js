@@ -63,6 +63,14 @@ function loadConfig(env = process.env, overrides = {}) {
         // the window ends (a person already signed in is not affected). 0 turns it off.
         stashUnlockFailures: num(env.STASH_UNLOCK_FAILURES, 10),
         stashUnlockWindowMs: num(env.STASH_UNLOCK_WINDOW_MIN, 15) * 60 * 1000,
+        // How long a password-protected stash stays unlocked in a browser. The person chooses when they unlock (and can
+        // shorten it later); never longer than the stash itself.
+        sessionOptions: [
+            { key: '1h', label: '1 hour', ms: HOUR },
+            { key: '4h', label: '4 hours', ms: 4 * HOUR },
+            { key: '12h', label: '12 hours', ms: 12 * HOUR },
+        ],
+        defaultSession: '12h',
         // Mark cookies Secure: "auto" follows the connection (needs TRUST_PROXY behind a proxy), "true" always
         cookieSecure: ['auto', 'true', 'false'].includes(String(env.COOKIE_SECURE).toLowerCase()) ? String(env.COOKIE_SECURE).toLowerCase() : 'auto',
         cleanupIntervalMs: 60 * 1000,
