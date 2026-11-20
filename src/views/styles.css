@@ -361,6 +361,19 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 30; padding: 9px 16px; border-radius: 8px; background: #111827; color: #fff; font-size: 13.5px; box-shadow: 0 6px 20px var(--shadow); max-width: calc(100vw - 32px); }
 .toast.error { background: var(--danger); }
 
+/* ===== QR code dialog ===== */
+.qr-dialog { border: 1px solid var(--border); border-radius: 12px; padding: 0; background: var(--surface); color: var(--text); width: min(360px, calc(100vw - 32px)); box-shadow: 0 12px 40px var(--shadow); }
+.qr-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+.qr-body { display: flex; flex-direction: column; gap: 12px; padding: 20px; text-align: center; }
+.qr-body h2 { font-size: 17px; }
+.qr-body p { margin: 0; font-size: 13px; }
+/* The code is dark on white whatever the theme, with its own quiet zone, so cameras can read it */
+.qr-image { align-self: center; width: min(260px, 100%); border-radius: 8px; overflow: hidden; background: #fff; line-height: 0; }
+.qr-image svg { width: 100%; height: auto; }
+.qr-link { margin: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; font-size: 12px; }
+.qr-warn { padding: 8px 10px; border-radius: 6px; background: var(--warning-bg); color: var(--warning-text); text-align: left; }
+.qr-actions { display: flex; justify-content: center; gap: 8px; }
+
 /* ===== Notices, admin ===== */
 .notice { max-width: 640px; background: var(--warning-bg); color: var(--warning-text); border-color: transparent; }
 .notice a { color: inherit; font-weight: 600; }

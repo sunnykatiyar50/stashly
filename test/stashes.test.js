@@ -100,3 +100,13 @@ test('TRUST_PROXY accepts true, false and a hop count without crashing', async (
     const res = await request(ctx.app).get('/__ip').set('X-Forwarded-For', '203.0.113.9');
     assert.equal(res.text, '203.0.113.9');
 });
+
+test('the QR code library is served to the stash page', async () => {
+    const { app } = makeApp();
+    const res = await request(app).get('/vendor/qrcode.js').expect(200);
+    assert.match(res.headers['content-type'], /javascript/);
+    assert.match(res.text, /createSvgTag/);
+    const page = await request(app).get('/s/some-stash').expect(200);
+    assert.match(page.text, /\/vendor\/qrcode\.js/);
+    assert.match(page.text, /id="qrButton"/);
+});
