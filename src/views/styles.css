@@ -469,7 +469,6 @@ audio.detail-media { max-height: none; }
 .note-options { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-bottom: 8px; }
 .note-options .opt { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-soft); }
 .note-options select { padding: 3px 6px; font-size: 12.5px; }
-.clip-flags { font-size: 11.5px; color: var(--blue); }
 .burn-card { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: var(--radius); background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--border); }
 .burn-card .muted { color: inherit; opacity: 0.85; }
 
@@ -509,7 +508,6 @@ audio.detail-media { max-height: none; }
 .edit-form { display: flex; flex-direction: column; gap: 8px; }
 .edit-form input, .edit-form textarea { width: 100%; }
 .edit-form textarea { min-height: 220px; font-family: var(--mono); font-size: 13px; line-height: 1.5; }
-.clip-flags.pinned { font-weight: 600; }
 .role-drop #optionsButton, .role-drop #presenceChip { display: none; }
 .role-view [data-option="keep"] { display: none; }
 
@@ -520,3 +518,11 @@ audio.detail-media { max-height: none; }
 .header-gear svg { width: 17px; height: 17px; }
 .danger-row { border-color: var(--danger); background: var(--danger-soft); }
 .role-view [data-option="danger"] { display: none; }
+
+/* ===== Clip properties: chips on the right of the row, apart from the clip's own text ===== */
+.clip-flags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; margin-top: 3px; }
+.clip-flag { padding: 0 7px; border-radius: 9px; background: var(--code-bg); color: var(--text-soft); font-size: 11px; line-height: 1.6; white-space: nowrap; }
+.clip-flag-pinned { background: var(--blue-soft); color: var(--blue); font-weight: 600; }
+.clip-flag-burn { background: var(--warning-bg); color: var(--warning-text); }
+.clip-flag-expiry { font-variant-numeric: tabular-nums; }
+.lock-chip { padding: 2px 6px; }
