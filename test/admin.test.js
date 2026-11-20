@@ -162,7 +162,14 @@ test('changed limits apply at once, with no restart', async () => {
 
     await upload(1.5 * 1024 * 1024).expect(201);
     await ctx.admin.put('/api/admin/settings').send({ values: { maxFileMb: 1 } }).expect(200);
-    await upload(1.5 * 1024 * 1024).expect(413);
+    // An oversized upload is refused from its Content-Length before the body is read (checkUploadSize), so
+    // the server can close the socket while a large body is still being sent. The client then sees either
+    // the 413 or ECONNRESET; both mean "refused". Anything else (a 201, say) fails the test.
+    const refused = await upload(1.5 * 1024 * 1024).then(
+        res => res.status,
+        err => (err.code === 'ECONNRESET' || err.code === 'EPIPE' ? 413 : Promise.reject(err))
+    );
+    assert.equal(refused, 413);
     await ctx.admin.put('/api/admin/settings').send({ values: { maxFileMb: 5 } }).expect(200);
     await upload(1.5 * 1024 * 1024).expect(201);
 
