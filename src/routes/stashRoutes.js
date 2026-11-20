@@ -14,7 +14,11 @@ function limiter(windowMs, limit, message) {
 function createStashRoutes({ controller, config }) {
     const router = express.Router();
     const c = controller;
-    const access = [c.loadStash, c.requireAccess];
+    // Who may use each route: full access (no password, or unlocked), a read-only share link, or a drop-box link
+    const full = [c.loadStash, c.allow('full')];
+    const read = [c.loadStash, c.allow('full', 'view')];
+    const write = [c.loadStash, c.allow('full', 'drop')];
+    const anyRole = [c.loadStash, c.allow('full', 'view', 'drop')];
 
     const createLimiter = limiter(60 * 1000, config.rateCreate, 'Too many stashes created, slow down.');
     const postLimiter = limiter(60 * 1000, config.ratePost, 'Too many notes, slow down.');
@@ -44,18 +48,22 @@ function createStashRoutes({ controller, config }) {
     router.get('/suggest', c.suggest);
     router.post('/', createLimiter, c.create);
 
-    router.get('/:slug', ...access, c.get);
+    router.get('/:slug', ...anyRole, c.get);
     router.post('/:slug/unlock', unlockLimiter, c.loadStash, c.unlock);
-    router.get('/:slug/events', ...access, c.stream);
-    router.get('/:slug/latest', ...access, c.latest);
-    router.post('/:slug/notes', postLimiter, ...access, textBody, c.addNote);
-    router.post('/:slug/files', uploadLimiter, ...access, checkUploadSize, rawBody, c.addFile);
-    router.get('/:slug/files/:id', ...access, c.getFile);
-    router.get('/:slug/files/:id/contents', ...access, c.listArchive);
-    router.post('/:slug/items/:id/reveal', ...access, c.reveal);
-    router.delete('/:slug/items/:id', ...access, c.deleteItem);
-    router.post('/:slug/extend', ...access, c.extend);
-    router.delete('/:slug', ...access, c.remove);
+    router.post('/:slug/redeem', unlockLimiter, c.loadStash, c.redeem);
+    router.get('/:slug/events', ...read, c.stream);
+    router.get('/:slug/latest', ...read, c.latest);
+    router.post('/:slug/notes', postLimiter, ...write, textBody, c.addNote);
+    router.post('/:slug/files', uploadLimiter, ...write, checkUploadSize, rawBody, c.addFile);
+    router.get('/:slug/files/:id', ...read, c.getFile);
+    router.get('/:slug/files/:id/contents', ...read, c.listArchive);
+    // Revealing deletes the note, so it is not something a read-only link may do
+    router.post('/:slug/items/:id/reveal', ...full, c.reveal);
+    router.delete('/:slug/items/:id', ...full, c.deleteItem);
+    router.post('/:slug/extend', ...full, c.extend);
+    router.post('/:slug/share-links', ...full, c.createShareLink);
+    router.delete('/:slug/share-links/:kind', ...full, c.revokeShareLink);
+    router.delete('/:slug', ...full, c.remove);
 
     return router;
 }

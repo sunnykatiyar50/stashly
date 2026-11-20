@@ -12,6 +12,8 @@ A self-hosted shared stash. Two machines that can't reach each other open the sa
 - **Live**: items appear on every open page without a refresh (Server-Sent Events).
 - **QR code**: the "QR code" button in a stash's header shows a code that opens the stash on a phone or another device. It is made in the browser from the address you are using, so open Stashly by its network address or domain (not `localhost`) for a code a phone can reach; the page says so when the address is `localhost`. A stash password is not part of the code.
 - **Password** (optional, per stash): stored as a salted scrypt hash; unlocking sets an HttpOnly cookie for that stash only.
+- **Share links** (password-protected stashes): the "Share links" button makes a **read-only link** (read and copy, nothing else) and a **drop-box link** (add notes and files, see nothing). Each is shown once when made; only its hash is stored, and the key sits after a `#` so it never reaches the server or its logs. Making a new link, or cancelling one, ends the old one at once. Revealing a burn-after-reading note needs full access, since it deletes the note. Without a password the name already gives full access, so these links need one.
+- **Names are the lock** on a stash without a password, so such a name must be at least 10 characters (`MIN_OPEN_NAME_LENGTH`, or Admin > Settings; 0 turns it off). Shorter names need a password. Existing stashes are not changed.
 - **Auto-expiry**: pick 1 hour to 30 days. A stash is deleted with everything in it when its time is up. "Extend" restarts the timer.
 - **Search and date range** inside every stash, matching note text and file names.
 
@@ -101,6 +103,18 @@ Set these as environment variables (or in `.env`, see [.env.example](.env.exampl
 | `MAX_STASH_MB` | 100 | Total file size in one stash |
 | `MAX_TOTAL_MB` | 2048 | Total file size on the whole server |
 | `MAX_STASHES` | 1000 | Stashes on the whole server |
+
+### Passwords, lockout and cookies
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MIN_OPEN_NAME_LENGTH` | 10 | Shortest stash name allowed without a password (0 = off) |
+| `STASH_UNLOCK_FAILURES` | 10 | Wrong passwords for one stash, from anyone, before unlocking it is refused (0 = off) |
+| `STASH_UNLOCK_WINDOW_MIN` | 15 | How long that refusal lasts, in minutes |
+| `COOKIE_SECURE` | auto | `auto` marks cookies Secure when the connection is HTTPS; `true` always (use it behind a TLS proxy you did not set `TRUST_PROXY` for) |
+| `RATE_UNLOCK` | 10 | Wrong passwords per address per 15 minutes |
+
+The per-stash lockout is on top of the per-address limit, so guessing from many addresses gets nowhere either. The cost: someone who knows a stash's name can deliberately lock new unlocks for a while by guessing wrong. A person who is already unlocked, or who has a share link, is not affected, and the count lives in memory, so a restart clears it. Cookies are always `HttpOnly` and `SameSite=Strict`, and responses carry a content security policy, `no-store`, and a permissions policy that turns off camera, microphone, location and similar features Stashly never uses.
 
 ### File types
 

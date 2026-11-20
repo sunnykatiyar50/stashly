@@ -56,6 +56,15 @@ function loadConfig(env = process.env, overrides = {}) {
         ratePost: num(env.RATE_POST, 120),
         rateUpload: num(env.RATE_UPLOAD, 40),
         rateUnlock: num(env.RATE_UNLOCK, 10),
+        // A stash with no password is protected only by its name, so the name has to be long enough not to be guessed.
+        // 0 turns the rule off. Stashes made before the rule are not affected.
+        minOpenNameLength: num(env.MIN_OPEN_NAME_LENGTH, 10),
+        // Wrong passwords for one stash, from anyone: after this many in the window, unlocking it is refused until
+        // the window ends (a person already signed in is not affected). 0 turns it off.
+        stashUnlockFailures: num(env.STASH_UNLOCK_FAILURES, 10),
+        stashUnlockWindowMs: num(env.STASH_UNLOCK_WINDOW_MIN, 15) * 60 * 1000,
+        // Mark cookies Secure: "auto" follows the connection (needs TRUST_PROXY behind a proxy), "true" always
+        cookieSecure: ['auto', 'true', 'false'].includes(String(env.COOKIE_SECURE).toLowerCase()) ? String(env.COOKIE_SECURE).toLowerCase() : 'auto',
         cleanupIntervalMs: 60 * 1000,
         ...overrides,
     };

@@ -1,12 +1,17 @@
 const { generateSlug, parseSlug } = require('../utils/slug');
 const { hashPassword, verifyPassword, MIN_PASSWORD, MAX_PASSWORD } = require('../utils/password');
-const { signToken, verifyToken, parseCookies } = require('../utils/token');
+const { signToken, verifyToken, parseCookies, generateLinkToken, hashLinkToken, linkTokenMatches } = require('../utils/token');
 const { detectFile, cleanFileName } = require('../utils/fileType');
 const { dateRange } = require('../utils/time');
 const { parseTitle, deriveTitle } = require('../utils/title');
 const { listZip } = require('../utils/zip');
 
+// Three cookies per stash: full access (the password), or one of the two share links. The names cannot collide,
+// because the prefixes differ before the stash name starts.
 const cookieName = slug => `stashly_${slug}`;
+const ROLE_COOKIES = { view: slug => `stashlyv_${slug}`, drop: slug => `stashlyd_${slug}` };
+// What a share link signs: its own label plus the hash of its token, so a new link voids cookies from the old one
+const roleSubject = (slug, kind) => `${slug}:${kind}`;
 const MAX_COOKIE_MS = 12 * 60 * 60 * 1000;
 
 // "bytes=START-END", "bytes=START-" or "bytes=-SUFFIX" for one range. Returns { start, end }, 'invalid', or null when
@@ -38,6 +43,7 @@ class StashController {
         this.config = config;
         this.secret = secret;
         this.now = now;
+        this.failures = new Map(); // slug -> { start, count } of wrong passwords
     }
 
     // ---- presentation ----
@@ -94,15 +100,29 @@ class StashController {
         next();
     };
 
-    // A password-protected stash needs the cookie that /unlock sets
-    requireAccess = (req, res, next) => {
-        const stash = req.stash;
-        if (stash.password_hash) {
-            const token = parseCookies(req.headers.cookie)[cookieName(stash.slug)];
-            if (!verifyToken(this.secret, stash.slug, stash.password_salt, token, this.now().getTime())) {
-                return res.status(401).json({ error: 'This stash is locked. Enter the password.', locked: true });
-            }
+    // What this visitor may do in this stash: 'full' (no password, or unlocked), 'view' (a read-only link),
+    // 'drop' (a drop-box link: can add, cannot read) or null (locked out).
+    roleOf(req, stash) {
+        if (!stash.password_hash) return 'full';
+        const cookies = parseCookies(req.headers.cookie);
+        const now = this.now().getTime();
+        if (verifyToken(this.secret, stash.slug, stash.password_salt, cookies[cookieName(stash.slug)], now)) return 'full';
+        for (const kind of ['view', 'drop']) {
+            const hash = stash[`${kind}_token_hash`];
+            if (hash && verifyToken(this.secret, roleSubject(stash.slug, kind), hash, cookies[ROLE_COOKIES[kind](stash.slug)], now)) return kind;
         }
+        return null;
+    }
+
+    // Route guard: the roles that may use the route. A locked-out visitor is asked for the password; a share-link
+    // visitor who goes beyond what the link allows is told no.
+    allow = (...roles) => (req, res, next) => {
+        const role = this.roleOf(req, req.stash);
+        if (!role) return res.status(401).json({ error: 'This stash is locked. Enter the password.', locked: true });
+        if (!roles.includes(role)) {
+            return res.status(403).json({ error: role === 'view' ? 'This link is read-only.' : 'This drop-box link can only add things.', role });
+        }
+        req.role = role;
         next();
     };
 
@@ -114,6 +134,7 @@ class StashController {
             defaultTtl: this.config.defaultTtl,
             limits: this.limits(),
             allowNoExpiry: this.config.allowNoExpiry,
+            minOpenNameLength: this.config.minOpenNameLength,
             itemTtlOptions: this.config.itemTtlOptions.map(({ key, label }) => ({ key, label })),
             fileTypes: this.config.fileTypes,
             // false when only the admin may create stashes and the visitor is not signed in as admin
@@ -154,6 +175,15 @@ class StashController {
             password = body.password;
         }
 
+        // Without a password the name is the only lock, so it must be long enough not to be guessed
+        const minName = this.config.minOpenNameLength;
+        if (!password && minName && parsed.slug.length < minName) {
+            return res.status(400).json({
+                error: `Without a password the name must be at least ${minName} characters. Add a password, or use a longer name.`,
+                field: 'slug',
+            });
+        }
+
         if (this.model.countStashes() >= this.config.maxStashes) {
             return res.status(503).json({ error: 'This server has reached its limit of stashes. Try again later.' });
         }
@@ -182,27 +212,98 @@ class StashController {
         }
     };
 
-    setAccessCookie(req, res, stash) {
+    // Always HttpOnly and SameSite=Strict. Secure follows the connection, or is forced with COOKIE_SECURE=true
+    // (for a TLS proxy that Express was not told about).
+    setAccessCookie(req, res, stash, kind = 'full') {
         const now = this.now().getTime();
         const stashEnd = stash.expires_at ? new Date(stash.expires_at).getTime() : Infinity;
         const expiresAt = Math.min(now + MAX_COOKIE_MS, stashEnd);
-        res.cookie(cookieName(stash.slug), signToken(this.secret, stash.slug, stash.password_salt, expiresAt), {
+        const [name, subject, salt] =
+            kind === 'full'
+                ? [cookieName(stash.slug), stash.slug, stash.password_salt]
+                : [ROLE_COOKIES[kind](stash.slug), roleSubject(stash.slug, kind), stash[`${kind}_token_hash`]];
+        const secure = this.config.cookieSecure === 'true' ? true : this.config.cookieSecure === 'false' ? false : req.secure;
+        res.cookie(name, signToken(this.secret, subject, salt, expiresAt), {
             httpOnly: true,
             sameSite: 'strict',
-            secure: req.secure,
+            secure,
             path: '/',
             maxAge: Math.max(0, expiresAt - now),
         });
     }
 
+    // Wrong passwords for one stash, counted across every visitor. Held in memory, so a restart clears it.
+    lockedFor(slug) {
+        const max = this.config.stashUnlockFailures;
+        const entry = this.failures.get(slug);
+        if (!max || !entry) return 0;
+        const now = this.now().getTime();
+        if (now - entry.start >= this.config.stashUnlockWindowMs) {
+            this.failures.delete(slug);
+            return 0;
+        }
+        return entry.count >= max ? entry.start + this.config.stashUnlockWindowMs - now : 0;
+    }
+
+    noteFailure(slug) {
+        const now = this.now().getTime();
+        const entry = this.failures.get(slug);
+        if (!entry || now - entry.start >= this.config.stashUnlockWindowMs) this.failures.set(slug, { start: now, count: 1 });
+        else entry.count += 1;
+    }
+
     unlock = async (req, res) => {
         const stash = req.stash;
         if (!stash.password_hash) return res.json({ ok: true, hasPassword: false });
+        // Too many wrong passwords for this stash: refuse before even checking, so guessing gets nowhere
+        const wait = this.lockedFor(stash.slug);
+        if (wait) {
+            const minutes = Math.max(1, Math.ceil(wait / 60000));
+            return res
+                .status(429)
+                .set('Retry-After', String(Math.ceil(wait / 1000)))
+                .json({ error: `Too many wrong passwords for this stash. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`, locked: true });
+        }
         const password = req.body && req.body.password;
         if (!(await verifyPassword(password, stash.password_hash, stash.password_salt))) {
+            this.noteFailure(stash.slug);
             return res.status(401).json({ error: 'That password is not right.', locked: true });
         }
+        this.failures.delete(stash.slug);
         this.setAccessCookie(req, res, stash);
+        res.json({ ok: true });
+    };
+
+    // ---- share links (password-protected stashes only) ----
+    // Without a password the name already gives full access, so a limited link would limit nothing.
+
+    // The page opens /s/name#view=TOKEN (or #drop=TOKEN) and trades the token for a cookie here
+    redeem = (req, res) => {
+        const stash = req.stash;
+        const token = req.body && req.body.token;
+        const kind = ['view', 'drop'].find(k => linkTokenMatches(token, stash[`${k}_token_hash`]));
+        if (!stash.password_hash || !kind) return res.status(401).json({ error: 'That link is not valid any more.' });
+        this.setAccessCookie(req, res, stash, kind);
+        res.json({ ok: true, role: kind });
+    };
+
+    createShareLink = (req, res) => {
+        const stash = req.stash;
+        const kind = req.body && req.body.kind;
+        if (!['view', 'drop'].includes(kind)) return res.status(400).json({ error: 'Pick a read-only link or a drop-box link.' });
+        if (!stash.password_hash) {
+            return res.status(400).json({ error: 'Share links need a password on the stash. Without one, the name already gives full access.' });
+        }
+        const token = generateLinkToken();
+        this.model.setShareToken(stash.id, kind, hashLinkToken(token));
+        // The token is shown once. It is in the fragment (#), which browsers never send to the server.
+        res.status(201).json({ kind, token, path: `/s/${stash.slug}#${kind}=${token}` });
+    };
+
+    revokeShareLink = (req, res) => {
+        const kind = req.params.kind;
+        if (!['view', 'drop'].includes(kind)) return res.status(404).json({ error: 'No such link.' });
+        this.model.setShareToken(req.stash.id, kind, null);
         res.json({ ok: true });
     };
 
@@ -212,14 +313,19 @@ class StashController {
         if (range.error) return res.status(400).json({ error: range.error });
         const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 200) : '';
 
-        const rows = this.model.listItems(stash.id, { search, from: range.from, to: range.to, now: this.now() });
+        // A drop-box visitor can add but not read: they get the stash's shape and no items or counts
+        const dropOnly = req.role === 'drop';
+        const rows = dropOnly ? [] : this.model.listItems(stash.id, { search, from: range.from, to: range.to, now: this.now() });
         res.json({
             slug: stash.slug,
+            role: req.role,
             hasPassword: Boolean(stash.password_hash),
             createdAt: stash.created_at,
             expiresAt: stash.expires_at,
-            canExtend: Boolean(stash.ttl_ms),
-            usage: this.model.usage(stash.id),
+            // Only someone with full access sees which share links exist
+            shareLinks: req.role === 'full' ? { view: Boolean(stash.view_token_hash), drop: Boolean(stash.drop_token_hash) } : null,
+            canExtend: req.role === 'full' && Boolean(stash.ttl_ms),
+            usage: dropOnly ? { items: 0, files: 0, bytes: 0 } : this.model.usage(stash.id),
             limits: this.limits(),
             total: rows.length,
             items: rows.map(row => this.presentItem(stash.slug, row)),
@@ -366,7 +472,8 @@ class StashController {
     };
 
     latest = (req, res) => {
-        const row = this.model.latestNote(req.stash.id, this.now());
+        // Reading a burn note this way deletes it, so only full access gets burn notes here
+        const row = this.model.latestNote(req.stash.id, this.now(), { includeBurn: req.role === 'full' });
         if (!row) return res.status(404).type('text/plain').send('No notes yet.\n');
         // Reading a burn-after-reading note this way uses it up
         if (row.burn) this.burn(req.stash, row);
@@ -423,6 +530,9 @@ class StashController {
         const removed = this.model.purgeExpired(this.now());
         for (const slug of removed) this.events.closeAll(slug, 'stash-gone', { reason: 'expired' });
         for (const item of this.model.purgeExpiredItems(this.now())) this.events.publish(item.slug, 'item-deleted', { id: item.id });
+        // Forget wrong-password counts whose window has passed
+        const window = this.config.stashUnlockWindowMs;
+        for (const [slug, entry] of this.failures) if (this.now().getTime() - entry.start >= window) this.failures.delete(slug);
         return removed;
     };
 }

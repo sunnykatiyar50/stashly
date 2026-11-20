@@ -4,6 +4,7 @@
 
     var MIN = 4;
     var GENERATED = 12;
+    var minOpen = 0; // from the server: the shortest name allowed without a password
     var $ = function (id) { return document.getElementById(id); };
 
     var slugInput = $('slugInput');
@@ -44,11 +45,15 @@
         return '';
     }
 
-    // A short, memorable name is easy to guess: nudge towards a password
+    // Without a password the name is the only lock. The server refuses a name shorter than minOpen; shorter than a
+    // generated name is still easy to guess, so nudge towards a password.
     function updateHint() {
-        var short = slugInput.value.trim().length < GENERATED;
+        var length = slugInput.value.trim().length;
         var noPassword = !passwordInput.value;
-        if (short && noPassword && slugInput.value.trim()) {
+        if (length && noPassword && minOpen && length < minOpen) {
+            slugHint.textContent = 'Without a password the name must be at least ' + minOpen + ' characters. Add a password, or use a longer name.';
+            slugHint.classList.add('warn');
+        } else if (length && noPassword && length < GENERATED) {
             slugHint.textContent = 'Short names are easy to guess. Add a password if this should stay private.';
             slugHint.classList.add('warn');
         } else {
@@ -77,6 +82,8 @@
         return api('/api/config').then(function (res) {
             if (!res.ok) return;
             if (!res.body.canCreate) lockCreateForm();
+            minOpen = Number(res.body.minOpenNameLength) || 0;
+            updateHint();
             ttlSelect.textContent = '';
             res.body.ttlOptions.forEach(function (option) {
                 var el = document.createElement('option');
@@ -98,6 +105,11 @@
         var problem = validateName(slugInput.value);
         if (problem) {
             errors.slug.textContent = problem;
+            slugInput.focus();
+            return;
+        }
+        if (!passwordInput.value && minOpen && slugInput.value.trim().length < minOpen) {
+            errors.slug.textContent = 'Without a password the name must be at least ' + minOpen + ' characters. Add a password, or use a longer name.';
             slugInput.focus();
             return;
         }
