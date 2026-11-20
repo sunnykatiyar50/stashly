@@ -6,6 +6,8 @@
     var slug = decodeURIComponent(location.pathname.split('/')[2] || '').toLowerCase();
     var base = '/api/stashes/' + encodeURIComponent(slug);
     var $ = function (id) { return document.getElementById(id); };
+    // Made up fresh for each page load; only used to recognise this page's own items in the live stream
+    var tabId = Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
 
     var state = {
         stash: null,
@@ -15,6 +17,11 @@
         connectedOnce: false,
         selectedId: null,  // the clip open on the right, or null
         revealedId: null,  // a burn note whose text is on screen and nowhere else
+        editingId: null,   // the note being edited in the pane (live updates must not overwrite the form)
+        plainIds: {},      // notes the reader switched to plain text (no code colours)
+        autoCopy: false,   // copy notes that arrive from other devices (this tab only, off by default)
+        notify: false,     // desktop notifications for new items (this tab only)
+        pendingCopy: null, // text waiting for the tab to be in front so it can be copied
         started: false,    // the first successful load picks what to show
     };
     var sections = { loading: $('stateLoading'), gone: $('stateGone'), locked: $('stateLocked'), main: $('stateMain') };
@@ -33,7 +40,8 @@
         return fetch(path, {
             method: options.method || 'GET',
             credentials: 'same-origin',
-            headers: options.body ? { 'Content-Type': 'application/json' } : {},
+            // X-Tab-Id lets the server's live events say which page added an item, so a page knows its own
+            headers: options.body ? { 'Content-Type': 'application/json', 'X-Tab-Id': tabId } : { 'X-Tab-Id': tabId },
             body: options.body ? JSON.stringify(options.body) : undefined,
         }).then(function (res) {
             return res.json().catch(function () { return null; }).then(function (body) {
@@ -162,8 +170,9 @@
 
     // "Burns after reading", "Secret" and "Deletes in 4 min" for a note; baseOnly leaves out the countdown
     function flagsText(item, baseOnly) {
-        if (item.kind !== 'note') return '';
         var parts = [];
+        if (item.pinned) parts.push('Pinned');
+        if (item.kind !== 'note') return parts.join(' · ');
         if (item.burn) parts.push('Burns after reading');
         if (item.secret) parts.push('Secret');
         if (item.expiresAt && !baseOnly) parts.push(expiryText(item.expiresAt));
@@ -335,6 +344,7 @@
         var item = findItem(id);
         if (!item) return;
         state.revealedId = null;
+        state.editingId = null;
         state.selectedId = id;
         $('detailEmpty').classList.add('hidden');
         $('detail').classList.remove('hidden');
@@ -445,18 +455,38 @@
             if (role() === 'full') actions.appendChild(button('Reveal and delete', 'primary', function (event) { revealBurn(item, event.currentTarget); }));
             else warning.appendChild(make('strong', null, 'Only someone with full access can reveal it.'));
         } else if (item.kind === 'note') {
-            $('detailMeta').textContent = ['Note', item.secret ? 'Secret' : '', item.expiresAt ? expiryText(item.expiresAt) : '', (item.text || '').length + ' characters', when].filter(Boolean).join(' · ');
-            var pre = make('pre', 'detail-text', item.secret ? MASK : item.text);
+            var language = window.StashlyHighlight ? window.StashlyHighlight.detect(item.text) : null;
+            $('detailMeta').textContent = ['Note', item.secret ? 'Secret' : '', item.expiresAt ? expiryText(item.expiresAt) : '', (item.text || '').length + ' characters', when, item.editedAt ? 'edited ' + relativeTime(item.editedAt) : ''].filter(Boolean).join(' · ');
+            var pre = make('pre', 'detail-text');
             body.appendChild(pre);
+            // Web addresses are clickable; code is coloured when it is recognised, and "Plain text" turns that off
+            var shown = !item.secret;
+            var plain = Boolean(state.plainIds[item.id]);
+            var paint = function () {
+                pre.textContent = '';
+                if (!shown) { pre.textContent = MASK; return; }
+                if (window.StashlyHighlight) pre.appendChild(window.StashlyHighlight.render(item.text, plain ? null : language));
+                else pre.textContent = item.text;
+            };
+            paint();
             actions.appendChild(copyButton('Copy', 'primary', item.text));
             if (item.secret) {
-                var shown = false;
                 actions.appendChild(button('Show', 'ghost', function (event) {
                     shown = !shown;
-                    pre.textContent = shown ? item.text : MASK;
+                    paint();
                     event.currentTarget.textContent = shown ? 'Hide' : 'Show';
                 }));
             }
+            if (language) {
+                var label = window.StashlyHighlight.label(language);
+                actions.appendChild(button(plain ? 'Highlight ' + label : 'Plain text', 'ghost', function (event) {
+                    plain = !plain;
+                    state.plainIds[item.id] = plain;
+                    event.currentTarget.textContent = plain ? 'Highlight ' + label : 'Plain text';
+                    paint();
+                }));
+            }
+            if (role() === 'full') actions.appendChild(button('Edit', 'ghost', function () { editNote(item); }));
         } else {
             $('detailMeta').textContent = window.StashlyUpload.formatSize(item.fileSize) + ' · ' + when;
 
@@ -528,7 +558,10 @@
             }
         }
 
-        if (role() === 'full') actions.appendChild(button('Delete', 'danger-ghost', function () { removeItem(item); }));
+        if (role() === 'full') {
+            actions.appendChild(button(item.pinned ? 'Unpin' : 'Pin', 'ghost', function () { setPinned(item, !item.pinned); }));
+            actions.appendChild(button('Delete', 'danger-ghost', function () { removeItem(item); }));
+        }
         body.scrollTop = 0;
     }
 
@@ -625,7 +658,7 @@
                 // Desktop opens the newest clip (the usual reason to visit); a phone starts on the list
                 if (!narrow.matches && state.items.length) openItem(state.items[0].id);
             } else if (state.selectedId !== null && state.revealedId !== state.selectedId) {
-                if (findItem(state.selectedId)) renderDetail(findItem(state.selectedId));
+                if (findItem(state.selectedId)) { if (state.editingId !== state.selectedId) renderDetail(findItem(state.selectedId)); }
                 else showSomethingElse(previousIndex);
             }
         }).catch(function () {
@@ -651,6 +684,7 @@
     function closeStream() {
         if (state.es) { state.es.close(); state.es = null; }
         $('liveStatus').classList.add('hidden');
+        $('presenceChip').classList.add('hidden');
         state.connectedOnce = false;
     }
 
@@ -677,15 +711,111 @@
     function onItemAdded(item) {
         if (state.items.some(function (existing) { return existing.id === item.id; })) return;
         if (!matchesFilters(item)) return;
-        state.items.unshift(item);
+        // Pinned items stay above everything, so a new item goes in just below them
+        var at = 0;
+        while (at < state.items.length && state.items[at].pinned) at++;
+        state.items.splice(at, 0, item);
         var el = buildClip(item);
         el.classList.add('new');
-        $('items').insertBefore(el, $('items').firstChild);
+        $('items').insertBefore(el, $('items').children[at] || null);
         updateCounts();
         markSelected();
     }
 
+    // A note was edited or an item pinned or unpinned, here or on another device
+    function sortItems() {
+        state.items.sort(function (a, b) {
+            if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+            if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
+            return b.id - a.id;
+        });
+    }
+
+    function onItemUpdated(item) {
+        var index = state.items.findIndex(function (existing) { return existing.id === item.id; });
+        if (index === -1) return;
+        var wasPinned = state.items[index].pinned;
+        // A live update never carries who sent it
+        delete item.origin;
+        state.items[index] = item;
+        if (wasPinned !== item.pinned) { sortItems(); renderItems(); } else {
+            var el = document.querySelector('.clip[data-id="' + item.id + '"]');
+            if (el) el.replaceWith(buildClip(item));
+            markSelected();
+        }
+        // The open clip shows the change, unless it is being edited right now (that would throw the typing away)
+        if (state.selectedId === item.id && state.editingId !== item.id && state.revealedId !== item.id) renderDetail(item);
+    }
+
+    function setPinned(item, pinned) {
+        api(base + '/items/' + item.id + '/pin', { method: 'POST', body: { pinned: pinned } }).then(function (res) {
+            if (res.ok) { onItemUpdated(res.body); toast(pinned ? 'Pinned' : 'Unpinned'); }
+            else if (res.status === 401) locked();
+            else toast((res.body && res.body.error) || 'Could not do that.', true);
+        });
+    }
+
+    // Edit a note in place: the title and text become fields, Save sends them, Cancel goes back
+    function editNote(item) {
+        state.editingId = item.id;
+        var actions = $('detailActions');
+        var body = $('detailBody');
+        actions.textContent = '';
+        body.textContent = '';
+        var form = make('form', 'edit-form');
+        var title = make('input');
+        title.type = 'text';
+        title.maxLength = 150;
+        title.placeholder = 'Title (Optional)';
+        title.value = item.hasTitle ? item.title : '';
+        title.setAttribute('aria-label', 'Title (optional)');
+        var text = make('textarea');
+        text.value = item.text;
+        text.setAttribute('aria-label', 'Note');
+        var error = make('small', 'field-error');
+        error.setAttribute('role', 'alert');
+        form.appendChild(title);
+        form.appendChild(text);
+        form.appendChild(error);
+        body.appendChild(form);
+
+        function leave() {
+            state.editingId = null;
+            var current = findItem(item.id);
+            if (current && state.selectedId === item.id) renderDetail(current); else showSomethingElse(0);
+        }
+        var save = button('Save', 'primary', function () { form.requestSubmit(); });
+        actions.appendChild(save);
+        actions.appendChild(button('Cancel', 'ghost', leave));
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            error.textContent = '';
+            if (!text.value.trim()) { error.textContent = 'A note cannot be empty.'; text.focus(); return; }
+            save.disabled = true;
+            api(base + '/items/' + item.id, { method: 'PUT', body: { title: title.value, text: text.value } }).then(function (res) {
+                save.disabled = false;
+                if (res.ok) {
+                    state.editingId = null;
+                    onItemUpdated(res.body); // also shows the saved note in the pane
+                    toast('Saved');
+                } else if (res.status === 401) {
+                    locked();
+                } else if (res.status === 404) {
+                    error.textContent = 'That note is gone.';
+                } else {
+                    error.textContent = (res.body && res.body.error) || 'Could not save.';
+                }
+            }).catch(function () { save.disabled = false; error.textContent = 'Could not reach the server.'; });
+        });
+        form.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); form.requestSubmit(); }
+            else if (event.key === 'Escape') { event.preventDefault(); leave(); }
+        });
+        text.focus();
+    }
+
     function onItemDeleted(id) {
+        if (state.editingId === id) state.editingId = null;
         var index = state.items.findIndex(function (item) { return item.id === id; });
         state.items = state.items.filter(function (item) { return item.id !== id; });
         var el = document.querySelector('.clip[data-id="' + id + '"]');
@@ -708,6 +838,7 @@
         };
         es.onerror = function () {
             $('liveStatus').classList.add('hidden');
+            $('presenceChip').classList.add('hidden');
             // A refused stream (locked or gone) is not retried by the browser: find out which
             if (es.readyState === EventSource.CLOSED) {
                 state.es = null;
@@ -715,7 +846,17 @@
                 load(true);
             }
         };
-        es.addEventListener('item-added', function (event) { onItemAdded(JSON.parse(event.data)); });
+        es.addEventListener('item-added', function (event) {
+            var item = JSON.parse(event.data);
+            var known = state.items.some(function (existing) { return existing.id === item.id; });
+            var origin = item.origin;
+            delete item.origin;
+            onItemAdded(item);
+            // From another device (not this page's own add): the opt-in extras
+            if (!known && origin !== tabId) onIncoming(item);
+        });
+        es.addEventListener('item-updated', function (event) { onItemUpdated(JSON.parse(event.data)); });
+        es.addEventListener('presence', function (event) { showPresence(JSON.parse(event.data).count); });
         es.addEventListener('item-deleted', function (event) { onItemDeleted(JSON.parse(event.data).id); });
         es.addEventListener('stash-extended', function (event) {
             if (state.stash) { state.stash.expiresAt = JSON.parse(event.data).expiresAt; updateExpiry(); }
@@ -883,6 +1024,133 @@
         });
     });
 
+    // ---- options: what to do with items that arrive from other devices, and how many to keep ----
+    // Auto-copy and notifications are per tab (kept for this tab only, and off until you turn them on).
+
+    function tabFlag(name) {
+        try { return sessionStorage.getItem('sl_' + name + ':' + slug) === '1'; } catch (e) { return false; }
+    }
+    function setTabFlag(name, on) {
+        try { sessionStorage.setItem('sl_' + name + ':' + slug, on ? '1' : '0'); } catch (e) { /* only lasts until reload then */ }
+    }
+    // Notifications need a secure page (https or localhost)
+    function notificationsReady() { return 'Notification' in window && window.isSecureContext; }
+
+    state.autoCopy = tabFlag('autocopy');
+    state.notify = tabFlag('notify') && notificationsReady() && Notification.permission === 'granted';
+
+    function oneLine(text) { return String(text || '').replace(/\s+/g, ' ').trim(); }
+
+    // The browser only lets a page write to the clipboard while it is in front, so a note that arrives while the tab
+    // is in the background waits and is copied the moment you come back.
+    function autoCopyNote(text) {
+        Promise.resolve(copyText(text)).then(function (ok) {
+            if (ok) { state.pendingCopy = null; toast('Copied the new note'); } else { state.pendingCopy = text; }
+        });
+    }
+    window.addEventListener('focus', function () {
+        if (!state.pendingCopy) return;
+        var text = state.pendingCopy;
+        state.pendingCopy = null;
+        autoCopyNote(text);
+    });
+
+    function notifyItem(item) {
+        if (!notificationsReady() || Notification.permission !== 'granted') return;
+        // Only when you are not looking at this tab
+        if (document.visibilityState === 'visible' && document.hasFocus()) return;
+        var body = item.kind === 'file' ? 'New file: ' + item.fileName
+            : item.burn ? 'A new burn-after-reading note'
+            : item.secret ? 'A new secret note'
+            : (item.hasTitle ? item.title + ': ' : '') + oneLine(item.text).slice(0, 100);
+        try {
+            var note = new Notification('Stashly · ' + slug, { body: body, tag: 'stashly-' + slug, icon: '/icons/icon-192.png' });
+            note.onclick = function () { window.focus(); note.close(); };
+        } catch (e) { /* some phone browsers only allow notifications through a service worker */ }
+    }
+
+    // A note or file that came from another device
+    function onIncoming(item) {
+        if (state.autoCopy && item.kind === 'note' && !item.burn && item.text) autoCopyNote(item.text);
+        if (state.notify) notifyItem(item);
+    }
+
+    function showPresence(count) {
+        var chip = $('presenceChip');
+        chip.textContent = count + ' connected';
+        chip.classList.remove('hidden');
+    }
+
+    var optionsDialog = $('optionsDialog');
+    var NOTIFY_HINT = $('notifyHint').textContent;
+    var KEEP_CHOICES = [5, 10, 20, 50, 100, 200, 500];
+
+    function renderOptions() {
+        $('autoCopyInput').checked = state.autoCopy;
+        var ready = notificationsReady();
+        var denied = ready && Notification.permission === 'denied';
+        $('notifyInput').checked = state.notify;
+        $('notifyInput').disabled = !ready || denied;
+        $('notifyHint').textContent = !ready ? 'Notifications need a secure address (https or localhost), so they are off here.'
+            : denied ? 'Notifications are blocked for this site in the browser settings.' : NOTIFY_HINT;
+        var current = state.stash && state.stash.keepLast;
+        var choices = KEEP_CHOICES.slice();
+        if (current && choices.indexOf(current) === -1) { choices.push(current); choices.sort(function (a, b) { return a - b; }); }
+        var select = $('keepSelect');
+        select.textContent = '';
+        var all = make('option', null, 'everything (no limit)');
+        all.value = '';
+        select.appendChild(all);
+        choices.forEach(function (n) { var el = make('option', null, n + ' items'); el.value = String(n); select.appendChild(el); });
+        select.value = current ? String(current) : '';
+    }
+
+    $('optionsButton').addEventListener('click', function () {
+        renderOptions();
+        if (typeof optionsDialog.showModal === 'function') optionsDialog.showModal(); else optionsDialog.setAttribute('open', '');
+    });
+    $('optionsClose').addEventListener('click', function () { optionsDialog.close(); });
+    optionsDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
+
+    $('autoCopyInput').addEventListener('change', function (event) {
+        state.autoCopy = event.target.checked;
+        setTabFlag('autocopy', state.autoCopy);
+        if (!state.autoCopy) state.pendingCopy = null;
+        toast(state.autoCopy ? 'New notes from other devices will be copied' : 'Auto-copy is off');
+    });
+
+    $('notifyInput').addEventListener('change', function (event) {
+        var box = event.target;
+        if (!box.checked) { state.notify = false; setTabFlag('notify', false); return; }
+        // Asking for permission has to come from a click, which this is
+        Promise.resolve(Notification.requestPermission()).then(function (permission) {
+            state.notify = permission === 'granted';
+            box.checked = state.notify;
+            setTabFlag('notify', state.notify);
+            if (!state.notify) { toast('Notifications were not allowed', true); renderOptions(); }
+        });
+    });
+
+    $('keepSelect').addEventListener('change', function (event) {
+        var select = event.target;
+        var keep = select.value ? Number(select.value) : null;
+        var previous = state.stash.keepLast || null;
+        var unpinned = state.items.filter(function (item) { return !item.pinned; }).length;
+        if (keep && unpinned > keep && !window.confirm('This deletes the oldest unpinned items now, keeping the newest ' + keep + '. Continue?')) {
+            select.value = previous ? String(previous) : '';
+            return;
+        }
+        api(base + '/keep-last', { method: 'PUT', body: { keepLast: keep } }).then(function (res) {
+            if (res.ok) {
+                state.stash.keepLast = keep;
+                toast(keep ? 'Keeping the last ' + keep + (res.body.removed ? '. Removed ' + res.body.removed + '.' : '') : 'Keeping everything');
+            } else {
+                select.value = previous ? String(previous) : '';
+                toast((res.body && res.body.error) || 'Could not change that.', true);
+            }
+        });
+    });
+
     // ---- share links: a read-only link and a drop-box link, for a password-protected stash ----
 
     var shareDialog = $('shareDialog');
@@ -1002,6 +1270,7 @@
         container: $('uploads'),
         url: base + '/files',
         maxBytes: 0,
+        tabId: tabId,
         onDone: function (item) { if (item) onItemAdded(item); },
         onLocked: locked,
     });
@@ -1135,6 +1404,7 @@
             container: $('uploads'),
             url: base + '/files',
             maxBytes: max,
+            tabId: tabId,
             onDone: function (item) { if (item) onItemAdded(item); },
             onLocked: locked,
         });

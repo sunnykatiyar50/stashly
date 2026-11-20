@@ -8,11 +8,15 @@ const { makeApp, PNG } = require('./helpers/app');
 function listen(server, path, headers = {}) {
     return new Promise((resolve, reject) => {
         const events = [];
+        // "presence" (how many pages are open) arrives on every connect and disconnect; it is kept apart so the
+        // tests about items can count only the item events
+        const presence = [];
         let buffer = '';
         const req = http.get({ port: server.address().port, path, headers }, res => {
             const stream = {
                 status: res.statusCode,
                 events,
+                presence,
                 ended: new Promise(done => res.on('end', done)),
                 close: () => req.destroy(),
                 waitFor: (count, ms = 2000) =>
@@ -38,7 +42,10 @@ function listen(server, path, headers = {}) {
                     buffer = buffer.slice(index + 2);
                     const event = /^event: (.+)$/m.exec(frame);
                     const data = /^data: (.+)$/m.exec(frame);
-                    if (event) events.push({ event: event[1], data: JSON.parse(data[1]) });
+                    if (!event) continue;
+                    const parsed = { event: event[1], data: JSON.parse(data[1]) };
+                    if (parsed.event === 'presence') presence.push(parsed.data.count);
+                    else events.push(parsed);
                 }
             });
             resolve(stream);
@@ -147,5 +154,42 @@ test('a protected stash only streams to someone unlocked', async () => {
         const allowed = await listen(server, '/api/stashes/locked-live/events', { Cookie: cookie });
         assert.equal(allowed.status, 200);
         allowed.close();
+    });
+});
+
+test('every open page is told how many pages are open on the stash', async () => {
+    const ctx = makeApp();
+    await request(ctx.app).post('/api/stashes').send({ slug: 'crowd' }).expect(201);
+    await request(ctx.app).post('/api/stashes').send({ slug: 'elsewhere' }).expect(201);
+    const waitFor = async (fn, ms = 2000) => {
+        const started = Date.now();
+        while (!fn()) {
+            if (Date.now() - started > ms) throw new Error('timed out');
+            await new Promise(r => setTimeout(r, 10));
+        }
+    };
+    await withServer(ctx, async server => {
+        const first = await listen(server, '/api/stashes/crowd/events');
+        await waitFor(() => first.presence.length >= 1);
+        assert.deepEqual(first.presence, [1]);
+
+        const second = await listen(server, '/api/stashes/crowd/events');
+        await waitFor(() => second.presence.length >= 1);
+        await waitFor(() => first.presence.length >= 2);
+        assert.deepEqual(first.presence, [1, 2]);
+        assert.deepEqual(second.presence, [2]);
+
+        // Another stash's pages are counted separately
+        const other = await listen(server, '/api/stashes/elsewhere/events');
+        await waitFor(() => other.presence.length >= 1);
+        assert.deepEqual(other.presence, [1]);
+        assert.equal(first.presence.length, 2);
+
+        // A page closing is noticed by the one that is left
+        second.close();
+        await waitFor(() => first.presence.length >= 3);
+        assert.deepEqual(first.presence, [1, 2, 1]);
+        first.close();
+        other.close();
     });
 });
