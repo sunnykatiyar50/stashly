@@ -39,6 +39,11 @@ const FIELDS = {
         help: 'New stashes are refused once this many exist.',
         read: c => c.maxStashes, write: (c, v) => { c.maxStashes = v; },
     },
+    minOpenNameLength: {
+        label: 'Shortest name without a password', unit: 'characters', type: 'int', min: 0, max: 64,
+        help: 'A stash with no password is protected only by its name. Names shorter than this need a password. 0 turns the rule off. Stashes that already exist are not changed.',
+        read: c => c.minOpenNameLength, write: (c, v) => { c.minOpenNameLength = v; },
+    },
     fileTypes: {
         label: 'File types', type: 'choice',
         options: [

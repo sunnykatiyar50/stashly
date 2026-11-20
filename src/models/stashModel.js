@@ -37,6 +37,13 @@ class StashModel {
         return this.db.prepare('SELECT * FROM stashes WHERE slug = ?').get(slug) || null;
     }
 
+    // kind is 'view' or 'drop'; a null hash revokes the link
+    setShareToken(id, kind, hash) {
+        const column = kind === 'view' ? 'view_token_hash' : 'drop_token_hash';
+        this.db.prepare(`UPDATE stashes SET ${column} = ? WHERE id = ?`).run(hash, id);
+        return this.getStashById(id);
+    }
+
     countStashes() {
         return this.db.prepare('SELECT COUNT(*) AS n FROM stashes').get().n;
     }
@@ -148,11 +155,13 @@ class StashModel {
             .all(...params);
     }
 
-    latestNote(stashId, now = new Date()) {
+    // includeBurn false leaves out burn-after-reading notes (a reader with a read-only link must not use one up)
+    latestNote(stashId, now = new Date(), { includeBurn = true } = {}) {
         return (
             this.db
                 .prepare(
                     `SELECT * FROM items WHERE stash_id = ? AND kind = 'note' AND (expires_at IS NULL OR expires_at > ?)
+                     ${includeBurn ? '' : 'AND burn = 0'}
                      ORDER BY created_at DESC, id DESC LIMIT 1`
                 )
                 .get(stashId, now.toISOString()) || null

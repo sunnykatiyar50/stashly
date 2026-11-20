@@ -97,12 +97,16 @@
                         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="14.01"/><line x1="18" y1="14" x2="21" y2="14"/><line x1="14" y1="18" x2="14" y2="21"/><line x1="18" y1="18" x2="21" y2="18"/><line x1="21" y1="21" x2="21" y2="21.01"/></svg>
                         QR code
                     </button>
+                    <button type="button" id="shareButton" class="ghost small hidden" title="Make a read-only link or a drop-box link for this stash">Share links</button>
                     <button type="button" id="copyLatestButton" class="ghost small" title="Copy the newest note (Alt+C)">Copy latest</button>
                     <button type="button" id="copyLinkButton" class="ghost small">Copy link</button>
                     <button type="button" id="extendButton" class="ghost small">Extend</button>
                     <button type="button" id="deleteStashButton" class="danger-ghost small">Delete stash</button>
                 </div>
             </header>
+
+            <!-- Shown to someone who opened a read-only or drop-box link -->
+            <div id="roleBanner" class="card notice hidden" role="status"></div>
 
             <!-- New clip: always here, one small row. The expand button adds a title and a bigger box. -->
             <form id="composer" class="card composer-bar" novalidate>
@@ -207,6 +211,38 @@
             <div class="qr-actions">
                 <button type="button" id="qrCopy" class="ghost">Copy link</button>
                 <button type="button" id="qrClose" class="primary">Close</button>
+            </div>
+        </div>
+    </dialog>
+    <dialog id="shareDialog" class="qr-dialog share-dialog" aria-labelledby="shareTitle">
+        <div class="qr-body share-body">
+            <h2 id="shareTitle">Share links</h2>
+            <p class="muted">Give someone limited access without giving them the password. Each link is shown once, when you make it, and you can cancel it any time.</p>
+            <div class="share-row" data-kind="view">
+                <strong>Read-only link</strong>
+                <span class="muted">Can read and copy, cannot add, delete or reveal burn-after-reading notes.</span>
+                <span class="share-state muted" data-state></span>
+                <code class="code share-url hidden" data-url></code>
+                <div class="share-actions">
+                    <button type="button" class="ghost small" data-make>Make link</button>
+                    <button type="button" class="ghost small hidden" data-copy>Copy link</button>
+                    <button type="button" class="danger-ghost small hidden" data-revoke>Cancel link</button>
+                </div>
+            </div>
+            <div class="share-row" data-kind="drop">
+                <strong>Drop-box link</strong>
+                <span class="muted">Can add notes and files, cannot see anything in the stash.</span>
+                <span class="share-state muted" data-state></span>
+                <code class="code share-url hidden" data-url></code>
+                <div class="share-actions">
+                    <button type="button" class="ghost small" data-make>Make link</button>
+                    <button type="button" class="ghost small hidden" data-copy>Copy link</button>
+                    <button type="button" class="danger-ghost small hidden" data-revoke>Cancel link</button>
+                </div>
+            </div>
+            <p class="muted">The link carries its key after a <code>#</code>, which browsers never send to the server. Making a new link cancels the old one.</p>
+            <div class="qr-actions">
+                <button type="button" id="shareClose" class="primary">Close</button>
             </div>
         </div>
     </dialog>

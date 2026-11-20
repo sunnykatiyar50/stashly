@@ -21,6 +21,10 @@ function connect(filePath = ':memory:') {
             expires_at TEXT
         )`
     );
+    // Share links for a password-protected stash: only the hash of each link's token is kept
+    const stashColumns = db.prepare('PRAGMA table_info(stashes)').all().map(column => column.name);
+    if (!stashColumns.includes('view_token_hash')) db.exec('ALTER TABLE stashes ADD COLUMN view_token_hash TEXT');
+    if (!stashColumns.includes('drop_token_hash')) db.exec('ALTER TABLE stashes ADD COLUMN drop_token_hash TEXT');
     db.exec('CREATE INDEX IF NOT EXISTS idx_stashes_expires ON stashes (expires_at)');
     db.exec(
         `CREATE TABLE IF NOT EXISTS items (

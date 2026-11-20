@@ -21,6 +21,23 @@ function verifyToken(secret, slug, salt, token, now = Date.now()) {
     return given.length === expected.length && crypto.timingSafeEqual(given, expected);
 }
 
+// Share links ("read-only" and "drop box"): a random token goes in the link, and only its hash is stored, so the
+// database never holds a working link. 24 random bytes cannot be guessed.
+function generateLinkToken() {
+    return crypto.randomBytes(24).toString('base64url');
+}
+
+function hashLinkToken(token) {
+    return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+function linkTokenMatches(token, storedHash) {
+    if (typeof token !== 'string' || !storedHash) return false;
+    const given = Buffer.from(hashLinkToken(token));
+    const expected = Buffer.from(storedHash);
+    return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+}
+
 // Minimal cookie parser, so there is no extra dependency
 function parseCookies(header) {
     const cookies = {};
@@ -33,4 +50,4 @@ function parseCookies(header) {
     return cookies;
 }
 
-module.exports = { signToken, verifyToken, parseCookies };
+module.exports = { signToken, verifyToken, parseCookies, generateLinkToken, hashLinkToken, linkTokenMatches };

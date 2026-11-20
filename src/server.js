@@ -46,9 +46,14 @@ function createApp({ config, model, events, secret, now }) {
             referrerPolicy: { policy: 'no-referrer' },
         })
     );
-    // Stashes are private: nothing is cached or indexed
+    // Stashes are private: nothing is cached or indexed. Stashly uses none of these browser features, so they are
+    // switched off (copying to the clipboard is not on the list).
     app.use((req, res, next) => {
-        res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' });
+        res.set({
+            'Cache-Control': 'no-store',
+            'X-Robots-Tag': 'noindex, nofollow',
+            'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+        });
         next();
     });
 

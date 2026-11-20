@@ -441,7 +441,9 @@
             warning.appendChild(make('strong', null, 'This note burns after reading.'));
             warning.appendChild(make('span', 'muted', 'Its text has not been sent to this page. Revealing it shows it once and deletes it for everyone, so be ready to copy it.'));
             body.appendChild(warning);
-            actions.appendChild(button('Reveal and delete', 'primary', function (event) { revealBurn(item, event.currentTarget); }));
+            // Revealing deletes the note, so a read-only link cannot do it
+            if (role() === 'full') actions.appendChild(button('Reveal and delete', 'primary', function (event) { revealBurn(item, event.currentTarget); }));
+            else warning.appendChild(make('strong', null, 'Only someone with full access can reveal it.'));
         } else if (item.kind === 'note') {
             $('detailMeta').textContent = ['Note', item.secret ? 'Secret' : '', item.expiresAt ? expiryText(item.expiresAt) : '', (item.text || '').length + ' characters', when].filter(Boolean).join(' · ');
             var pre = make('pre', 'detail-text', item.secret ? MASK : item.text);
@@ -526,13 +528,29 @@
             }
         }
 
-        actions.appendChild(button('Delete', 'danger-ghost', function () { removeItem(item); }));
+        if (role() === 'full') actions.appendChild(button('Delete', 'danger-ghost', function () { removeItem(item); }));
         body.scrollTop = 0;
     }
 
     document.querySelectorAll('[data-back]').forEach(function (el) {
         el.addEventListener('click', function () { setPane('list'); });
     });
+
+    // 'full' can do everything. 'view' (a read-only link) cannot change anything. 'drop' (a drop-box link) can only add.
+    function role() { return (state.stash && state.stash.role) || 'full'; }
+
+    function applyRole() {
+        var r = role();
+        sections.main.classList.toggle('role-view', r === 'view');
+        sections.main.classList.toggle('role-drop', r === 'drop');
+        var banner = $('roleBanner');
+        banner.classList.toggle('hidden', r === 'full');
+        banner.textContent = r === 'view'
+            ? 'You opened a read-only link. You can read and copy, but not add or delete anything.'
+            : r === 'drop' ? 'You opened a drop-box link. You can add notes and files here, but you cannot see what is in the stash.' : '';
+        // Share links only make sense on a password-protected stash, and only for someone with full access
+        $('shareButton').classList.toggle('hidden', !(r === 'full' && state.stash.hasPassword));
+    }
 
     function updateHeader() {
         var stash = state.stash;
@@ -594,7 +612,9 @@
             var previousIndex = state.items.findIndex(function (item) { return item.id === state.selectedId; });
             state.stash = res.body;
             state.items = res.body.items;
-            if (window.StashlyRemember) window.StashlyRemember(slug);
+            // Only a stash opened with full access is worth suggesting on the share page
+            if (window.StashlyRemember && res.body.role === 'full') window.StashlyRemember(slug);
+            applyRole();
             sections.main.classList.contains('hidden') && show('main');
             updateHeader();
             renderItems();
@@ -676,7 +696,8 @@
     }
 
     function connect() {
-        if (state.es || !window.EventSource) return;
+        // A drop-box visitor cannot read, so there is nothing to follow live
+        if (state.es || !window.EventSource || role() === 'drop') return;
         var es = new EventSource(base + '/events');
         state.es = es;
         es.onopen = function () {
@@ -861,6 +882,75 @@
             else toast((res.body && res.body.error) || 'Could not delete the stash.', true);
         });
     });
+
+    // ---- share links: a read-only link and a drop-box link, for a password-protected stash ----
+
+    var shareDialog = $('shareDialog');
+    var shareUrls = { view: '', drop: '' }; // a link is only known right after it is made
+
+    function renderShare() {
+        var links = (state.stash && state.stash.shareLinks) || { view: false, drop: false };
+        Array.prototype.forEach.call(shareDialog.querySelectorAll('.share-row'), function (row) {
+            var kind = row.dataset.kind;
+            var exists = Boolean(links[kind]);
+            var url = shareUrls[kind];
+            row.querySelector('[data-state]').textContent = !exists
+                ? 'No link yet.'
+                : url ? 'Link is on. Copy it now: it is not shown again.' : 'A link exists. It is only shown when it is made; make a new one to get a fresh link (the old one stops working).';
+            var code = row.querySelector('[data-url]');
+            code.textContent = url;
+            code.classList.toggle('hidden', !url);
+            row.querySelector('[data-make]').textContent = exists ? 'Make a new link' : 'Make link';
+            row.querySelector('[data-copy]').classList.toggle('hidden', !url);
+            row.querySelector('[data-revoke]').classList.toggle('hidden', !exists);
+        });
+    }
+
+    Array.prototype.forEach.call(shareDialog.querySelectorAll('.share-row'), function (row) {
+        var kind = row.dataset.kind;
+        row.querySelector('[data-make]').addEventListener('click', function () {
+            var links = state.stash.shareLinks || {};
+            if (links[kind] && !window.confirm('Make a new link? The old one stops working.')) return;
+            api(base + '/share-links', { method: 'POST', body: { kind: kind } }).then(function (res) {
+                if (!res.ok) { toast((res.body && res.body.error) || 'Could not make the link.', true); return; }
+                shareUrls[kind] = location.origin + res.body.path;
+                state.stash.shareLinks = state.stash.shareLinks || { view: false, drop: false };
+                state.stash.shareLinks[kind] = true;
+                renderShare();
+            });
+        });
+        row.querySelector('[data-copy]').addEventListener('click', function () {
+            Promise.resolve(copyText(shareUrls[kind])).then(function (ok) { toast(ok ? 'Link copied' : 'Could not copy the link.', !ok); });
+        });
+        row.querySelector('[data-revoke]').addEventListener('click', function () {
+            api(base + '/share-links/' + kind, { method: 'DELETE' }).then(function (res) {
+                if (!res.ok) { toast((res.body && res.body.error) || 'Could not cancel the link.', true); return; }
+                shareUrls[kind] = '';
+                state.stash.shareLinks[kind] = false;
+                renderShare();
+                toast('Link cancelled');
+            });
+        });
+    });
+
+    $('shareButton').addEventListener('click', function () {
+        renderShare();
+        if (typeof shareDialog.showModal === 'function') shareDialog.showModal(); else shareDialog.setAttribute('open', '');
+    });
+    $('shareClose').addEventListener('click', function () { shareDialog.close(); });
+    shareDialog.addEventListener('close', function () { shareUrls = { view: '', drop: '' }; });
+    shareDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
+
+    // A share link is /s/name#view=KEY or #drop=KEY. The key is traded for a cookie, then taken out of the address
+    // bar, so it is not left in the history or on screen.
+    function redeemFromHash() {
+        var match = /^#(view|drop)=([A-Za-z0-9_-]{16,})$/.exec(location.hash);
+        if (!match) return Promise.resolve();
+        return api(base + '/redeem', { method: 'POST', body: { token: match[2] } }).then(function (res) {
+            history.replaceState(null, '', location.pathname + location.search);
+            if (!res.ok) toast((res.body && res.body.error) || 'That link is not valid any more.', true);
+        }).catch(function () { /* the stash page below shows what is wrong */ });
+    }
 
     // ---- search and date range ----
 
@@ -1051,5 +1141,5 @@
     });
 
     setInterval(updateTimes, 15000);
-    load();
+    redeemFromHash().then(function () { load(); });
 })();

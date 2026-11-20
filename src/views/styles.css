@@ -250,7 +250,11 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .code { display: block; margin: 8px 0 0; padding: 12px 14px; border-radius: 6px; background: var(--code-bg); font-family: var(--mono); font-size: 12.5px; line-height: 1.7; overflow-x: auto; white-space: pre; }
 
 /* ===== Stash page ===== */
-.state-card { max-width: 480px; margin: 40px auto; text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+/* Locked, expired and loading cards: a fixed comfortable width, centred in the free space (auto margins centre it both ways) */
+.state-card { width: min(460px, 100%); margin: auto; padding: 28px 32px; text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
+.state-card h2 { font-size: 20px; }
+.state-card input { padding: 9px 12px; font-size: 14px; }
+.state-card button.primary, .state-card .button-link { padding: 9px 14px; }
 .state-card .field { text-align: left; }
 .state-card p { margin: 0; color: var(--muted); }
 
@@ -478,3 +482,16 @@ audio.detail-media { max-height: none; }
 .clip:hover .clip-copy, .clip:focus-within .clip-copy, .clip.selected .clip-copy, .clip-copy:focus-visible { opacity: 1; }
 /* No hover on a touch screen: keep the button visible */
 @media (hover: none) { .clip-copy { opacity: 1; } }
+
+/* ===== Share links and role-limited pages ===== */
+.share-dialog { width: min(460px, calc(100vw - 32px)); }
+.share-body { text-align: left; }
+.share-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-alt); }
+.share-row .share-state { font-size: 12.5px; }
+.share-url { margin: 0; white-space: normal; overflow-wrap: anywhere; font-size: 12px; }
+.share-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.share-body .qr-actions { justify-content: flex-end; }
+/* A read-only link: no way to add or change anything. A drop-box link: only the composer. */
+.role-view #composer, .role-view #extendButton, .role-view #deleteStashButton, .role-view #qrButton, .role-view #copyLinkButton { display: none; }
+.role-drop #split, .role-drop #extendButton, .role-drop #deleteStashButton, .role-drop #qrButton, .role-drop #copyLinkButton,
+.role-drop #copyLatestButton, .role-drop #refreshButton, .role-drop #itemInfo, .role-drop #liveStatus { display: none; }
