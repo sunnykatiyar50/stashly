@@ -52,6 +52,7 @@ function createStashRoutes({ controller, config }) {
     router.post('/:slug/files', uploadLimiter, ...access, checkUploadSize, rawBody, c.addFile);
     router.get('/:slug/files/:id', ...access, c.getFile);
     router.get('/:slug/files/:id/contents', ...access, c.listArchive);
+    router.post('/:slug/items/:id/reveal', ...access, c.reveal);
     router.delete('/:slug/items/:id', ...access, c.deleteItem);
     router.post('/:slug/extend', ...access, c.extend);
     router.delete('/:slug', ...access, c.remove);

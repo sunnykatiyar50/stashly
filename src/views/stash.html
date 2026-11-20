@@ -121,6 +121,14 @@
                 </div>
                 <small class="field-error" id="noteError" role="alert"></small>
                 <div id="composerExtra" class="composer-extra">
+                    <!-- Options for the note being written; they reset after it is added -->
+                    <div class="note-options">
+                        <label class="opt" title="The text stays hidden until someone clicks Reveal. Then it is deleted for everyone."><input type="checkbox" id="burnInput" /> Burn after reading</label>
+                        <label class="opt" title="Shown as dots in the list and the open clip until you click Show. Copy still works."><input type="checkbox" id="secretInput" /> Secret (mask the text)</label>
+                        <label class="opt">Delete this note after
+                            <select id="itemTtlSelect"><option value="">the stash expires</option></select>
+                        </label>
+                    </div>
                     <div id="dropZone" class="dropzone" role="button" tabindex="0" aria-label="Add files">
                         <svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
                         <strong>Drop files here, or click to choose</strong>

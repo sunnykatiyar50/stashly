@@ -42,15 +42,23 @@ class StashController {
 
     // ---- presentation ----
 
+    // A burn-after-reading note never leaves the server in a list or live event: its text only comes out of /reveal.
+    // A note with no title of its own would show its first words as a title, so secret and burn notes get a plain one.
     presentItem(slug, row) {
         const isFile = row.kind === 'file';
+        const burn = !isFile && Boolean(row.burn);
+        const secret = !isFile && Boolean(row.secret);
+        const generic = burn ? 'Burn-after-reading note' : secret ? 'Secret note' : null;
         return {
             id: row.id,
             kind: row.kind,
             // Notes: the given title, or the first words of the text when there is none
-            title: isFile ? null : row.title || deriveTitle(row.text),
+            title: isFile ? null : row.title || generic || deriveTitle(row.text),
             hasTitle: !isFile && Boolean(row.title),
-            text: isFile ? null : row.text,
+            text: isFile || burn ? null : row.text,
+            burn,
+            secret,
+            expiresAt: isFile ? null : row.expires_at || null,
             fileName: isFile ? row.file_name : null,
             fileType: isFile ? row.file_type : null,
             fileSize: isFile ? row.file_size : null,
@@ -106,6 +114,7 @@ class StashController {
             defaultTtl: this.config.defaultTtl,
             limits: this.limits(),
             allowNoExpiry: this.config.allowNoExpiry,
+            itemTtlOptions: this.config.itemTtlOptions.map(({ key, label }) => ({ key, label })),
             fileTypes: this.config.fileTypes,
             // false when only the admin may create stashes and the visitor is not signed in as admin
             canCreate: this.canCreate(req),
@@ -203,7 +212,7 @@ class StashController {
         if (range.error) return res.status(400).json({ error: range.error });
         const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 200) : '';
 
-        const rows = this.model.listItems(stash.id, { search, from: range.from, to: range.to });
+        const rows = this.model.listItems(stash.id, { search, from: range.from, to: range.to, now: this.now() });
         res.json({
             slug: stash.slug,
             hasPassword: Boolean(stash.password_hash),
@@ -216,6 +225,19 @@ class StashController {
             items: rows.map(row => this.presentItem(stash.slug, row)),
         });
     };
+
+    // The per-note options: from the JSON body of the page, or from headers when the body is plain text (curl)
+    noteOptions(req) {
+        const json = typeof req.body === 'string' ? null : req.body || {};
+        const truthy = value => value === true || /^(1|true|yes|on)$/i.test(String(value || ''));
+        const burn = json ? truthy(json.burn) : truthy(req.get('x-burn-after-read'));
+        const secret = json ? truthy(json.secret) : truthy(req.get('x-secret'));
+        const key = json ? json.expires : req.get('x-expires');
+        if (key === undefined || key === null || key === '') return { burn, secret, ttl: null };
+        const ttl = this.config.itemTtlOptions.find(option => option.key === key);
+        if (!ttl) return { error: 'Pick one of the listed note expiry times.' };
+        return { burn, secret, ttl };
+    }
 
     addNote = (req, res) => {
         const stash = req.stash;
@@ -231,7 +253,18 @@ class StashController {
         if (this.model.usage(stash.id).items >= this.config.maxItemsPerStash) {
             return res.status(413).json({ error: `This stash is full (${this.config.maxItemsPerStash} items). Delete something first.` });
         }
-        const item = this.presentItem(stash.slug, this.model.addNote(stash.id, text, this.now(), title.value));
+        const options = this.noteOptions(req);
+        if (options.error) return res.status(400).json({ error: options.error, field: 'expires' });
+        const now = this.now();
+        // A note never outlives its stash
+        let expiresAt = options.ttl ? new Date(now.getTime() + options.ttl.ms) : null;
+        if (expiresAt && stash.expires_at && expiresAt.toISOString() > stash.expires_at) expiresAt = new Date(stash.expires_at);
+        const row = this.model.addNote(stash.id, text, now, title.value, {
+            expiresAt: expiresAt ? expiresAt.toISOString() : null,
+            burn: options.burn,
+            secret: options.secret,
+        });
+        const item = this.presentItem(stash.slug, row);
         this.events.publish(stash.slug, 'item-added', item);
         res.status(201).json(item);
     };
@@ -333,9 +366,28 @@ class StashController {
     };
 
     latest = (req, res) => {
-        const row = this.model.latestNote(req.stash.id);
+        const row = this.model.latestNote(req.stash.id, this.now());
         if (!row) return res.status(404).type('text/plain').send('No notes yet.\n');
+        // Reading a burn-after-reading note this way uses it up
+        if (row.burn) this.burn(req.stash, row);
         res.type('text/plain; charset=utf-8').send(row.text);
+    };
+
+    // Deletes a note that has been read and tells every open page
+    burn(stash, row) {
+        this.model.deleteItem(stash.id, row.id);
+        this.events.publish(stash.slug, 'item-deleted', { id: row.id, burned: true });
+    }
+
+    // Returns the text of a burn-after-reading note, once: it is deleted as it is handed over
+    reveal = (req, res) => {
+        const id = Number(req.params.id);
+        const row = Number.isInteger(id) ? this.model.getLiveItem(req.stash.id, id, this.now()) : null;
+        if (!row || row.kind !== 'note' || !row.burn) {
+            return res.status(404).json({ error: 'That note is gone, or it does not burn after reading.' });
+        }
+        this.burn(req.stash, row);
+        res.set('Cache-Control', 'no-store').json({ id: row.id, text: row.text });
     };
 
     deleteItem = (req, res) => {
@@ -370,6 +422,7 @@ class StashController {
     cleanup = () => {
         const removed = this.model.purgeExpired(this.now());
         for (const slug of removed) this.events.closeAll(slug, 'stash-gone', { reason: 'expired' });
+        for (const item of this.model.purgeExpiredItems(this.now())) this.events.publish(item.slug, 'item-deleted', { id: item.id });
         return removed;
     };
 }
