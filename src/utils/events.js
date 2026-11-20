@@ -17,6 +17,8 @@ class StashEvents {
 
         if (!this.clients.has(slug)) this.clients.set(slug, new Set());
         this.clients.get(slug).add(res);
+        // Everyone on the stash, this page included, learns how many pages are open
+        this.publish(slug, 'presence', { count: this.count(slug) });
 
         // Comments keep proxies and browsers from closing an idle stream
         const timer = setInterval(() => res.write(': keep-alive\n\n'), this.heartbeatMs);
@@ -27,6 +29,7 @@ class StashEvents {
             if (set) {
                 set.delete(res);
                 if (!set.size) this.clients.delete(slug);
+                else this.publish(slug, 'presence', { count: set.size });
             }
         });
     }

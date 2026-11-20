@@ -151,7 +151,8 @@ class StashModel {
             params.push(to);
         }
         return this.db
-            .prepare(`SELECT * FROM items WHERE ${where.join(' AND ')} ORDER BY created_at DESC, id DESC`)
+            // Pinned items first, then newest first
+            .prepare(`SELECT * FROM items WHERE ${where.join(' AND ')} ORDER BY pinned DESC, created_at DESC, id DESC`)
             .all(...params);
     }
 
@@ -175,6 +176,35 @@ class StashModel {
 
     deleteItem(stashId, id) {
         return this.db.prepare('DELETE FROM items WHERE stash_id = ? AND id = ?').run(stashId, id).changes > 0;
+    }
+
+    setPinned(stashId, id, pinned) {
+        const changed = this.db.prepare('UPDATE items SET pinned = ? WHERE stash_id = ? AND id = ?').run(pinned ? 1 : 0, stashId, id).changes;
+        return changed ? this.getItem(stashId, id) : null;
+    }
+
+    // Changes a note's text and title in place. Its options (burn, secret, expiry) and its date stay as they were.
+    updateNote(stashId, id, { text, title }, now = new Date()) {
+        const changed = this.db
+            .prepare(`UPDATE items SET text = ?, title = ?, edited_at = ? WHERE stash_id = ? AND id = ? AND kind = 'note'`)
+            .run(text, title, now.toISOString(), stashId, id).changes;
+        return changed ? this.getItem(stashId, id) : null;
+    }
+
+    setKeepLast(id, keepLast) {
+        this.db.prepare('UPDATE stashes SET keep_last = ? WHERE id = ?').run(keepLast, id);
+        return this.getStashById(id);
+    }
+
+    // Deletes the oldest unpinned items beyond the newest `keep`. Returns the ids removed.
+    trimToLast(stashId, keep) {
+        if (!keep || keep < 1) return [];
+        const rows = this.db
+            .prepare('SELECT id FROM items WHERE stash_id = ? AND pinned = 0 ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET ?')
+            .all(stashId, keep);
+        const remove = this.db.prepare('DELETE FROM items WHERE id = ?');
+        for (const row of rows) remove.run(row.id);
+        return rows.map(row => row.id);
     }
 
     // Counts and bytes in one stash, and bytes over the whole database (for the quotas)

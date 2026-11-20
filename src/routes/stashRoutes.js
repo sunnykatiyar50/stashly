@@ -60,6 +60,9 @@ function createStashRoutes({ controller, config }) {
     // Revealing deletes the note, so it is not something a read-only link may do
     router.post('/:slug/items/:id/reveal', ...full, c.reveal);
     router.delete('/:slug/items/:id', ...full, c.deleteItem);
+    router.put('/:slug/items/:id', ...full, c.editNote);
+    router.post('/:slug/items/:id/pin', ...full, c.setPinned);
+    router.put('/:slug/keep-last', ...full, c.setKeepLast);
     router.post('/:slug/extend', ...full, c.extend);
     router.post('/:slug/share-links', ...full, c.createShareLink);
     router.delete('/:slug/share-links/:kind', ...full, c.revokeShareLink);

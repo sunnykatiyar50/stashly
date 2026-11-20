@@ -64,6 +64,8 @@ class StashController {
             text: isFile || burn ? null : row.text,
             burn,
             secret,
+            pinned: Boolean(row.pinned),
+            editedAt: row.edited_at || null,
             expiresAt: isFile ? null : row.expires_at || null,
             fileName: isFile ? row.file_name : null,
             fileType: isFile ? row.file_type : null,
@@ -325,6 +327,7 @@ class StashController {
             // Only someone with full access sees which share links exist
             shareLinks: req.role === 'full' ? { view: Boolean(stash.view_token_hash), drop: Boolean(stash.drop_token_hash) } : null,
             canExtend: req.role === 'full' && Boolean(stash.ttl_ms),
+            keepLast: stash.keep_last || null,
             usage: dropOnly ? { items: 0, files: 0, bytes: 0 } : this.model.usage(stash.id),
             limits: this.limits(),
             total: rows.length,
@@ -371,8 +374,71 @@ class StashController {
             secret: options.secret,
         });
         const item = this.presentItem(stash.slug, row);
-        this.events.publish(stash.slug, 'item-added', item);
+        this.events.publish(stash.slug, 'item-added', this.withOrigin(item, req));
+        this.trim(stash);
         res.status(201).json(item);
+    };
+
+    // Live events carry which page added the item (an id the page made up), so a page can tell its own notes from
+    // ones that arrived from another device. It is not stored.
+    withOrigin(item, req) {
+        const origin = String(req.get('x-tab-id') || '').slice(0, 40);
+        return { ...item, origin: /^[A-Za-z0-9_-]+$/.test(origin) ? origin : null };
+    }
+
+    // "Keep the last N": deletes the oldest unpinned items beyond N, and tells open pages
+    trim(stash) {
+        const fresh = this.model.getStashById(stash.id);
+        const removed = fresh && fresh.keep_last ? this.model.trimToLast(stash.id, fresh.keep_last) : [];
+        for (const id of removed) this.events.publish(stash.slug, 'item-deleted', { id });
+        return removed;
+    }
+
+    // Edits a note's title and text in place. Burn notes cannot be edited: their text is not on the page to change.
+    editNote = (req, res) => {
+        const stash = req.stash;
+        const id = Number(req.params.id);
+        const row = Number.isInteger(id) ? this.model.getLiveItem(stash.id, id, this.now()) : null;
+        if (!row || row.kind !== 'note') return res.status(404).json({ error: 'Note not found.' });
+        if (row.burn) return res.status(400).json({ error: 'A burn-after-reading note cannot be edited.' });
+        const raw = req.body && req.body.text;
+        if (typeof raw !== 'string' || !raw.trim()) return res.status(400).json({ error: 'A note cannot be empty.', field: 'text' });
+        const title = parseTitle(req.body.title);
+        if (title.error) return res.status(400).json({ error: title.error, field: 'title' });
+        const text = raw.replace(/\r\n/g, '\n');
+        if (Buffer.byteLength(text) > this.config.maxNoteBytes) {
+            return res.status(413).json({ error: `A note can be at most ${Math.round(this.config.maxNoteBytes / 1024)} KB.`, field: 'text' });
+        }
+        const updated = this.model.updateNote(stash.id, id, { text, title: title.value }, this.now());
+        const item = this.presentItem(stash.slug, updated);
+        this.events.publish(stash.slug, 'item-updated', item);
+        res.json(item);
+    };
+
+    setPinned = (req, res) => {
+        const stash = req.stash;
+        const id = Number(req.params.id);
+        const pinned = req.body && req.body.pinned;
+        if (typeof pinned !== 'boolean') return res.status(400).json({ error: 'Say whether to pin or unpin.' });
+        const row = Number.isInteger(id) ? this.model.getLiveItem(stash.id, id, this.now()) : null;
+        const updated = row ? this.model.setPinned(stash.id, id, pinned) : null;
+        if (!updated) return res.status(404).json({ error: 'Item not found.' });
+        const item = this.presentItem(stash.slug, updated);
+        this.events.publish(stash.slug, 'item-updated', item);
+        res.json(item);
+    };
+
+    // How many unpinned items the stash keeps (null keeps everything). Lowering it trims straight away.
+    setKeepLast = (req, res) => {
+        const stash = req.stash;
+        const value = req.body && req.body.keepLast;
+        const keep = value === null || value === undefined || value === '' || value === 0 ? null : Number(value);
+        if (keep !== null && (!Number.isInteger(keep) || keep < 1 || keep > this.config.maxItemsPerStash)) {
+            return res.status(400).json({ error: `Pick a number from 1 to ${this.config.maxItemsPerStash}, or keep everything.` });
+        }
+        this.model.setKeepLast(stash.id, keep);
+        const removed = this.trim(stash);
+        res.json({ keepLast: keep, removed: removed.length });
     };
 
     addFile = (req, res) => {
@@ -409,7 +475,8 @@ class StashController {
 
         const row = this.model.addFile(stash.id, { fileName, fileType: detected.mime, content }, this.now());
         const item = this.presentItem(stash.slug, row);
-        this.events.publish(stash.slug, 'item-added', item);
+        this.events.publish(stash.slug, 'item-added', this.withOrigin(item, req));
+        this.trim(stash);
         res.status(201).json(item);
     };
 

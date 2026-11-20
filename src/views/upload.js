@@ -74,6 +74,8 @@
                 xhr.withCredentials = true;
                 xhr.setRequestHeader('Content-Type', 'application/octet-stream');
                 xhr.setRequestHeader('X-File-Name', encodeURIComponent(job.name));
+                // Lets the page tell its own uploads from ones that arrive from another device
+                if (options.tabId) xhr.setRequestHeader('X-Tab-Id', options.tabId);
                 xhr.upload.onprogress = function (event) {
                     if (!event.lengthComputable) return;
                     var pct = Math.round((event.loaded / event.total) * 100);

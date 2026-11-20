@@ -87,6 +87,7 @@
                         Password
                     </span>
                     <span id="liveStatus" class="live hidden" title="New items appear as they arrive">Live</span>
+                    <span id="presenceChip" class="chip hidden" title="Pages open on this stash right now. A device with two tabs counts twice."></span>
                     <button type="button" id="rangeChip" class="filter-chip hidden" title="Clear the date range">
                         <span id="rangeChipText"></span>
                         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -97,6 +98,7 @@
                         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="14.01"/><line x1="18" y1="14" x2="21" y2="14"/><line x1="14" y1="18" x2="14" y2="21"/><line x1="18" y1="18" x2="21" y2="18"/><line x1="21" y1="21" x2="21" y2="21.01"/></svg>
                         QR code
                     </button>
+                    <button type="button" id="optionsButton" class="ghost small" title="Auto-copy, notifications and how many items to keep">Options</button>
                     <button type="button" id="shareButton" class="ghost small hidden" title="Make a read-only link or a drop-box link for this stash">Share links</button>
                     <button type="button" id="copyLatestButton" class="ghost small" title="Copy the newest note (Alt+C)">Copy latest</button>
                     <button type="button" id="copyLinkButton" class="ghost small">Copy link</button>
@@ -214,6 +216,26 @@
             </div>
         </div>
     </dialog>
+    <dialog id="optionsDialog" class="qr-dialog share-dialog" aria-labelledby="optionsTitle">
+        <div class="qr-body share-body">
+            <h2 id="optionsTitle">Options</h2>
+            <div class="share-row" data-option="tab">
+                <strong>This tab</strong>
+                <label class="opt"><input type="checkbox" id="autoCopyInput" /> Copy new notes automatically</label>
+                <span class="muted">When a note arrives from another device it goes straight to this computer's clipboard. Stays on in this tab until you turn it off or close the tab. Browsers only allow it while this tab is in front; otherwise it is copied the moment you come back.</span>
+                <label class="opt"><input type="checkbox" id="notifyInput" /> Notify me about new items</label>
+                <span class="muted" id="notifyHint">A desktop notification when something arrives while this tab is in the background. Secret and burn-after-reading notes show no text.</span>
+            </div>
+            <div class="share-row" data-option="keep">
+                <strong>Keep only the last</strong>
+                <label class="opt"><select id="keepSelect"></select></label>
+                <span class="muted">Older items are deleted as new ones arrive, so the stash works like a rolling clipboard. Pinned items are never deleted by this.</span>
+            </div>
+            <div class="qr-actions">
+                <button type="button" id="optionsClose" class="primary">Close</button>
+            </div>
+        </div>
+    </dialog>
     <dialog id="shareDialog" class="qr-dialog share-dialog" aria-labelledby="shareTitle">
         <div class="qr-body share-body">
             <h2 id="shareTitle">Share links</h2>
@@ -252,6 +274,7 @@
     <script src="/shell.js"></script>
     <script src="/upload.js"></script>
     <script src="/vendor/qrcode.js"></script>
+    <script src="/highlight.js"></script>
     <script src="/stash.js"></script>
 </body>
 </html>

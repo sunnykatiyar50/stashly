@@ -495,3 +495,20 @@ audio.detail-media { max-height: none; }
 .role-view #composer, .role-view #extendButton, .role-view #deleteStashButton, .role-view #qrButton, .role-view #copyLinkButton { display: none; }
 .role-drop #split, .role-drop #extendButton, .role-drop #deleteStashButton, .role-drop #qrButton, .role-drop #copyLinkButton,
 .role-drop #copyLatestButton, .role-drop #refreshButton, .role-drop #itemInfo, .role-drop #liveStatus { display: none; }
+
+/* ===== Links, code colours, editing, options ===== */
+.note-link { color: var(--blue); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+/* light-dark() follows the page theme (color-scheme is set per theme) */
+.tok-comment { color: light-dark(#6b7280, #8b95a5); font-style: italic; }
+.tok-string { color: light-dark(#0b7a3b, #7ee0a1); }
+.tok-number { color: light-dark(#b45309, #f5b971); }
+.tok-keyword { color: light-dark(#7c3aed, #c4a1ff); font-weight: 600; }
+.tok-key { color: light-dark(#1d4ed8, #8ab4ff); }
+.tok-variable { color: light-dark(#be185d, #f0a0c8); }
+.detail-format { font-size: 11.5px; padding: 1px 8px; }
+.edit-form { display: flex; flex-direction: column; gap: 8px; }
+.edit-form input, .edit-form textarea { width: 100%; }
+.edit-form textarea { min-height: 220px; font-family: var(--mono); font-size: 13px; line-height: 1.5; }
+.clip-flags.pinned { font-weight: 600; }
+.role-drop #optionsButton, .role-drop #presenceChip { display: none; }
+.role-view [data-option="keep"] { display: none; }

@@ -25,6 +25,8 @@ function connect(filePath = ':memory:') {
     const stashColumns = db.prepare('PRAGMA table_info(stashes)').all().map(column => column.name);
     if (!stashColumns.includes('view_token_hash')) db.exec('ALTER TABLE stashes ADD COLUMN view_token_hash TEXT');
     if (!stashColumns.includes('drop_token_hash')) db.exec('ALTER TABLE stashes ADD COLUMN drop_token_hash TEXT');
+    // Keep only the newest N unpinned items (null = keep everything)
+    if (!stashColumns.includes('keep_last')) db.exec('ALTER TABLE stashes ADD COLUMN keep_last INTEGER');
     db.exec('CREATE INDEX IF NOT EXISTS idx_stashes_expires ON stashes (expires_at)');
     db.exec(
         `CREATE TABLE IF NOT EXISTS items (
@@ -49,6 +51,9 @@ function connect(filePath = ':memory:') {
     if (!itemColumns.includes('expires_at')) db.exec('ALTER TABLE items ADD COLUMN expires_at TEXT');
     if (!itemColumns.includes('burn')) db.exec('ALTER TABLE items ADD COLUMN burn INTEGER NOT NULL DEFAULT 0');
     if (!itemColumns.includes('secret')) db.exec('ALTER TABLE items ADD COLUMN secret INTEGER NOT NULL DEFAULT 0');
+    // Pinned items stay at the top and are never trimmed by "keep the last N"; edited_at marks a note changed in place
+    if (!itemColumns.includes('pinned')) db.exec('ALTER TABLE items ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
+    if (!itemColumns.includes('edited_at')) db.exec('ALTER TABLE items ADD COLUMN edited_at TEXT');
     db.exec('CREATE INDEX IF NOT EXISTS idx_items_stash ON items (stash_id, created_at)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_items_expires ON items (expires_at)');
     db.exec(
