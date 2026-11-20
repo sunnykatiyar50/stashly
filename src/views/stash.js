@@ -569,6 +569,8 @@
         button.setAttribute('aria-expanded', String(expanded));
         button.title = expanded ? 'Make smaller' : 'Expand';
         button.setAttribute('aria-label', button.title);
+        // A size dragged by hand applies to the size it was dragged in; switching starts from the default again
+        $('noteInput').style.height = '';
         if (expanded) $('titleInput').focus();
     }
     $('expandButton').addEventListener('click', function () {
