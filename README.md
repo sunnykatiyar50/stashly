@@ -94,7 +94,14 @@ Set these as environment variables (or in `.env`, see [.env.example](.env.exampl
 | `MAX_TOTAL_MB` | 2048 | Total file size on the whole server |
 | `MAX_STASHES` | 1000 | Stashes on the whole server |
 
-Allowed file types: png, jpg, gif, webp, pdf, zip, docx, xlsx, pptx, txt, csv, json, md, log. The extension **and** the content must match. SVG and HTML are refused because they can carry scripts. Files are always downloaded as attachments, except images, which are shown inline with `nosniff` and a sandboxing CSP.
+Allowed file types:
+
+- **Any text file**, whatever its extension (yaml, yml, conf, py, properties, html, js, sh, sql, txt, log, a `Dockerfile`, and so on). The content must really be text, so a renamed binary is refused. Text is stored and served as plain text.
+- **Certificates**: pem, cer and crt, as PEM text or binary DER.
+- **Binary formats**: png, jpg, gif, webp, pdf, zip, docx, xlsx, pptx. The extension **and** the content must match.
+- **Refused**: SVG, programs and Windows launchers (exe, dll, msi, scr, com, hta, vbs, wsf, lnk, jar) and macro-enabled Office files (docm, xlsm, pptm), even if their content is text.
+
+Files are always downloaded as attachments, except images, which are shown inline. Every file is served with `nosniff` and a sandboxing CSP, so an uploaded HTML file is never rendered by the server.
 
 ## Security notes
 
