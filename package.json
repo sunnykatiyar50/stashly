@@ -1,0 +1,23 @@
+{
+  "name": "stashly",
+  "version": "0.1.0",
+  "description": "Self-hosted shared stash: open the same link on machines that can't reach each other and trade text, images and files.",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/app.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/app.js",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.3.1"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13"
+  }
+}

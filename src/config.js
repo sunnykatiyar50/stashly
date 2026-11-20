@@ -1,0 +1,55 @@
+const MB = 1024 * 1024;
+const HOUR = 60 * 60 * 1000;
+
+// Reads a non-negative number from the environment, falling back to a default
+const num = (value, fallback) => {
+    if (value === undefined || value === '') return fallback;
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
+};
+
+const flag = value => String(value).toLowerCase() === 'true';
+
+function loadConfig(env = process.env, overrides = {}) {
+    const allowNoExpiry = flag(env.ALLOW_NO_EXPIRY);
+    const adminPassword = env.ADMIN_PASSWORD || '';
+    const ttlOptions = [
+        { key: '1h', label: '1 hour', ms: HOUR },
+        { key: '8h', label: '8 hours', ms: 8 * HOUR },
+        { key: '1d', label: '1 day', ms: 24 * HOUR },
+        { key: '7d', label: '7 days', ms: 7 * 24 * HOUR },
+        { key: '30d', label: '30 days', ms: 30 * 24 * HOUR },
+    ];
+    if (allowNoExpiry) ttlOptions.push({ key: 'never', label: 'Never', ms: null });
+
+    return {
+        port: num(env.PORT, 3000),
+        host: env.HOST || '0.0.0.0',
+        sqlitePath: env.SQLITE_PATH || './stashly.sqlite',
+        sessionSecret: env.SESSION_SECRET || '',
+        trustProxy: env.TRUST_PROXY || '',
+        maxNoteBytes: num(env.MAX_NOTE_KB, 100) * 1024,
+        maxFileBytes: num(env.MAX_FILE_MB, 25) * MB,
+        maxStashBytes: num(env.MAX_STASH_MB, 100) * MB,
+        maxTotalBytes: num(env.MAX_TOTAL_MB, 2048) * MB,
+        // Notes and files share this cap, so keep it above MAX_FILES_PER_STASH
+        maxItemsPerStash: num(env.MAX_ITEMS_PER_STASH, 1000),
+        maxFilesPerStash: num(env.MAX_FILES_PER_STASH, 500),
+        maxStashes: num(env.MAX_STASHES, 1000),
+        allowNoExpiry,
+        // The admin area is only on when a password is set
+        adminPassword,
+        requireAdminToCreate: Boolean(adminPassword) && flag(env.REQUIRE_ADMIN_TO_CREATE),
+        rateAdminLogin: num(env.RATE_ADMIN_LOGIN, 10),
+        ttlOptions,
+        defaultTtl: '1d',
+        rateCreate: num(env.RATE_CREATE, 20),
+        ratePost: num(env.RATE_POST, 120),
+        rateUpload: num(env.RATE_UPLOAD, 40),
+        rateUnlock: num(env.RATE_UNLOCK, 10),
+        cleanupIntervalMs: 60 * 1000,
+        ...overrides,
+    };
+}
+
+module.exports = { loadConfig };

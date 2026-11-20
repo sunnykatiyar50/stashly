@@ -1,0 +1,22 @@
+services:
+  stashly:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      # Set a long random value so unlock cookies survive a rebuild (otherwise one is kept in the database)
+      SESSION_SECRET: ""
+      # Turns on /admin (stash overview and a settings page for the limits)
+      ADMIN_PASSWORD: ""
+      # REQUIRE_ADMIN_TO_CREATE: "true"   # only the admin can create stashes
+      # TRUST_PROXY: "1"   # when behind one reverse proxy
+      # MAX_FILE_MB: "25"
+      # MAX_FILES_PER_STASH: "500"
+      # MAX_STASH_MB: "100"
+      # ALLOW_NO_EXPIRY: "false"
+    volumes:
+      - stashly-data:/data
+    restart: unless-stopped
+
+volumes:
+  stashly-data:
