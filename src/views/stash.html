@@ -73,7 +73,7 @@
                 </div>
                 <div class="field">
                     <label for="sessionSelect">Stay signed in for</label>
-                    <select id="sessionSelect"><option value="12h">12 hours</option></select>
+                    <select id="sessionSelect"><option value="24h">24 hours</option></select>
                     <small class="field-hint">You are signed out in this browser after that. You can also log out any time.</small>
                 </div>
                 <button type="submit" id="unlockButton" class="primary">Unlock</button>
@@ -263,6 +263,22 @@
                 <label class="opt"><select id="keepSelect"></select></label>
                 <span class="muted">Older items are deleted as new ones arrive, so the stash works like a rolling clipboard. Pinned items are never deleted by this.</span>
             </div>
+            <div class="share-row" data-option="rename">
+                <strong>Stash name</strong>
+                <span class="muted">Currently <code id="renameCurrent"></code>. The old address stops working at once, so anyone with it needs the new one. Read-only and drop-box links are cancelled, and on a password-protected stash everyone else has to sign in again.</span>
+                <div class="share-actions">
+                    <button type="button" id="renameToggle" class="ghost small">Rename...</button>
+                </div>
+                <form id="renameForm" class="edit-form hidden" novalidate>
+                    <input type="text" id="renameInput" class="mono" maxlength="64" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="New stash name" />
+                    <small class="field-hint">Letters, numbers, - and _.</small>
+                    <small class="field-error" id="renameError" role="alert"></small>
+                    <div class="share-actions">
+                        <button type="submit" id="renameSave" class="primary small">Rename</button>
+                        <button type="button" id="renameCancel" class="ghost small">Cancel</button>
+                    </div>
+                </form>
+            </div>
             <!-- Kept here, out of the header, and behind typing the name, so it cannot be hit by accident -->
             <div class="share-row danger-row" data-option="danger">
                 <strong>Delete this stash</strong>
@@ -323,6 +339,7 @@
     <script src="/upload.js"></script>
     <script src="/vendor/qrcode.js"></script>
     <script src="/highlight.js"></script>
+    <script src="/markdown.js"></script>
     <script src="/stash.js"></script>
 </body>
 </html>

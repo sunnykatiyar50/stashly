@@ -69,10 +69,11 @@ function loadConfig(env = process.env, overrides = {}) {
             { key: '30m', label: '30 minutes', ms: 30 * 60 * 1000 },
             { key: '2h', label: '2 hours', ms: 2 * HOUR },
             { key: '12h', label: '12 hours', ms: 12 * HOUR },
+            { key: '24h', label: '24 hours', ms: 24 * HOUR },
             { key: '7d', label: '7 days', ms: 7 * 24 * HOUR },
             { key: '30d', label: '30 days', ms: 30 * 24 * HOUR },
         ],
-        defaultSession: '12h',
+        defaultSession: '24h',
         // Mark cookies Secure: "auto" follows the connection (needs TRUST_PROXY behind a proxy), "true" always
         cookieSecure: ['auto', 'true', 'false'].includes(String(env.COOKIE_SECURE).toLowerCase()) ? String(env.COOKIE_SECURE).toLowerCase() : 'auto',
         cleanupIntervalMs: 60 * 1000,

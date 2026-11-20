@@ -17,7 +17,11 @@ function parseTitle(raw) {
 
 // The title used when nobody gave one
 function deriveTitle(text) {
-    return tidy(text || '').split(' ').slice(0, AUTO_WORDS).join(' ').slice(0, MAX_TITLE);
+    let words = tidy(text || '');
+    // A leading Markdown marker (# heading, > quote, - bullet) is formatting, not part of the title
+    const bare = words.replace(/^(?:#{1,6}|>|[-*+])\s+/, '');
+    if (bare) words = bare;
+    return words.split(' ').slice(0, AUTO_WORDS).join(' ').slice(0, MAX_TITLE);
 }
 
 module.exports = { parseTitle, deriveTitle, MAX_TITLE, AUTO_WORDS };

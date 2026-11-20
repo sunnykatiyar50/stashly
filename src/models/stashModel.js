@@ -29,6 +29,22 @@ class StashModel {
         }
     }
 
+    // Gives the stash a new name. Its items, password, expiry and settings stay. The read-only and drop-box links are
+    // cancelled, because they point at the old name.
+    renameStash(id, slug) {
+        try {
+            this.db.prepare('UPDATE stashes SET slug = ?, view_token_hash = NULL, drop_token_hash = NULL WHERE id = ?').run(slug, id);
+        } catch (err) {
+            if (/UNIQUE/i.test(String(err.message))) {
+                const duplicate = new Error('A stash with that name already exists.');
+                duplicate.code = 'DUPLICATE';
+                throw duplicate;
+            }
+            throw err;
+        }
+        return this.getStashById(id);
+    }
+
     getStashById(id) {
         return this.db.prepare('SELECT * FROM stashes WHERE id = ?').get(id) || null;
     }

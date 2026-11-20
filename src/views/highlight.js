@@ -71,6 +71,88 @@
         },
     };
 
+    var C_COMMENT = /\/\/[^\n]*|\/\*[\s\S]*?\*\//;
+    var C_NUMBER = /\b(?:0x[0-9a-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[fFlLuU]*)\b/;
+
+    LANGUAGES.go = {
+        label: 'Go',
+        rules: [['comment', C_COMMENT], ['string', /`[^`]*`|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/], ['number', C_NUMBER],
+            ['keyword', words(['package', 'import', 'func', 'return', 'if', 'else', 'for', 'range', 'switch', 'case', 'default', 'break', 'continue', 'go', 'defer', 'select', 'chan', 'map', 'struct', 'interface', 'type', 'var', 'const', 'nil', 'true', 'false'])]],
+    };
+    LANGUAGES.rust = {
+        label: 'Rust',
+        rules: [['comment', C_COMMENT], ['string', DQ], ['number', C_NUMBER],
+            ['keyword', words(['fn', 'let', 'mut', 'pub', 'struct', 'enum', 'impl', 'trait', 'use', 'mod', 'match', 'if', 'else', 'for', 'while', 'loop', 'return', 'self', 'Self', 'crate', 'as', 'in', 'ref', 'move', 'async', 'await', 'true', 'false', 'where', 'const', 'static', 'type', 'unsafe', 'dyn'])]],
+    };
+    LANGUAGES.java = {
+        label: 'Java',
+        rules: [['comment', C_COMMENT], ['string', DQ], ['string', SQ], ['number', C_NUMBER],
+            ['keyword', words(['public', 'private', 'protected', 'class', 'interface', 'extends', 'implements', 'static', 'final', 'void', 'int', 'long', 'double', 'float', 'boolean', 'char', 'new', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'try', 'catch', 'finally', 'throw', 'throws', 'import', 'package', 'this', 'super', 'null', 'true', 'false', 'abstract', 'enum', 'instanceof', 'synchronized'])]],
+    };
+    LANGUAGES.csharp = {
+        label: 'C#',
+        rules: [['comment', C_COMMENT], ['string', /@?"(?:[^"\\\n]|\\.)*"/], ['string', SQ], ['number', C_NUMBER],
+            ['keyword', words(['using', 'namespace', 'class', 'struct', 'interface', 'enum', 'public', 'private', 'protected', 'internal', 'static', 'readonly', 'const', 'void', 'int', 'string', 'bool', 'var', 'new', 'return', 'if', 'else', 'for', 'foreach', 'while', 'do', 'switch', 'case', 'break', 'continue', 'try', 'catch', 'finally', 'throw', 'async', 'await', 'null', 'true', 'false', 'this', 'base', 'override', 'virtual', 'abstract', 'get', 'set'])]],
+    };
+    LANGUAGES.c = {
+        label: 'C/C++',
+        rules: [['comment', C_COMMENT], ['keyword', /^[ \t]*#[ \t]*\w+[^\n]*/], ['string', DQ], ['string', SQ], ['number', C_NUMBER],
+            ['keyword', words(['int', 'char', 'long', 'short', 'float', 'double', 'void', 'unsigned', 'signed', 'struct', 'union', 'enum', 'typedef', 'static', 'const', 'extern', 'sizeof', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'goto', 'class', 'public', 'private', 'protected', 'template', 'typename', 'namespace', 'using', 'new', 'delete', 'virtual', 'nullptr', 'true', 'false', 'bool', 'this', 'inline', 'auto'])]],
+    };
+    LANGUAGES.php = {
+        label: 'PHP',
+        rules: [['comment', /\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\//], ['string', DQ], ['string', SQ], ['keyword', /<\?php|<\?=|\?>/], ['variable', /\$[A-Za-z_]\w*/], ['number', NUMBER],
+            ['keyword', words(['function', 'return', 'if', 'else', 'elseif', 'foreach', 'for', 'while', 'class', 'public', 'private', 'protected', 'static', 'new', 'echo', 'use', 'namespace', 'null', 'true', 'false', 'array', 'as', 'extends', 'implements', 'try', 'catch', 'throw'])]],
+    };
+    LANGUAGES.ruby = {
+        label: 'Ruby',
+        rules: [['comment', /#[^\n]*/], ['string', DQ], ['string', SQ], ['variable', /@{1,2}[A-Za-z_]\w*|:[A-Za-z_]\w*/], ['number', NUMBER],
+            ['keyword', words(['def', 'end', 'class', 'module', 'if', 'elsif', 'else', 'unless', 'while', 'until', 'for', 'in', 'do', 'return', 'yield', 'begin', 'rescue', 'ensure', 'nil', 'true', 'false', 'self', 'require', 'puts', 'attr_accessor', 'attr_reader', 'then', 'case', 'when'])]],
+    };
+    LANGUAGES.powershell = {
+        label: 'PowerShell',
+        rules: [['comment', /<#[\s\S]*?#>|#[^\n]*/], ['string', DQ], ['string', SQ], ['variable', /\$(?:env:)?[A-Za-z_][\w]*|\$\{[^}\n]*\}/], ['number', NUMBER],
+            ['keyword', /\b[A-Z][a-z]+-[A-Z]\w+\b|\s-(?:eq|ne|gt|lt|ge|le|like|match|contains|and|or|not)\b/],
+            ['keyword', /\b(?:function|param|if|else|elseif|foreach|for|while|return|switch|try|catch|finally|throw|begin|process|end)\b/i]],
+    };
+    LANGUAGES.ini = {
+        label: 'INI/TOML',
+        rules: [['comment', /^[ \t]*[#;][^\n]*/], ['keyword', /^\[[^\]\n]+\]/], ['key', /^[ \t]*[\w.\-]+(?=[ \t]*=)/], ['string', DQ], ['string', SQ], ['number', NUMBER], ['keyword', /\b(?:true|false)\b/]],
+    };
+    LANGUAGES.dockerfile = {
+        label: 'Dockerfile',
+        rules: [['comment', /^[ \t]*#[^\n]*/], ['keyword', /^[ \t]*(?:FROM|RUN|CMD|LABEL|EXPOSE|ENV|ADD|COPY|ENTRYPOINT|VOLUME|USER|WORKDIR|ARG|ONBUILD|STOPSIGNAL|HEALTHCHECK|SHELL)\b/i], ['string', DQ], ['string', SQ], ['variable', /\$\{[^}\n]*\}|\$[A-Za-z_]\w*/], ['number', NUMBER]],
+    };
+    LANGUAGES.diff = {
+        label: 'Diff',
+        rules: [['keyword', /^(?:\+\+\+|---) [^\n]*|^diff [^\n]*|^index [^\n]*/], ['hunk', /^@@[^\n]*/], ['add', /^\+[^\n]*/], ['del', /^-[^\n]*/]],
+    };
+
+    // Names people put after a fence (```py) or in a file name, mapped to the languages above
+    var ALIASES = {
+        js: 'javascript', jsx: 'javascript', ts: 'javascript', tsx: 'javascript', typescript: 'javascript', node: 'javascript', mjs: 'javascript',
+        py: 'python', python3: 'python',
+        sh: 'shell', bash: 'shell', zsh: 'shell', console: 'shell', shell: 'shell',
+        html: 'markup', xml: 'markup', svg: 'markup', htm: 'markup',
+        yml: 'yaml', json5: 'json', jsonc: 'json',
+        ps1: 'powershell', pwsh: 'powershell', ps: 'powershell',
+        cpp: 'c', 'c++': 'c', h: 'c', hpp: 'c', cc: 'c',
+        cs: 'csharp', 'c#': 'csharp',
+        golang: 'go', rs: 'rust', rb: 'ruby',
+        toml: 'ini', conf: 'ini', cfg: 'ini', env: 'ini', properties: 'ini',
+        docker: 'dockerfile', patch: 'diff',
+    };
+
+    // The language for a fence label or alias, or null when it is not one we colour
+    var has = function (object, key) { return Object.prototype.hasOwnProperty.call(object, key); };
+
+    function resolve(name) {
+        var key = String(name || '').trim().toLowerCase();
+        if (!key) return null;
+        if (has(LANGUAGES, key)) return key;
+        return has(ALIASES, key) && has(LANGUAGES, ALIASES[key]) ? ALIASES[key] : null;
+    }
+
     // One combined expression per language, built once
     Object.keys(LANGUAGES).forEach(function (name) {
         var lang = LANGUAGES[name];
@@ -79,7 +161,7 @@
 
     // Splits text into [{ type, text }]. type is 'plain' for everything that is not highlighted.
     function tokenize(text, language) {
-        var lang = LANGUAGES[language];
+        var lang = has(LANGUAGES, language) ? LANGUAGES[language] : null;
         if (!lang || text.length > MAX_HIGHLIGHT) return [{ type: 'plain', text: text }];
         var tokens = [];
         var last = 0;
@@ -112,16 +194,37 @@
         if (/\bSELECT\b[\s\S]+\bFROM\b|\bINSERT\s+INTO\b|\bCREATE\s+TABLE\b|\bUPDATE\s+\w+\s+SET\b|\bDELETE\s+FROM\b/i.test(t) && /;|\n/.test(t)) return 'sql';
 
         var count = function (re) { return lines.filter(function (line) { return re.test(line); }).length; };
+
+        // Formats with a clear fingerprint
+        if (/^<\?php\b/.test(t)) return 'php';
+        if (/^diff --git |^@@ -\d+(?:,\d+)? \+\d+/m.test(t) || (/^--- \S/m.test(t) && /^\+\+\+ \S/m.test(t))) return 'diff';
+        var firstCode = lines.filter(function (line) { return line.trim() && !/^\s*#/.test(line); })[0] || '';
+        if (/^FROM\s+\S/.test(firstCode) && count(/^(?:RUN|COPY|ADD|CMD|ENTRYPOINT|WORKDIR|ENV|EXPOSE|ARG|LABEL)\s/) >= 1) return 'dockerfile';
+        // INI / TOML: at least one [section] and a couple of key = value lines, and nothing that looks like code
+        if (count(/^\[[^\]\n]+\]\s*$/) >= 1 && count(/^[\w.\-]+\s*=\s*\S/) >= 2 && !/[{};]|=>/.test(t.replace(/^[ \t]*[#;].*$/gm, '').replace(/"[^"\n]*"|'[^'\n]*'|\[[^\]\n]*\]/g, ''))) return 'ini';
+
         var score = {
             javascript: count(/\b(?:const|let|var)\s+[\w{[]+[^=\n]*=|=>|\bfunction\b\s*\w*\s*\(|\brequire\(|^\s*import\s.+\sfrom\s|console\.\w+\(|^\s*export\s+(?:default|const|function|class)/),
             python: count(/^\s*def\s+\w+\(.*\)\s*(?:->.*)?:|^\s*class\s+\w+.*:|^\s*(?:import\s+\w+|from\s+[\w.]+\s+import\s)|\bself\.\w+|^\s*elif\b|\bprint\(|__name__\s*==/),
             shell: count(/^\s*\$?\s*(?:sudo|apt(?:-get)?|npm|npx|yarn|git|docker|curl|wget|cd|ls|export|chmod|mkdir|pip3?|brew|echo|cat|grep|ssh|scp|kubectl)\s/),
             css: count(/^\s*[\w.#*:>\s,-]+\{\s*$|^\s*[\w-]+\s*:\s*[^;]+;\s*$|^\s*@(?:media|import|font-face)/),
             yaml: count(/^\s*(?:-\s+)?[\w./-]+:(?:\s+\S.*|\s*)$/),
+            go: count(/^package\s+\w+|^func\s+(?:\(\w+\s+\*?\w+\)\s+)?\w+\(|\w+\s*:=\s*|^import\s+\(|\bfmt\.\w+\(/),
+            rust: count(/^\s*(?:pub\s+)?fn\s+\w+|\blet\s+mut\b|^\s*impl\b|^use\s+std::|\bprintln!|^\s*#\[derive/),
+            java: count(/^\s*(?:public|private|protected)\s+(?:static\s+)?(?:final\s+)?(?:class|void|int|String|boolean)\b|System\.out\.print|^import\s+java\.|@Override/),
+            csharp: count(/^using\s+System|^namespace\s+[\w.]+|Console\.Write(?:Line)?\(|^\s*(?:public|private|internal)\s+(?:static\s+)?class\b|\bvar\s+\w+\s*=\s*new\b/),
+            c: count(/^\s*#\s*include\s*[<"]|\bint\s+main\s*\(|\bstd::|\bprintf\s*\(|^\s*(?:static\s+)?(?:void|int|char)\s+\w+\s*\([^)]*\)\s*\{?\s*$/),
+            ruby: count(/^\s*def\s+\w+[?!]?(?:\(.*\))?\s*$|^\s*end\s*$|\bputs\s|^\s*require\s+['"]|^\s*attr_(?:accessor|reader)|^\s*(?:class|module)\s+[A-Z]\w*\s*$/),
+            powershell: count(/\b(?:Get|Set|New|Remove|Write|Invoke|Import|Start|Stop)-[A-Z]\w+|^\s*param\s*\(|\$env:\w+|\s-(?:eq|ne|gt|lt|like|match)\s/),
         };
         // YAML looks like many other things, so it must be nearly all key lines and have no code punctuation
-        if (/[{};=]/.test(t) || score.yaml < Math.max(3, lines.length * 0.6)) score.yaml = 0;
-        if (lines.length < 2) { score.javascript = score.javascript >= 1 && /[;{]|=>/.test(t) ? 2 : 0; score.python = 0; score.css = 0; score.shell = 0; }
+        var nonBlank = lines.filter(function (line) { return line.trim(); });
+        var yamlLines = nonBlank.filter(function (line) { return /^(?:\s*#.*|\s*-\s+\S.*|\s*(?:-\s+)?[\w./-]+:(?:\s+\S.*|\s*)|\s+\S.*)$/.test(line); }).length;
+        if (/[{};=]/.test(t) || score.yaml < 3 || yamlLines < nonBlank.length) score.yaml = 0;
+        if (lines.length < 2) {
+            score.javascript = score.javascript >= 1 && /[;{]|=>/.test(t) ? 2 : 0;
+            ['python', 'css', 'shell', 'go', 'rust', 'java', 'csharp', 'c', 'ruby', 'powershell'].forEach(function (name) { score[name] = 0; });
+        }
         var best = null;
         Object.keys(score).forEach(function (name) { if (score[name] >= 2 && (!best || score[name] > score[best])) best = name; });
         return best;
@@ -192,7 +295,7 @@
         return fragment;
     }
 
-    var api = { tokenize: tokenize, detect: detect, splitLinks: splitLinks, render: render, label: function (language) { return LANGUAGES[language] ? LANGUAGES[language].label : ''; } };
+    var api = { tokenize: tokenize, detect: detect, resolve: resolve, splitLinks: splitLinks, render: render, label: function (language) { return has(LANGUAGES, language) ? LANGUAGES[language].label : ''; } };
     if (typeof window !== 'undefined') window.StashlyHighlight = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

@@ -442,6 +442,18 @@
         });
     }
 
+    // What a note looks like: a code or data language, 'markdown', or null for plain text. A note with a fenced code block
+    // is Markdown whatever is inside the fences; otherwise code is checked first, because a shell comment starts with
+    // the same # as a Markdown heading.
+    function detectFormat(text) {
+        var markdown = window.StashlyMarkdown;
+        var highlight = window.StashlyHighlight;
+        if (markdown && markdown.hasFence(text)) return 'markdown';
+        var code = highlight ? highlight.detect(text) : null;
+        if (code) return code;
+        return markdown && markdown.looks(text) ? 'markdown' : null;
+    }
+
     function renderDetail(item) {
         var actions = $('detailActions');
         var body = $('detailBody');
@@ -461,17 +473,21 @@
             if (role() === 'full') actions.appendChild(button('Reveal and delete', 'primary', function (event) { revealBurn(item, event.currentTarget); }));
             else warning.appendChild(make('strong', null, 'Only someone with full access can reveal it.'));
         } else if (item.kind === 'note') {
-            var language = window.StashlyHighlight ? window.StashlyHighlight.detect(item.text) : null;
+            var language = detectFormat(item.text);
             $('detailMeta').textContent = ['Note', item.secret ? 'Secret' : '', item.expiresAt ? expiryText(item.expiresAt) : '', (item.text || '').length + ' characters', when, item.editedAt ? 'edited ' + relativeTime(item.editedAt) : ''].filter(Boolean).join(' · ');
-            var pre = make('pre', 'detail-text');
+            var pre = make('div', 'detail-text');
             body.appendChild(pre);
-            // Web addresses are clickable; code is coloured when it is recognised, and "Plain text" turns that off
+            // Web addresses are clickable; Markdown is rendered and code is coloured when it is recognised, and
+            // "Plain text" turns that off (the text itself is never changed)
             var shown = !item.secret;
             var plain = Boolean(state.plainIds[item.id]);
             var paint = function () {
                 pre.textContent = '';
+                var asMarkdown = shown && !plain && language === 'markdown' && window.StashlyMarkdown;
+                pre.classList.toggle('md', Boolean(asMarkdown));
                 if (!shown) { pre.textContent = MASK; return; }
-                if (window.StashlyHighlight) pre.appendChild(window.StashlyHighlight.render(item.text, plain ? null : language));
+                if (asMarkdown) pre.appendChild(window.StashlyMarkdown.render(item.text, window.StashlyHighlight));
+                else if (window.StashlyHighlight) pre.appendChild(window.StashlyHighlight.render(item.text, plain || language === 'markdown' ? null : language));
                 else pre.textContent = item.text;
             };
             paint();
@@ -484,11 +500,12 @@
                 }));
             }
             if (language) {
-                var label = window.StashlyHighlight.label(language);
-                actions.appendChild(button(plain ? 'Highlight ' + label : 'Plain text', 'ghost', function (event) {
+                var label = language === 'markdown' ? 'Markdown' : window.StashlyHighlight.label(language);
+                var verb = language === 'markdown' ? 'Render ' : 'Highlight ';
+                actions.appendChild(button(plain ? verb + label : 'Plain text', 'ghost', function (event) {
                     plain = !plain;
                     state.plainIds[item.id] = plain;
-                    event.currentTarget.textContent = plain ? 'Highlight ' + label : 'Plain text';
+                    event.currentTarget.textContent = plain ? verb + label : 'Plain text';
                     paint();
                 }));
             }
@@ -657,6 +674,8 @@
             state.items = res.body.items;
             // Only a stash opened with full access is worth suggesting on the share page
             if (window.StashlyRemember && res.body.role === 'full') window.StashlyRemember(slug);
+            // The installed app reopens this stash next time it is launched (whatever the role: a link visitor too)
+            if (window.StashlyLast) window.StashlyLast.set(slug);
             applyRole();
             sections.main.classList.contains('hidden') && show('main');
             updateHeader();
@@ -679,6 +698,8 @@
     function gone() {
         closeStream();
         state.stash = null;
+        // It no longer exists, so the installed app should not keep trying to open it
+        if (window.StashlyLast) window.StashlyLast.clear(slug);
         show('gone');
     }
 
@@ -872,6 +893,14 @@
             if (state.stash) { state.stash.expiresAt = JSON.parse(event.data).expiresAt; updateExpiry(); }
         });
         es.addEventListener('stash-gone', gone);
+        // The stash was renamed (by someone else, or by this page, which moves itself): follow it to the new address
+        es.addEventListener('stash-renamed', function (event) {
+            var data = {};
+            try { data = JSON.parse(event.data); } catch (e) { /* no details */ }
+            if (!data.slug || (data.origin && data.origin === tabId)) return;
+            if (window.StashlyRenamed) window.StashlyRenamed(slug, data.slug);
+            location.replace('/s/' + encodeURIComponent(data.slug));
+        });
         // The stash's password was changed: this page's sign-in is no longer good, so ask again. (Not when this very
         // page changed it: it was given a new sign-in with the answer.)
         es.addEventListener('access-changed', function (event) {
@@ -1035,6 +1064,47 @@
         });
     });
 
+    // Renaming the stash (full access only). The address changes, so this page moves to the new one when it is done.
+    var renameForm = $('renameForm');
+    function closeRenameForm() {
+        renameForm.classList.add('hidden');
+        renameForm.reset();
+        $('renameError').textContent = '';
+        $('renameToggle').classList.remove('hidden');
+    }
+    $('renameCurrent').textContent = slug;
+    $('renameToggle').addEventListener('click', function (event) {
+        renameForm.classList.remove('hidden');
+        event.currentTarget.classList.add('hidden');
+        $('renameInput').value = slug;
+        $('renameInput').focus();
+        $('renameInput').select();
+    });
+    $('renameCancel').addEventListener('click', closeRenameForm);
+    renameForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var error = $('renameError');
+        error.textContent = '';
+        var next = $('renameInput').value.trim().toLowerCase();
+        if (!next) { error.textContent = 'A stash name is required.'; return; }
+        if (next === slug) { error.textContent = 'That is already the name of this stash.'; return; }
+        if (!/^[a-z0-9_-]+$/.test(next)) { error.textContent = 'Use only letters, numbers, dashes and underscores.'; return; }
+        $('renameSave').disabled = true;
+        api(base + '/rename', { method: 'POST', body: { slug: next } }).then(function (res) {
+            $('renameSave').disabled = false;
+            if (res.ok) {
+                if (window.StashlyRenamed) window.StashlyRenamed(slug, res.body.slug);
+                // Move to the new address: the old one no longer exists
+                location.replace(res.body.url);
+            } else if (res.status === 401) {
+                $('optionsDialog').close();
+                locked();
+            } else {
+                error.textContent = (res.body && res.body.error) || 'Could not rename the stash.';
+            }
+        }).catch(function () { $('renameSave').disabled = false; error.textContent = 'Could not reach the server.'; });
+    });
+
     // Deleting the stash lives in Options, and needs the stash's name typed in, so it cannot happen by accident
     var deleteForm = $('deleteStashForm');
     function closeDeleteForm() {
@@ -1098,6 +1168,8 @@
 
     // "Log out" clears this browser's sign-in for the stash and goes home. An open stash has nothing to clear: Exit just goes home.
     function leaveStash() {
+        // Logging out or exiting is leaving on purpose: the installed app should start at home next time
+        if (window.StashlyLast) window.StashlyLast.clear(slug);
         if (!state.stash || !state.stash.hasPassword) { location.href = '/'; return; }
         api(base + '/logout', { method: 'POST' }).then(function () { location.href = '/'; }).catch(function () { location.href = '/'; });
     }
@@ -1217,6 +1289,8 @@
         var full = role() === 'full';
         document.querySelector('[data-option="keep"]').classList.toggle('hidden', !full);
         document.querySelector('[data-option="danger"]').classList.toggle('hidden', !full);
+        document.querySelector('[data-option="rename"]').classList.toggle('hidden', !full);
+        closeRenameForm();
         closePasswordForm();
         $('changePasswordToggle').classList.toggle('hidden', role() !== 'full');
         if (protectedStash) {

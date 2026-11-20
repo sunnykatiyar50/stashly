@@ -74,9 +74,21 @@ test('an unlock cookie stops working when the clock passes its expiry', async ()
     const ctx = makeApp();
     const base = await locked(ctx);
     const agent = request.agent(ctx.app);
-    await agent.post(`${base}/unlock`).send({ password: 'hunter22' }).expect(200);
+    await agent.post(`${base}/unlock`).send({ password: 'hunter22', session: '12h' }).expect(200);
     ctx.clock.time = new Date(ctx.clock.time.getTime() + 13 * 60 * 60 * 1000);
     // The stash itself (1 day) is still alive, but the 12 hour cookie is not
+    await agent.get(base).expect(401);
+});
+
+test('when no length is chosen, a sign-in lasts 24 hours (on a stash that lives that long)', async () => {
+    const ctx = makeApp();
+    await request(ctx.app).post('/api/stashes').send({ slug: 'week-long', password: 'hunter22', ttl: '7d' }).expect(201);
+    const base = '/api/stashes/week-long';
+    const agent = request.agent(ctx.app);
+    await agent.post(`${base}/unlock`).send({ password: 'hunter22' }).expect(200);
+    ctx.clock.time = new Date(ctx.clock.time.getTime() + 23 * 60 * 60 * 1000);
+    await agent.get(base).expect(200);
+    ctx.clock.time = new Date(ctx.clock.time.getTime() + 2 * 60 * 60 * 1000);
     await agent.get(base).expect(401);
 });
 

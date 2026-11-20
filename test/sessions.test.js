@@ -17,7 +17,7 @@ async function protectedStash(ctx, slug = 'vault', extra = {}) {
 
 // ---- how long a sign-in lasts ----
 
-test('the person picks how long to stay signed in; the default is 12 hours', async () => {
+test('the person picks how long to stay signed in; the default is 24 hours', async () => {
     const ctx = makeApp();
     const base = await protectedStash(ctx);
     const short = await request(ctx.app).post(`${base}/unlock`).send({ password: PASSWORD, session: '30m' }).expect(200);
@@ -27,7 +27,9 @@ test('the person picks how long to stay signed in; the default is 12 hours', asy
     const two = await request(ctx.app).post(`${base}/unlock`).send({ password: PASSWORD, session: '2h' }).expect(200);
     assert.equal(maxAge(two), 2 * 3600);
     const normal = await request(ctx.app).post(`${base}/unlock`).send({ password: PASSWORD }).expect(200);
-    assert.equal(maxAge(normal), 12 * 3600);
+    assert.equal(maxAge(normal), 24 * 3600);
+    const twelve = await request(ctx.app).post(`${base}/unlock`).send({ password: PASSWORD, session: '12h' }).expect(200);
+    assert.equal(maxAge(twelve), 12 * 3600);
 });
 
 test('7 and 30 day sessions work on a long-lived stash, and are cut short by a short-lived one', async () => {
@@ -94,8 +96,8 @@ test('the stash page can see when its sign-in ends; a stash with no password has
 
 test('the public config lists the session lengths', async () => {
     const res = await request(makeApp().app).get('/api/config').expect(200);
-    assert.deepEqual(res.body.sessionOptions.map(o => o.key), ['30m', '2h', '12h', '7d', '30d']);
-    assert.equal(res.body.defaultSession, '12h');
+    assert.deepEqual(res.body.sessionOptions.map(o => o.key), ['30m', '2h', '12h', '24h', '7d', '30d']);
+    assert.equal(res.body.defaultSession, '24h');
 });
 
 // ---- changing the length after signing in ----
