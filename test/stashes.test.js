@@ -88,3 +88,15 @@ test('creating stashes is rate limited', async () => {
     await request(app).post('/api/stashes').send({ slug: 'bbbb' }).expect(201);
     await request(app).post('/api/stashes').send({ slug: 'cccc' }).expect(429);
 });
+
+test('TRUST_PROXY accepts true, false and a hop count without crashing', async () => {
+    for (const value of ['true', 'false', '1', '2', 'loopback']) {
+        const ctx = makeApp({ trustProxy: value });
+        await request(ctx.app).get('/health').expect(200);
+    }
+    // "true" means one proxy hop: the client address is the one the proxy added to X-Forwarded-For
+    const ctx = makeApp({ trustProxy: 'true' });
+    ctx.app.get('/__ip', (req, res) => res.send(req.ip));
+    const res = await request(ctx.app).get('/__ip').set('X-Forwarded-For', '203.0.113.9');
+    assert.equal(res.text, '203.0.113.9');
+});

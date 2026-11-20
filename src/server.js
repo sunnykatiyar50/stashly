@@ -19,10 +19,13 @@ function createApp({ config, model, events, secret, now }) {
     const controller = new StashController({ model, events, config, secret, now, isAdmin: adminAuth.isAdmin });
     const adminController = new AdminController({ model, events, config, adminAuth, settings, now });
 
-    if (config.trustProxy) {
-        // e.g. TRUST_PROXY=1 behind one reverse proxy, so req.ip / req.secure reflect the real client
-        const hops = Number(config.trustProxy);
-        app.set('trust proxy', Number.isInteger(hops) ? hops : config.trustProxy);
+    const trust = String(config.trustProxy || '').trim();
+    if (trust && !['false', 'no', 'off'].includes(trust.toLowerCase())) {
+        // e.g. TRUST_PROXY=1 behind one reverse proxy, so req.ip / req.secure reflect the real client.
+        // "true" is read as one proxy: Express would take the string "true" for an IP address and crash,
+        // and trusting every hop would let clients fake their IP and dodge the rate limits.
+        const hops = ['true', 'yes', 'on'].includes(trust.toLowerCase()) ? 1 : Number(trust);
+        app.set('trust proxy', Number.isInteger(hops) ? hops : trust);
     }
 
     app.disable('x-powered-by');

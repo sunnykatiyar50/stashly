@@ -101,7 +101,7 @@ Allowed file types: png, jpg, gif, webp, pdf, zip, docx, xlsx, pptx, txt, csv, j
 - The stash name is the "key". Random 12-character names can't be guessed; short custom names can, so add a password for anything private.
 - Passwords protect access. Content is stored unencrypted in the SQLite file, so protect the server and its disk.
 - Notes are shown as plain text (never as HTML). Strict CSP, `Cache-Control: no-store`, `noindex`, no referrer.
-- Rate limits per IP on creating stashes, posting, uploading and wrong passwords. Behind a reverse proxy set `TRUST_PROXY=1`.
+- Rate limits per IP on creating stashes, posting, uploading and wrong passwords. Behind a reverse proxy set `TRUST_PROXY=1` (`true` means the same: one proxy).
 - No virus scanning of uploads. Treat it as a personal or team tool, not a public file host.
 - Run it behind HTTPS if it leaves your LAN. On plain HTTP the cookie still works, but "Copy image" is unavailable (browsers only allow it on secure pages); text copy has a fallback.
 

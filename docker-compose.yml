@@ -15,7 +15,7 @@ services:
       # Turns on /admin (stash overview and a settings page for the limits)
       ADMIN_PASSWORD: ""
       # REQUIRE_ADMIN_TO_CREATE: "true"   # only the admin can create stashes
-      # TRUST_PROXY: "1"   # when behind one reverse proxy
+      # TRUST_PROXY: "1"   # when behind one reverse proxy ("true" also means one)
       # MAX_FILE_MB: "25"
       # MAX_FILES_PER_STASH: "500"
       # MAX_STASH_MB: "100"
