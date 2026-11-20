@@ -77,6 +77,8 @@ function createApp({ config, model, events, secret, now }) {
 
     // The stash page is one HTML file; the script reads the name from the URL
     app.get('/s/:slug', (req, res) => res.sendFile(path.join(viewsDir, 'stash.html')));
+    // Where the phone's share sheet sends what was shared (the manifest's share target)
+    app.get('/share', (req, res) => res.sendFile(path.join(viewsDir, 'share.html')));
     app.get('/admin', (req, res) => res.sendFile(path.join(viewsDir, 'admin.html')));
     app.use(express.static(viewsDir, { index: 'index.html' }));
 

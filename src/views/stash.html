@@ -6,6 +6,9 @@
     <meta name="robots" content="noindex, nofollow">
     <title>Stash · Stashly</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/icons/icon-180.png">
+    <meta name="theme-color" content="#2563eb">
     <link rel="stylesheet" href="/styles.css">
     <script src="/theme.js"></script>
 </head>
@@ -94,6 +97,7 @@
                         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="14.01"/><line x1="18" y1="14" x2="21" y2="14"/><line x1="14" y1="18" x2="14" y2="21"/><line x1="18" y1="18" x2="21" y2="18"/><line x1="21" y1="21" x2="21" y2="21.01"/></svg>
                         QR code
                     </button>
+                    <button type="button" id="copyLatestButton" class="ghost small" title="Copy the newest note (Alt+C)">Copy latest</button>
                     <button type="button" id="copyLinkButton" class="ghost small">Copy link</button>
                     <button type="button" id="extendButton" class="ghost small">Extend</button>
                     <button type="button" id="deleteStashButton" class="danger-ghost small">Delete stash</button>
@@ -208,6 +212,7 @@
     </dialog>
     <div id="dropOverlay" class="drop-overlay hidden">Drop files to add them</div>
     <div id="toast" class="toast hidden" role="status"></div>
+    <script src="/pwa.js"></script>
     <script src="/shell.js"></script>
     <script src="/upload.js"></script>
     <script src="/vendor/qrcode.js"></script>

@@ -181,8 +181,10 @@
     }
 
     function buildClip(item) {
-        var el = make('button', 'clip');
-        el.type = 'button';
+        // A div, not a button, because the row holds its own copy button
+        var el = make('div', 'clip');
+        el.setAttribute('role', 'button');
+        el.tabIndex = 0;
         el.dataset.id = item.id;
 
         var lead;
@@ -219,11 +221,65 @@
         var time = make('span', 'clip-time item-time', relativeTime(item.createdAt));
         time.dataset.iso = item.createdAt;
         time.title = new Date(item.createdAt).toLocaleString();
-        el.appendChild(time);
+        var side = make('span', 'clip-side');
+        side.appendChild(time);
+        // A note whose text is on the page can be copied without opening it (a burn note's text is not here)
+        if (item.kind === 'note' && !item.burn && item.text) {
+            var copy = make('button', 'clip-copy ghost');
+            copy.type = 'button';
+            copy.title = 'Copy this note';
+            copy.setAttribute('aria-label', 'Copy this note');
+            copy.appendChild(svg(COPY_ICON));
+            copy.addEventListener('click', function (event) {
+                event.stopPropagation();
+                copyNote(item.text, copy);
+            });
+            side.appendChild(copy);
+        }
+        el.appendChild(side);
 
         el.addEventListener('click', function () { openItem(item.id); });
+        el.addEventListener('keydown', function (event) {
+            if (event.target !== el) return;
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openItem(item.id); }
+        });
         return el;
     }
+
+    var COPY_ICON = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    var CHECK_ICON = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
+
+    // Copies a note's text; the row button shows a tick for a moment
+    function copyNote(text, trigger) {
+        return Promise.resolve(copyText(text)).then(function (ok) {
+            toast(ok ? 'Copied' : 'Could not copy. Open the note and select the text.', !ok);
+            if (ok && trigger) {
+                trigger.textContent = '';
+                trigger.appendChild(svg(CHECK_ICON));
+                setTimeout(function () { trigger.textContent = ''; trigger.appendChild(svg(COPY_ICON)); }, 1200);
+            }
+            return ok;
+        });
+    }
+
+    // The newest note whose text is on the page. A burn note has none (copying it would mean revealing it).
+    function copyLatest() {
+        for (var i = 0; i < state.items.length; i++) {
+            var item = state.items[i];
+            if (item.kind === 'note' && !item.burn && item.text) return copyNote(item.text, null);
+        }
+        toast(state.items.some(function (item) { return item.burn; }) ? 'Only burn-after-reading notes here. Reveal one to copy it.' : 'No note to copy yet.', true);
+        return Promise.resolve(false);
+    }
+
+    $('copyLatestButton').addEventListener('click', copyLatest);
+    // Alt+C copies the newest note from anywhere on the page
+    document.addEventListener('keydown', function (event) {
+        if (!(event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'c')) return;
+        if (sections.main.classList.contains('hidden')) return;
+        event.preventDefault();
+        copyLatest();
+    });
 
     function filtersActive() {
         var f = state.filters;
@@ -538,6 +594,7 @@
             var previousIndex = state.items.findIndex(function (item) { return item.id === state.selectedId; });
             state.stash = res.body;
             state.items = res.body.items;
+            if (window.StashlyRemember) window.StashlyRemember(slug);
             sections.main.classList.contains('hidden') && show('main');
             updateHeader();
             renderItems();
