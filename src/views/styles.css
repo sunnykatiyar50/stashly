@@ -315,18 +315,21 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .file-card { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-alt); }
 .file-icon.large { width: 56px; height: 56px; font-size: 13px; border-radius: 10px; }
 
-/* The composer: one small row that is always on the page. Expanded, it gets a title, a bigger box and a drop zone. */
+/* The composer: one small row that is always on the page: a small title box, the note box, buttons.
+   Expanded, the title goes on top, the note box is bigger and a drop zone appears.
+   The note box can be dragged taller or shorter by its bottom-right corner. */
 .composer-bar { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
 .composer-row { display: flex; align-items: flex-start; gap: 8px; }
-.composer-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.composer-fields textarea { width: 100%; height: 38px; min-height: 38px; max-height: 38px; resize: none; padding: 8px 10px; line-height: 1.4; overflow: hidden; }
-.composer-title { display: none; width: 100%; }
+.composer-fields { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 8px; }
+.composer-fields textarea { flex: 1; min-width: 0; height: 38px; min-height: 38px; max-height: 70vh; resize: vertical; padding: 8px 10px; line-height: 1.4; overflow: auto; }
+.composer-title { flex: 0 0 160px; width: 160px; height: 38px; }
 .composer-buttons { display: flex; gap: 6px; flex: none; }
 .composer-bar .icon-collapse { display: none; }
 .composer-bar.expanded .icon-expand { display: none; }
 .composer-bar.expanded .icon-collapse { display: block; }
-.composer-bar.expanded .composer-title { display: block; }
-.composer-bar.expanded .composer-fields textarea { height: 150px; max-height: 50vh; resize: vertical; overflow: auto; }
+.composer-bar.expanded .composer-fields { flex-direction: column; }
+.composer-bar.expanded .composer-title { flex: none; width: 100%; }
+.composer-bar.expanded .composer-fields textarea { flex: none; width: 100%; height: 150px; }
 .composer-extra { display: none; }
 .composer-bar.expanded .composer-extra { display: block; }
 .dropzone { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 16px; text-align: center; border: 2px dashed var(--border-strong); border-radius: var(--radius); cursor: pointer; background: var(--surface-alt); }
@@ -417,6 +420,7 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
     .view-stash.detail-open .composer-bar { display: none; }
     .composer-row { flex-wrap: wrap; }
     .composer-fields { flex-basis: 100%; }
+    .composer-title { flex-basis: 110px; width: 110px; }
     .composer-buttons { margin-left: auto; }
     .clip-list { max-height: none; }
     .upload-row { grid-template-columns: minmax(0, 1fr) auto; }
