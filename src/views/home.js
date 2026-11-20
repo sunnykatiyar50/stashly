@@ -39,7 +39,7 @@
     function validateName(value) {
         var slug = value.trim().toLowerCase();
         if (!slug) return 'A stash name is required.';
-        if (slug.length < MIN) return 'The name must be at least ' + MIN + ' characters.';
+        if (slug.length < MIN) return 'That name is too short.';
         if (!/^[a-z0-9_-]+$/.test(slug)) return 'Use only letters, numbers, dashes and underscores.';
         return '';
     }
@@ -102,7 +102,7 @@
             return;
         }
         if (passwordInput.value && passwordInput.value.length < 4) {
-            errors.password.textContent = 'The password must be at least 4 characters.';
+            errors.password.textContent = 'That password is too short.';
             passwordInput.focus();
             return;
         }

@@ -19,7 +19,7 @@ function generateSlug(length = GENERATED_LENGTH) {
 function parseSlug(raw) {
     if (typeof raw !== 'string' || !raw.trim()) return { error: 'A stash name is required.' };
     const slug = raw.trim().toLowerCase();
-    if (slug.length < MIN_LENGTH) return { error: `The name must be at least ${MIN_LENGTH} characters.` };
+    if (slug.length < MIN_LENGTH) return { error: 'That name is too short.' };
     if (slug.length > MAX_LENGTH) return { error: `The name can be at most ${MAX_LENGTH} characters.` };
     if (!/^[a-z0-9_-]+$/.test(slug)) return { error: 'Use only letters, numbers, dashes and underscores.' };
     if (RESERVED.has(slug)) return { error: 'That name is reserved. Pick another.' };
