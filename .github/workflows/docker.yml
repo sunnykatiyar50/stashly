@@ -1,0 +1,114 @@
+# Tests the app, then builds the Docker image and publishes it to GitHub Container Registry.
+#
+#   push to main          -> ghcr.io/<owner>/stashly:latest and :sha-<short>
+#   push a tag v2.1.0     -> :2.1.0, :2.1, :2, :latest (stable tags only) and :sha-<short>
+#   pull request to main  -> tests, and a quick amd64-only build; nothing is published
+#   Actions tab "Run workflow" -> same as a push to the selected branch
+#
+# A release pushes its "Release vX.Y.Z" commit and the tag together. Only the tag run executes then,
+# so a release costs one run instead of two.
+name: Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same branch cancels the run still in progress
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/stashly
+
+jobs:
+  test:
+    name: Test (Node ${{ matrix.node }})
+    # Skip the main-branch run of a release commit: the tag run of the same commit does the work
+    if: github.event_name != 'push' || github.ref_type == 'tag' || !startsWith(github.event.head_commit.message, 'Release v')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+  image:
+    name: Build and publish image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io with the built-in GITHUB_TOKEN
+    steps:
+      - uses: actions/checkout@v7
+
+      # QEMU lets the amd64 runner build the arm64 image too (Raspberry Pi, Oracle Ampere, Apple silicon).
+      # Pull requests only check that the image builds, so they skip arm64 and the slow emulation.
+      - uses: docker/setup-qemu-action@v4
+        if: github.event_name != 'pull_request'
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Work out tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && !contains(github.ref_name, '-')) }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
+            type=sha,prefix=sha-
+          labels: |
+            org.opencontainers.image.title=Stashly
+            org.opencontainers.image.description=Self-hosted shared stash: open the same link on machines that cannot reach each other and trade text, images and files
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Reuse layers from earlier runs so rebuilds only redo what changed
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        if: github.event_name != 'pull_request'
+        run: |
+          {
+            echo "### Published image"
+            echo
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo
+            echo "Pull it with: \`docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\`"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -20,13 +20,46 @@ npm start
 
 Open http://localhost:3000. Settings go in environment variables (see [.env.example](.env.example)); to load a file: `node --env-file=.env src/app.js`.
 
-With Docker:
+### With Docker
+
+The image is published to GitHub Container Registry as `ghcr.io/sunnykatiyar50/stashly` for `linux/amd64` and `linux/arm64`, and runs as the unprivileged `node` user.
 
 ```powershell
-docker compose up -d --build
+docker compose up -d
+docker compose pull; docker compose up -d     # update later
 ```
 
-Data lives in the `stashly-data` volume.
+Open http://localhost:3000. Data lives in the `stashly-data` volume (`docker compose down -v` deletes it). Set `SESSION_SECRET`, `ADMIN_PASSWORD` and other options under `environment:` in [docker-compose.yml](docker-compose.yml).
+
+Run a released version instead of `latest` by setting `IMAGE_TAG` (see the Releases page), or build from this source tree:
+
+```powershell
+$env:IMAGE_TAG = "0.1.0"; docker compose up -d
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+Without Compose:
+
+```bash
+docker run -d --name stashly --restart unless-stopped -p 3000:3000 \
+  -v stashly-data:/data ghcr.io/sunnykatiyar50/stashly:latest
+```
+
+## Releasing
+
+```powershell
+npm run release -- patch             # or minor, major, or an exact version like 1.4.0
+npm run release -- minor --dry-run   # shows the new version and the commits since the last tag, changes nothing
+```
+
+`scripts/release.js` checks that you're on an up-to-date `main` with a clean tree, runs the tests, bumps `package.json`, commits, tags `vX.Y.Z` and pushes. Pushing the tag starts two workflows:
+
+| Workflow | What it does |
+|---|---|
+| `docker.yml` | Runs the tests on Node 22 and 24, then publishes the image as `X.Y.Z`, `X.Y`, `X` and `sha-<commit>` (pushes to `main` publish `latest`) |
+| `release.yml` | Checks the tag matches `package.json`, then creates the GitHub Release with generated notes, a `docker-compose.yml` pinned to that version, and `.env.example`. Tags with a suffix such as `v1.2.0-rc.1` are marked as pre-releases |
+
+Pull requests run the tests and build the image without publishing it. The first time the image is published, GitHub creates the package as private: open it under your profile's Packages and set its visibility to public so `docker pull` works without logging in.
 
 ## Admin
 

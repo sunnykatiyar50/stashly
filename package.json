@@ -4,6 +4,7 @@
   "description": "Self-hosted shared stash: open the same link on machines that can't reach each other and trade text, images and files.",
   "main": "src/app.js",
   "scripts": {
+    "release": "node scripts/release.js",
     "start": "node --disable-warning=ExperimentalWarning src/app.js",
     "dev": "node --disable-warning=ExperimentalWarning --watch src/app.js",
     "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.js\""
