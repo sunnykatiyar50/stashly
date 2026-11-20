@@ -158,11 +158,10 @@
     }
 
     // The line under the title in the list: a few lines of the note, or the size of a file.
-    // A note without a title already shows its first five words as the title, so those are left out here.
+    // A note without a title shows its whole content here (no separate title row).
     function itemSub(item) {
         if (item.kind !== 'note') return window.StashlyUpload.formatSize(item.fileSize);
         var text = item.text || '';
-        if (!item.hasTitle) text = text.replace(/^\s*(?:\S+\s*){1,5}/, '');
         return text.replace(/\s+/g, ' ').trim().slice(0, 240);
     }
 
@@ -186,9 +185,12 @@
         el.appendChild(lead);
 
         var text = make('span', 'clip-text');
-        text.appendChild(make('span', 'clip-title', itemTitle(item)));
+        // A note with no title of its own shows just its content, not a made-up title
+        var untitled = item.kind === 'note' && !item.hasTitle;
+        if (!untitled) text.appendChild(make('span', 'clip-title', itemTitle(item)));
         var sub = itemSub(item);
-        if (sub) text.appendChild(make('span', item.kind === 'note' ? 'clip-sub clip-preview' : 'clip-sub', sub));
+        if (untitled && !sub) text.appendChild(make('span', 'clip-title', '(empty note)'));
+        else if (sub) text.appendChild(make('span', untitled ? 'clip-preview clip-body' : item.kind === 'note' ? 'clip-sub clip-preview' : 'clip-sub', sub));
         el.appendChild(text);
 
         var time = make('span', 'clip-time item-time', relativeTime(item.createdAt));
