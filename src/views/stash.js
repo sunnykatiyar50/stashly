@@ -270,7 +270,8 @@
         }
     }
 
-    var TEXT_PREVIEW = { txt: 1, csv: 1, json: 1, md: 1, log: 1 };
+    // Text files are stored as text/* (or JSON), so any of them can be previewed
+    function isTextType(type) { return /^text\//.test(type || '') || /^application\/json/.test(type || ''); }
     var TEXT_PREVIEW_MAX = 512 * 1024;
 
     function renderDetail(item) {
@@ -327,8 +328,7 @@
                 card.appendChild(info);
                 body.appendChild(card);
 
-                var ext = item.fileName.slice(item.fileName.lastIndexOf('.') + 1).toLowerCase();
-                if (TEXT_PREVIEW[ext] && item.fileSize <= TEXT_PREVIEW_MAX) {
+                if (isTextType(item.fileType) && item.fileSize <= TEXT_PREVIEW_MAX) {
                     var pre = make('pre', 'detail-text', 'Loading preview...');
                     body.appendChild(pre);
                     fetch(item.url, { credentials: 'same-origin' })
@@ -717,7 +717,7 @@
     api('/api/config').then(function (res) {
         if (!res.ok) return;
         var max = res.body.limits.maxFileBytes;
-        $('limitHint').textContent = 'Up to ' + window.StashlyUpload.formatSize(max) + ' per file. Images, PDF, Office files, zip, text, csv, json.';
+        $('limitHint').textContent = 'Up to ' + window.StashlyUpload.formatSize(max) + ' per file. Images, PDF, Office files, zip, certificates and any text file.';
         uploader = window.StashlyUpload.create({
             container: $('uploads'),
             url: base + '/files',
