@@ -767,6 +767,70 @@
         addFiles(files);
     });
 
+    // ---- resizable list and clip panes ----
+
+    var LIST_MIN = 200;
+    var LIST_KEY = 'stashly.listWidth';
+    var split = $('split');
+    var splitter = $('splitter');
+
+    // The clip pane keeps at least 320px, and the list at least LIST_MIN
+    function listLimits() {
+        var total = split.clientWidth - 12;
+        return { min: LIST_MIN, max: total > 0 ? Math.max(LIST_MIN, total - 320) : Infinity };
+    }
+
+    function setListWidth(px, save) {
+        var limits = listLimits();
+        var width = Math.round(Math.min(limits.max, Math.max(limits.min, px)));
+        split.style.setProperty('--list-width', width + 'px');
+        splitter.setAttribute('aria-valuemin', String(limits.min));
+        splitter.setAttribute('aria-valuemax', String(limits.max));
+        splitter.setAttribute('aria-valuenow', String(width));
+        if (save) { try { localStorage.setItem(LIST_KEY, String(width)); } catch (e) { /* storage may be blocked */ } }
+        return width;
+    }
+
+    function resetListWidth() {
+        split.style.removeProperty('--list-width');
+        try { localStorage.removeItem(LIST_KEY); } catch (e) { /* storage may be blocked */ }
+        splitter.setAttribute('aria-valuenow', String(Math.round($('items').closest('.pane').getBoundingClientRect().width)));
+    }
+
+    splitter.addEventListener('pointerdown', function (event) {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        splitter.setPointerCapture(event.pointerId);
+        split.classList.add('resizing');
+    });
+    splitter.addEventListener('pointermove', function (event) {
+        if (!split.classList.contains('resizing')) return;
+        setListWidth(event.clientX - split.getBoundingClientRect().left - 6, false);
+    });
+    function endDrag(event) {
+        if (!split.classList.contains('resizing')) return;
+        split.classList.remove('resizing');
+        if (splitter.hasPointerCapture(event.pointerId)) splitter.releasePointerCapture(event.pointerId);
+        setListWidth($('items').closest('.pane').getBoundingClientRect().width, true);
+    }
+    splitter.addEventListener('pointerup', endDrag);
+    splitter.addEventListener('pointercancel', endDrag);
+    splitter.addEventListener('dblclick', resetListWidth);
+    splitter.addEventListener('keydown', function (event) {
+        var current = $('items').closest('.pane').getBoundingClientRect().width;
+        if (event.key === 'ArrowLeft') { event.preventDefault(); setListWidth(current - 24, true); }
+        else if (event.key === 'ArrowRight') { event.preventDefault(); setListWidth(current + 24, true); }
+        else if (event.key === 'Home' || event.key === 'Escape') { event.preventDefault(); resetListWidth(); }
+    });
+    window.addEventListener('resize', function () {
+        var saved = split.style.getPropertyValue('--list-width');
+        if (saved) setListWidth(parseInt(saved, 10), false);
+    });
+    try {
+        var savedWidth = Number(localStorage.getItem(LIST_KEY));
+        if (savedWidth) setListWidth(savedWidth, false);
+    } catch (e) { /* storage may be blocked */ }
+
     // ---- start ----
 
     api('/api/config').then(function (res) {

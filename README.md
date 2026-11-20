@@ -5,6 +5,7 @@ A self-hosted shared stash. Two machines that can't reach each other open the sa
 - **A stash** is one shared link: `/s/<name>`. The name is always required. The form pre-fills a random 12-character one; you can type your own (letters, numbers, `-` and `_`).
 - **Items** are notes, images and files. The new-note box sits above the list and stays small; the expand button opens a bigger box with a title and a drop zone. Add files with the paperclip, by dragging them onto the page, or by pasting a screenshot (Ctrl+V).
 - **Titles**: a note can have an optional title (up to 150 characters). Without one, the first five words of the note are used. The list shows the title and two lines of the note; search matches titles too.
+- **Resizable panes**: drag the divider between the clip list and the open clip to make the list wider or narrower (double-click it, or press Home, to reset; the arrow keys work when it is focused). The width is remembered in your browser.
 - **Live**: items appear on every open page without a refresh (Server-Sent Events).
 - **QR code**: the "QR code" button in a stash's header shows a code that opens the stash on a phone or another device. It is made in the browser from the address you are using, so open Stashly by its network address or domain (not `localhost`) for a code a phone can reach; the page says so when the address is `localhost`. A stash password is not part of the code.
 - **Password** (optional, per stash): stored as a salted scrypt hash; unlocking sets an HttpOnly cookie for that stash only.

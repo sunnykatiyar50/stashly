@@ -256,7 +256,14 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 
 /* Two panes: the clip list on the left, the open clip on the right */
 .view-stash { overflow: hidden; }
-.split { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); gap: 12px; }
+/* The saved list width is capped here too, so a narrow window never squeezes the clip pane out */
+.split { flex: 1; min-height: 0; display: grid; grid-template-columns: max(200px, min(var(--list-width, 320px), calc(100% - 332px))) 12px minmax(0, 1fr); gap: 0; }
+/* The grip between the panes: a wide hit area with a thin line that shows on hover, focus and drag */
+.splitter { position: relative; cursor: col-resize; touch-action: none; outline: none; }
+.splitter::before { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; margin-left: -1.5px; border-radius: 2px; background: transparent; transition: background 0.1s; }
+.splitter:hover::before, .splitter:focus-visible::before, .split.resizing .splitter::before { background: var(--blue); }
+.split.resizing { cursor: col-resize; user-select: none; }
+.split.resizing .pane { pointer-events: none; }
 .pane { min-height: 0; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 
 .clip-tools { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); }
@@ -427,6 +434,7 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
     /* One pane at a time: the list, or the open clip with a back button */
     .view-stash { overflow: visible; }
     .split { grid-template-columns: 1fr; min-height: 70vh; }
+    .splitter { display: none; }
     .split:not(.show-detail) .detail-pane { display: none; }
     .split.show-detail .clip-pane { display: none; }
     .back-button { display: inline-flex; }
