@@ -59,10 +59,41 @@ test('text files upload when they really are text', async () => {
     await upload(ctx, base, 'table.csv', Buffer.from('a,b\n1,2')).expect(201);
 });
 
-test('SVG, HTML, scripts and unknown types are refused', async () => {
+test('any file whose content is text is accepted, and stored and served as plain text', async () => {
     const ctx = makeApp();
     const base = await stash(ctx);
-    for (const name of ['logo.svg', 'page.html', 'run.exe', 'tool.js', 'macro.docm', 'noextension', 'archive.tar.gz']) {
+    const names = [
+        'values.yaml', 'values.yml', 'page.html', 'app.conf', 'job.py', 'app.properties', 'tool.js',
+        'run.sh', 'Dockerfile', 'settings.ini', 'query.sql', 'ca.pem', 'site.crt', 'site.cer', 'archive.tar.gz',
+    ];
+    for (const name of names) {
+        const up = await upload(ctx, base, name, Buffer.from('key: value\n<script>alert(1)</script>\n')).expect(201);
+        assert.equal(up.body.isImage, false, name);
+        assert.match(up.body.fileType, /^text\/plain/, `${name} is stored as ${up.body.fileType}`);
+    }
+    // HTML is never rendered: it comes back as a sandboxed attachment
+    const html = await upload(ctx, base, 'again.html', Buffer.from('<h1>hi</h1>')).expect(201);
+    const served = await request(ctx.app).get(html.body.url).expect(200);
+    assert.match(served.headers['content-disposition'], /^attachment/);
+    assert.match(served.headers['content-security-policy'], /sandbox/);
+    assert.equal(served.headers['x-content-type-options'], 'nosniff');
+});
+
+test('binary DER certificates are accepted; other binary files with unknown types are not', async () => {
+    const ctx = makeApp();
+    const base = await stash(ctx);
+    const der = Buffer.from([0x30, 0x82, 0x03, 0x1a, 0x30, 0x82, 0x02, 0x02, 0x00, 0x01, 0x02, 0x00]);
+    const up = await upload(ctx, base, 'site.cer', der).expect(201);
+    assert.equal(up.body.fileType, 'application/x-x509-ca-cert');
+    await upload(ctx, base, 'blob.bin', Buffer.from([0x01, 0x00, 0x02, 0x00, 0xff])).expect(415);
+    await upload(ctx, base, 'archive.tar.gz', Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0x00])).expect(415);
+    await upload(ctx, base, 'noextension', Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x00])).expect(415);
+});
+
+test('SVG, programs, Windows script launchers and macro documents are refused even as text', async () => {
+    const ctx = makeApp();
+    const base = await stash(ctx);
+    for (const name of ['logo.svg', 'run.exe', 'x.dll', 'setup.msi', 'a.vbs', 'a.hta', 'a.lnk', 'macro.docm', 'macro.xlsm']) {
         const res = await upload(ctx, base, name, Buffer.from('<svg onload=alert(1)>'));
         assert.equal(res.status, 415, `expected 415 for ${name}`);
     }
