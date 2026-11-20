@@ -34,6 +34,11 @@ function connect(filePath = ':memory:') {
             created_at TEXT NOT NULL
         )`
     );
+    // Databases made before titles existed get the column added; old notes keep a null title
+    // and show the first words of their text instead
+    if (!db.prepare('PRAGMA table_info(items)').all().some(column => column.name === 'title')) {
+        db.exec('ALTER TABLE items ADD COLUMN title TEXT');
+    }
     db.exec('CREATE INDEX IF NOT EXISTS idx_items_stash ON items (stash_id, created_at)');
     db.exec(
         `CREATE TABLE IF NOT EXISTS files (

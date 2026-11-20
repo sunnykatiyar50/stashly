@@ -3,6 +3,7 @@ const { hashPassword, verifyPassword, MIN_PASSWORD, MAX_PASSWORD } = require('..
 const { signToken, verifyToken, parseCookies } = require('../utils/token');
 const { detectFile, cleanFileName } = require('../utils/fileType');
 const { dateRange } = require('../utils/time');
+const { parseTitle, deriveTitle } = require('../utils/title');
 
 const cookieName = slug => `stashly_${slug}`;
 const MAX_COOKIE_MS = 12 * 60 * 60 * 1000;
@@ -24,6 +25,9 @@ class StashController {
         return {
             id: row.id,
             kind: row.kind,
+            // Notes: the given title, or the first words of the text when there is none
+            title: isFile ? null : row.title || deriveTitle(row.text),
+            hasTitle: !isFile && Boolean(row.title),
             text: isFile ? null : row.text,
             fileName: isFile ? row.file_name : null,
             fileType: isFile ? row.file_type : null,
@@ -192,9 +196,11 @@ class StashController {
 
     addNote = (req, res) => {
         const stash = req.stash;
-        // JSON { text } from the page, or a plain-text body from curl
+        // JSON { title?, text } from the page, or a plain-text body from curl (which has no title)
         const raw = typeof req.body === 'string' ? req.body : req.body && req.body.text;
         if (typeof raw !== 'string' || !raw.trim()) return res.status(400).json({ error: 'Write something first.', field: 'text' });
+        const title = parseTitle(typeof req.body === 'string' ? undefined : req.body && req.body.title);
+        if (title.error) return res.status(400).json({ error: title.error, field: 'title' });
         const text = raw.replace(/\r\n/g, '\n');
         if (Buffer.byteLength(text) > this.config.maxNoteBytes) {
             return res.status(413).json({ error: `A note can be at most ${Math.round(this.config.maxNoteBytes / 1024)} KB.`, field: 'text' });
@@ -202,7 +208,7 @@ class StashController {
         if (this.model.usage(stash.id).items >= this.config.maxItemsPerStash) {
             return res.status(413).json({ error: `This stash is full (${this.config.maxItemsPerStash} items). Delete something first.` });
         }
-        const item = this.presentItem(stash.slug, this.model.addNote(stash.id, text, this.now()));
+        const item = this.presentItem(stash.slug, this.model.addNote(stash.id, text, this.now(), title.value));
         this.events.publish(stash.slug, 'item-added', item);
         res.status(201).json(item);
     };

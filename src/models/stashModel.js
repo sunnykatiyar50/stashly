@@ -68,10 +68,10 @@ class StashModel {
 
     // ---- items ----
 
-    addNote(stashId, text, now = new Date()) {
+    addNote(stashId, text, now = new Date(), title = null) {
         const result = this.db
-            .prepare(`INSERT INTO items (stash_id, kind, text, created_at) VALUES (?, 'note', ?, ?)`)
-            .run(stashId, text, now.toISOString());
+            .prepare(`INSERT INTO items (stash_id, kind, title, text, created_at) VALUES (?, 'note', ?, ?, ?)`)
+            .run(stashId, title, text, now.toISOString());
         return this.getItem(stashId, Number(result.lastInsertRowid));
     }
 
@@ -103,9 +103,9 @@ class StashModel {
         const where = ['stash_id = ?'];
         const params = [stashId];
         if (search) {
-            where.push(`(text LIKE ? ESCAPE '\\' OR file_name LIKE ? ESCAPE '\\')`);
+            where.push(`(text LIKE ? ESCAPE '\\' OR file_name LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\')`);
             const pattern = `%${escapeLike(search)}%`;
-            params.push(pattern, pattern);
+            params.push(pattern, pattern, pattern);
         }
         if (from) {
             where.push('created_at >= ?');

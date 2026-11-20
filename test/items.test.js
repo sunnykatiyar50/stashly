@@ -145,3 +145,72 @@ test('malformed JSON is a 400', async () => {
     const ctx = makeApp();
     await request(ctx.app).post('/api/stashes').set('Content-Type', 'application/json').send('{not json').expect(400);
 });
+
+test('a note can have a title; without one the first five words are used', async () => {
+    const ctx = makeApp();
+    const base = await stash(ctx);
+
+    const titled = await request(ctx.app).post(`${base}/notes`).send({ title: '  Deploy   token ', text: 'abc123' }).expect(201);
+    assert.equal(titled.body.title, 'Deploy token');
+    assert.equal(titled.body.hasTitle, true);
+
+    const auto = await request(ctx.app).post(`${base}/notes`).send({ text: 'one two three four five six seven' }).expect(201);
+    assert.equal(auto.body.title, 'one two three four five');
+    assert.equal(auto.body.hasTitle, false);
+
+    const short = await request(ctx.app).post(`${base}/notes`).send({ title: '   ', text: 'two words\nand more lines' }).expect(201);
+    assert.equal(short.body.title, 'two words and more lines');
+    assert.equal(short.body.hasTitle, false);
+
+    // a plain-text note from curl has no title either
+    const curl = await request(ctx.app).post(`${base}/notes`).set('Content-Type', 'text/plain').send('from curl with a long sentence here').expect(201);
+    assert.equal(curl.body.title, 'from curl with a long');
+});
+
+test('a title is at most 150 characters; one word of any length is cut to fit when derived', async () => {
+    const ctx = makeApp();
+    const base = await stash(ctx);
+    const ok = await request(ctx.app).post(`${base}/notes`).send({ title: 'x'.repeat(150), text: 'body' }).expect(201);
+    assert.equal(ok.body.title.length, 150);
+    const tooLong = await request(ctx.app).post(`${base}/notes`).send({ title: 'x'.repeat(151), text: 'body' }).expect(400);
+    assert.equal(tooLong.body.field, 'title');
+    await request(ctx.app).post(`${base}/notes`).send({ title: 42, text: 'body' }).expect(400);
+
+    const derived = await request(ctx.app).post(`${base}/notes`).send({ text: 'y'.repeat(400) }).expect(201);
+    assert.equal(derived.body.title.length, 150);
+});
+
+test('search also matches titles', async () => {
+    const ctx = makeApp();
+    const base = await stash(ctx);
+    await request(ctx.app).post(`${base}/notes`).send({ title: 'Wifi password', text: 'hunter2' }).expect(201);
+    await request(ctx.app).post(`${base}/notes`).send({ text: 'unrelated' }).expect(201);
+    const found = await request(ctx.app).get(base).query({ search: 'wifi' }).expect(200);
+    assert.deepEqual(found.body.items.map(i => i.text), ['hunter2']);
+});
+
+test('a database from before titles gets the column, and its notes show their first words', async () => {
+    const { DatabaseSync } = require('node:sqlite');
+    const { connect } = require('../src/database/sqlite');
+    const { StashModel } = require('../src/models/stashModel');
+    const os = require('node:os');
+    const path = require('node:path');
+    const fs = require('node:fs');
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'stashly-')), 'old.sqlite');
+
+    const old = new DatabaseSync(file);
+    old.exec(`CREATE TABLE stashes (id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL UNIQUE, password_hash TEXT, password_salt TEXT, ttl_ms INTEGER, created_at TEXT NOT NULL, expires_at TEXT)`);
+    old.exec(`CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, stash_id INTEGER NOT NULL REFERENCES stashes(id) ON DELETE CASCADE, kind TEXT NOT NULL, text TEXT, file_name TEXT, file_type TEXT, file_size INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)`);
+    old.exec(`INSERT INTO stashes (slug, created_at) VALUES ('legacy', '2026-01-01T00:00:00Z')`);
+    old.exec(`INSERT INTO items (stash_id, kind, text, created_at) VALUES (1, 'note', 'an older note without any title', '2026-01-01T00:00:00Z')`);
+    old.close();
+
+    const db = connect(file);
+    const model = new StashModel(db);
+    const rows = model.listItems(1);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].title, null);
+    const added = model.addNote(1, 'new', new Date(), 'Given');
+    assert.equal(added.title, 'Given');
+    db.close();
+});
