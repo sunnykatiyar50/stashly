@@ -1,4 +1,5 @@
-// The stash page: notes, images and files, live updates, search and date range
+// The stash page: a list of clips on the left, the picked clip (or a new one) on the right.
+// Live updates, search and date range, uploads by picker, drag and drop, and paste.
 (function () {
     'use strict';
 
@@ -6,8 +7,18 @@
     var base = '/api/stashes/' + encodeURIComponent(slug);
     var $ = function (id) { return document.getElementById(id); };
 
-    var state = { stash: null, items: [], filters: { search: '', startDate: '', endDate: '' }, es: null, connectedOnce: false };
+    var state = {
+        stash: null,
+        items: [],
+        filters: { search: '', startDate: '', endDate: '' },
+        es: null,
+        connectedOnce: false,
+        view: 'compose',   // what the right pane shows: 'compose' or 'detail'
+        selectedId: null,
+        started: false,    // the first successful load picks what to show
+    };
     var sections = { loading: $('stateLoading'), gone: $('stateGone'), locked: $('stateLocked'), main: $('stateMain') };
+    var narrow = window.matchMedia('(max-width: 760px)');
 
     document.title = slug + ' · Stashly';
     $('thisStashLink').href = location.pathname;
@@ -45,11 +56,20 @@
         Object.keys(sections).forEach(function (key) { sections[key].classList.toggle('hidden', key !== name); });
     }
 
-    function icon(markup) {
+    function make(tag, className, text) {
+        var el = document.createElement(tag);
+        if (className) el.className = className;
+        if (text !== undefined) el.textContent = text;
+        return el;
+    }
+
+    function svg(markup) {
         var span = document.createElement('span');
         span.innerHTML = markup;
         return span.firstChild;
     }
+
+    var NOTE_ICON = '<svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>';
 
     // Copy works on plain HTTP too (LAN addresses), where navigator.clipboard is unavailable
     function copyText(text) {
@@ -118,99 +138,62 @@
         return index > -1 ? name.slice(index + 1, index + 5) : 'file';
     }
 
-    // ---- items ----
+    function findItem(id) {
+        for (var i = 0; i < state.items.length; i++) if (state.items[i].id === id) return state.items[i];
+        return null;
+    }
 
     function button(label, className, onClick) {
-        var el = document.createElement('button');
+        var el = make('button', className, label);
         el.type = 'button';
-        el.className = className;
-        el.textContent = label;
         el.addEventListener('click', onClick);
         return el;
     }
 
-    function buildItem(item) {
-        var el = document.createElement('article');
-        el.className = 'item';
+    // ---- the list on the left ----
+
+    function itemTitle(item) {
+        if (item.kind !== 'note') return item.fileName;
+        var first = (item.text || '').split('\n').filter(function (line) { return line.trim(); })[0] || '';
+        return first.trim().slice(0, 100) || '(empty note)';
+    }
+
+    function itemSub(item) {
+        if (item.kind !== 'note') return window.StashlyUpload.formatSize(item.fileSize);
+        var lines = (item.text || '').split('\n').length;
+        return lines > 1 ? lines + ' lines' : (item.text || '').length + ' characters';
+    }
+
+    function buildClip(item) {
+        var el = make('button', 'clip');
+        el.type = 'button';
         el.dataset.id = item.id;
 
-        var main = document.createElement('div');
-        main.className = 'item-main';
-        var actions = document.createElement('div');
-        actions.className = 'item-actions';
-
-        if (item.kind === 'note') {
-            var text = document.createElement('pre');
-            text.className = 'item-text';
-            text.textContent = item.text;
-            main.appendChild(text);
-            actions.appendChild(button('Copy', 'ghost small', function (event) {
-                var target = event.currentTarget;
-                Promise.resolve(copyText(item.text)).then(function (ok) {
-                    toast(ok ? 'Copied' : 'Could not copy. Select the text and copy it by hand.', !ok);
-                    if (ok) { target.textContent = 'Copied'; setTimeout(function () { target.textContent = 'Copy'; }, 1500); }
-                });
-            }));
+        var lead;
+        if (item.isImage) {
+            lead = make('img', 'clip-thumb');
+            lead.src = item.url;
+            lead.alt = '';
+            lead.loading = 'lazy';
+        } else if (item.kind === 'file') {
+            lead = make('span', 'file-icon', extensionOf(item.fileName));
         } else {
-            if (item.isImage) {
-                var link = document.createElement('a');
-                link.className = 'thumb';
-                link.href = item.url;
-                link.target = '_blank';
-                link.rel = 'noopener';
-                var img = document.createElement('img');
-                img.src = item.url;
-                img.alt = item.fileName;
-                img.loading = 'lazy';
-                link.appendChild(img);
-                main.appendChild(link);
-            }
-            var line = document.createElement('div');
-            line.className = 'file-line';
-            if (!item.isImage) {
-                var badge = document.createElement('span');
-                badge.className = 'file-icon';
-                badge.textContent = extensionOf(item.fileName);
-                line.appendChild(badge);
-            }
-            var name = document.createElement('div');
-            var nameText = document.createElement('div');
-            nameText.className = 'file-name';
-            nameText.textContent = item.fileName;
-            var size = document.createElement('div');
-            size.className = 'item-meta';
-            size.textContent = window.StashlyUpload.formatSize(item.fileSize);
-            name.appendChild(nameText);
-            name.appendChild(size);
-            line.appendChild(name);
-            main.appendChild(line);
-
-            var download = document.createElement('a');
-            download.className = 'button-link small';
-            download.href = item.url + '?download=1';
-            download.setAttribute('download', item.fileName);
-            download.textContent = 'Download';
-            actions.appendChild(download);
-            if (item.isImage && canCopyImage) {
-                actions.appendChild(button('Copy image', 'ghost small', function () {
-                    copyImage(item).then(
-                        function () { toast('Image copied'); },
-                        function () { toast('Could not copy the image. Use Download instead.', true); }
-                    );
-                }));
-            }
+            lead = make('span', 'clip-icon');
+            lead.appendChild(svg(NOTE_ICON));
         }
+        el.appendChild(lead);
 
-        var meta = document.createElement('div');
-        meta.className = 'item-meta item-time';
-        meta.dataset.iso = item.createdAt;
-        meta.title = new Date(item.createdAt).toLocaleString();
-        meta.textContent = relativeTime(item.createdAt);
-        main.appendChild(meta);
+        var text = make('span', 'clip-text');
+        text.appendChild(make('span', 'clip-title', itemTitle(item)));
+        text.appendChild(make('span', 'clip-sub', itemSub(item)));
+        el.appendChild(text);
 
-        actions.appendChild(button('Delete', 'danger-ghost small', function () { removeItem(item); }));
-        el.appendChild(main);
-        el.appendChild(actions);
+        var time = make('span', 'clip-time item-time', relativeTime(item.createdAt));
+        time.dataset.iso = item.createdAt;
+        time.title = new Date(item.createdAt).toLocaleString();
+        el.appendChild(time);
+
+        el.addEventListener('click', function () { openItem(item.id); });
         return el;
     }
 
@@ -221,20 +204,155 @@
 
     function updateCounts() {
         var n = state.items.length;
-        $('itemInfo').textContent = n + (filtersActive() ? (n === 1 ? ' match' : ' matches') : n === 1 ? ' item' : ' items');
+        $('itemInfo').textContent = n + (filtersActive() ? (n === 1 ? ' match' : ' matches') : n === 1 ? ' clip' : ' clips');
         var empty = $('emptyState');
         empty.classList.toggle('hidden', n > 0);
         empty.textContent = filtersActive()
-            ? 'No items match your search or dates.'
-            : 'Nothing here yet. Add a note, drop a file, or paste a screenshot.';
+            ? 'No clips match your search or dates.'
+            : 'Nothing here yet. Add a note or drop a file.';
+        $('filterToggle').classList.toggle('active', Boolean(state.filters.startDate || state.filters.endDate));
+    }
+
+    function markSelected() {
+        Array.prototype.forEach.call($('items').children, function (el) {
+            var on = state.view === 'detail' && Number(el.dataset.id) === state.selectedId;
+            el.classList.toggle('selected', on);
+            if (on) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current');
+        });
+        $('newClipButton').classList.toggle('active', state.view === 'compose');
     }
 
     function renderItems() {
         var list = $('items');
         list.textContent = '';
-        state.items.forEach(function (item) { list.appendChild(buildItem(item)); });
+        state.items.forEach(function (item) { list.appendChild(buildClip(item)); });
         updateCounts();
+        markSelected();
     }
+
+    // ---- the pane on the right ----
+
+    // On a narrow screen only one pane shows at a time; "right" means the detail pane
+    function setPane(pane) {
+        $('split').classList.toggle('show-detail', pane === 'right');
+    }
+
+    function showComposer(focus) {
+        state.view = 'compose';
+        state.selectedId = null;
+        $('composer').classList.remove('hidden');
+        $('detail').classList.add('hidden');
+        markSelected();
+        setPane('right');
+        if (focus) $('noteInput').focus();
+    }
+
+    function openItem(id) {
+        var item = findItem(id);
+        if (!item) return;
+        state.view = 'detail';
+        state.selectedId = id;
+        $('composer').classList.add('hidden');
+        $('detail').classList.remove('hidden');
+        renderDetail(item);
+        markSelected();
+        setPane('right');
+    }
+
+    // What to show when the clip on the right has gone: its neighbour, or the composer
+    function showSomethingElse(preferIndex) {
+        if (!narrow.matches && state.items.length) {
+            var item = state.items[Math.min(Math.max(preferIndex, 0), state.items.length - 1)];
+            openItem(item.id);
+        } else {
+            showComposer(false);
+            setPane('list');
+        }
+    }
+
+    var TEXT_PREVIEW = { txt: 1, csv: 1, json: 1, md: 1, log: 1 };
+    var TEXT_PREVIEW_MAX = 512 * 1024;
+
+    function renderDetail(item) {
+        var actions = $('detailActions');
+        var body = $('detailBody');
+        actions.textContent = '';
+        body.textContent = '';
+        $('detailTitle').textContent = itemTitle(item);
+        var when = new Date(item.createdAt).toLocaleString();
+
+        if (item.kind === 'note') {
+            $('detailMeta').textContent = 'Note · ' + (item.text || '').length + ' characters · ' + when;
+            body.appendChild(make('pre', 'detail-text', item.text));
+            actions.appendChild(button('Copy', 'primary', function (event) {
+                var target = event.currentTarget;
+                Promise.resolve(copyText(item.text)).then(function (ok) {
+                    toast(ok ? 'Copied' : 'Could not copy. Select the text and copy it by hand.', !ok);
+                    if (ok) { target.textContent = 'Copied'; setTimeout(function () { target.textContent = 'Copy'; }, 1500); }
+                });
+            }));
+        } else {
+            $('detailMeta').textContent = window.StashlyUpload.formatSize(item.fileSize) + ' · ' + when;
+
+            var download = make('a', 'button-link primary-link', 'Download');
+            download.href = item.url + '?download=1';
+            download.setAttribute('download', item.fileName);
+            actions.appendChild(download);
+
+            if (item.isImage) {
+                var link = make('a', 'detail-image');
+                link.href = item.url;
+                link.target = '_blank';
+                link.rel = 'noopener';
+                link.title = 'Open full size';
+                var img = make('img');
+                img.src = item.url;
+                img.alt = item.fileName;
+                link.appendChild(img);
+                body.appendChild(link);
+                if (canCopyImage) {
+                    actions.appendChild(button('Copy image', 'ghost', function () {
+                        copyImage(item).then(
+                            function () { toast('Image copied'); },
+                            function () { toast('Could not copy the image. Use Download instead.', true); }
+                        );
+                    }));
+                }
+            } else {
+                var card = make('div', 'file-card');
+                card.appendChild(make('span', 'file-icon large', extensionOf(item.fileName)));
+                var info = make('div');
+                info.appendChild(make('div', 'file-name', item.fileName));
+                info.appendChild(make('div', 'muted', window.StashlyUpload.formatSize(item.fileSize) + (item.fileType ? ' · ' + item.fileType : '')));
+                card.appendChild(info);
+                body.appendChild(card);
+
+                var ext = item.fileName.slice(item.fileName.lastIndexOf('.') + 1).toLowerCase();
+                if (TEXT_PREVIEW[ext] && item.fileSize <= TEXT_PREVIEW_MAX) {
+                    var pre = make('pre', 'detail-text', 'Loading preview...');
+                    body.appendChild(pre);
+                    fetch(item.url, { credentials: 'same-origin' })
+                        .then(function (res) { if (!res.ok) throw new Error('preview'); return res.text(); })
+                        .then(function (text) {
+                            if (state.selectedId !== item.id) return;
+                            pre.textContent = text;
+                            actions.insertBefore(button('Copy text', 'ghost', function () {
+                                Promise.resolve(copyText(text)).then(function (ok) { toast(ok ? 'Copied' : 'Could not copy.', !ok); });
+                            }), actions.children[1] || null);
+                        })
+                        .catch(function () { pre.remove(); });
+                }
+            }
+        }
+
+        actions.appendChild(button('Delete', 'danger-ghost', function () { removeItem(item); }));
+        body.scrollTop = 0;
+    }
+
+    document.querySelectorAll('[data-back]').forEach(function (el) {
+        el.addEventListener('click', function () { setPane('list'); });
+    });
+    $('newClipButton').addEventListener('click', function () { showComposer(true); });
 
     function updateHeader() {
         var stash = state.stash;
@@ -287,12 +405,23 @@
                 if (!quiet) toast('Could not load the stash.', true);
                 return;
             }
+            var previousIndex = state.items.findIndex(function (item) { return item.id === state.selectedId; });
             state.stash = res.body;
             state.items = res.body.items;
             sections.main.classList.contains('hidden') && show('main');
             updateHeader();
             renderItems();
             connect();
+
+            if (!state.started) {
+                state.started = true;
+                // Desktop opens the newest clip (the usual reason to visit); a phone starts on the list
+                if (!narrow.matches && state.items.length) openItem(state.items[0].id);
+                else if (!narrow.matches) showComposer(false);
+            } else if (state.view === 'detail') {
+                if (findItem(state.selectedId)) renderDetail(findItem(state.selectedId));
+                else showSomethingElse(previousIndex);
+            }
         }).catch(function () {
             if (!quiet) toast('Could not reach the server.', true);
         });
@@ -337,21 +466,26 @@
         return true;
     }
 
+    // A new clip joins the top of the list. What is open on the right is left alone, so a clip
+    // arriving from another machine never pulls the page away from what you are reading or typing.
     function onItemAdded(item) {
         if (state.items.some(function (existing) { return existing.id === item.id; })) return;
         if (!matchesFilters(item)) return;
         state.items.unshift(item);
-        var el = buildItem(item);
+        var el = buildClip(item);
         el.classList.add('new');
         $('items').insertBefore(el, $('items').firstChild);
         updateCounts();
+        markSelected();
     }
 
     function onItemDeleted(id) {
+        var index = state.items.findIndex(function (item) { return item.id === id; });
         state.items = state.items.filter(function (item) { return item.id !== id; });
-        var el = document.querySelector('.item[data-id="' + id + '"]');
+        var el = document.querySelector('.clip[data-id="' + id + '"]');
         if (el) el.remove();
         updateCounts();
+        if (state.view === 'detail' && state.selectedId === id) showSomethingElse(index);
     }
 
     function connect() {
@@ -405,6 +539,7 @@
             if (res.ok) {
                 input.value = '';
                 onItemAdded(res.body);
+                toast('Note added');
                 input.focus();
             } else if (res.status === 401) {
                 locked();
@@ -475,20 +610,32 @@
     // ---- search and date range ----
 
     function applyFilters() {
-        state.filters = {
+        var next = {
             search: $('searchInput').value.trim(),
             startDate: $('startDate').value,
             endDate: $('endDate').value,
         };
-        if (state.filters.startDate && state.filters.endDate && state.filters.startDate > state.filters.endDate) {
+        if (next.startDate && next.endDate && next.startDate > next.endDate) {
             toast('The From date is after the To date.', true);
             return;
         }
+        state.filters = next;
         load();
     }
 
-    $('searchButton').addEventListener('click', applyFilters);
-    $('searchInput').addEventListener('keydown', function (event) { if (event.key === 'Enter') applyFilters(); });
+    var searchTimer;
+    $('searchInput').addEventListener('input', function () {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(applyFilters, 300);
+    });
+    $('searchInput').addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') { clearTimeout(searchTimer); applyFilters(); }
+    });
+    $('filterToggle').addEventListener('click', function () {
+        var panel = $('filterPanel');
+        panel.classList.toggle('hidden');
+        $('filterToggle').setAttribute('aria-expanded', String(!panel.classList.contains('hidden')));
+    });
     $('startDate').addEventListener('change', applyFilters);
     $('endDate').addEventListener('change', applyFilters);
     $('resetButton').addEventListener('click', function () {
@@ -504,7 +651,7 @@
     });
     $('refreshButton').addEventListener('click', function () { load(); });
 
-    // ---- uploads: picker, drag and drop, paste ----
+    // ---- uploads: picker, drop zone, drag and drop anywhere, paste ----
 
     var uploader = window.StashlyUpload.create({
         container: $('uploads'),
@@ -514,9 +661,21 @@
         onLocked: locked,
     });
 
-    $('attachButton').addEventListener('click', function () { $('fileInput').click(); });
+    // Upload progress lives in the composer, so show it whenever files are added
+    function addFiles(files) {
+        if (state.view !== 'compose') showComposer(false);
+        else setPane('right');
+        uploader.add(files);
+    }
+
+    var dropZone = $('dropZone');
+    function chooseFiles() { $('fileInput').click(); }
+    dropZone.addEventListener('click', chooseFiles);
+    dropZone.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); chooseFiles(); }
+    });
     $('fileInput').addEventListener('change', function (event) {
-        uploader.add(event.target.files);
+        addFiles(event.target.files);
         event.target.value = '';
     });
 
@@ -543,23 +702,26 @@
         event.preventDefault();
         dragDepth = 0;
         overlay.classList.add('hidden');
-        if (mainVisible()) uploader.add(event.dataTransfer.files);
+        if (mainVisible()) addFiles(event.dataTransfer.files);
     });
 
     document.addEventListener('paste', function (event) {
         var files = event.clipboardData && event.clipboardData.files;
         if (!files || !files.length || !mainVisible()) return;
         event.preventDefault();
-        uploader.add(files);
+        addFiles(files);
     });
 
     // ---- start ----
 
     api('/api/config').then(function (res) {
-        if (res.ok) uploader = window.StashlyUpload.create({
+        if (!res.ok) return;
+        var max = res.body.limits.maxFileBytes;
+        $('limitHint').textContent = 'Up to ' + window.StashlyUpload.formatSize(max) + ' per file. Images, PDF, Office files, zip, text, csv, json.';
+        uploader = window.StashlyUpload.create({
             container: $('uploads'),
             url: base + '/files',
-            maxBytes: res.body.limits.maxFileBytes,
+            maxBytes: max,
             onDone: function (item) { if (item) onItemAdded(item); },
             onLocked: locked,
         });

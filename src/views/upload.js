@@ -30,12 +30,17 @@
         var running = false;
         var container = options.container;
 
-        function row(name) {
+        function row(name, size) {
             var el = document.createElement('div');
             el.className = 'upload-row';
             var label = document.createElement('span');
             label.className = 'upload-name';
             label.textContent = name;
+            label.title = name;
+            var sizeLabel = document.createElement('span');
+            sizeLabel.className = 'upload-size';
+            sizeLabel.textContent = formatSize(size);
+            label.appendChild(sizeLabel);
             var bar = document.createElement('span');
             bar.className = 'upload-bar';
             var fill = document.createElement('span');
@@ -110,7 +115,7 @@
             add: function (files) {
                 Array.prototype.forEach.call(files, function (file) {
                     var name = nameFor(file);
-                    var ui = row(name);
+                    var ui = row(name, file.size);
                     if (options.maxBytes && file.size > options.maxBytes) {
                         fail(ui, 'Too large (' + formatSize(file.size) + '; the limit is ' + formatSize(options.maxBytes) + ')');
                         return;
