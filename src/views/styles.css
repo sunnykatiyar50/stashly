@@ -28,7 +28,7 @@
     --sidebar-active: #2563eb;
     --shadow: rgba(17, 24, 39, 0.08);
     color-scheme: light;
-    --sidebar-width: 232px;
+    --sidebar-width: 200px;
     --sidebar-collapsed: 60px;
     --radius: 8px;
     --mono: 'Cascadia Code', 'Fira Mono', 'Consolas', 'Menlo', 'Monaco', monospace;
@@ -96,7 +96,7 @@
 /* ===== Base ===== */
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
-body { font-family: var(--sans); font-size: 14px; color: var(--text); background: var(--bg); }
+body { font-family: var(--sans); font-size: 13px; color: var(--text); background: var(--bg); }
 h1, h2, h3, h4 { margin: 0; }
 code, .mono { font-family: var(--mono); font-size: 0.92em; }
 a { color: var(--blue); }
@@ -105,7 +105,7 @@ svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; s
 
 input, textarea, select {
     font: inherit;
-    padding: 7px 10px;
+    padding: 5px 9px;
     border: 1px solid var(--border-strong);
     border-radius: 6px;
     background: var(--surface);
@@ -122,7 +122,7 @@ button, .button-link {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    padding: 7px 14px;
+    padding: 5px 11px;
     border: 1px solid transparent;
     border-radius: 6px;
     cursor: pointer;
@@ -138,7 +138,7 @@ button.ghost, .button-link { border-color: var(--border-strong); }
 button.ghost:hover:not(:disabled), .button-link:hover { background: var(--surface-alt); border-color: var(--blue); }
 button.danger-ghost { color: var(--danger); border-color: var(--border-strong); }
 button.danger-ghost:hover:not(:disabled) { background: var(--danger-soft); border-color: var(--danger); }
-button.icon-only { padding: 7px 8px; }
+button.icon-only { padding: 5px 6px; }
 button.small, .button-link.small { padding: 4px 10px; font-size: 12.5px; }
 button.block { width: 100%; }
 button:focus-visible, .button-link:focus-visible, a:focus-visible { outline: 3px solid var(--blue-soft); outline-offset: 1px; }
@@ -182,7 +182,7 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
     align-items: center;
     gap: 11px;
     width: 100%;
-    padding: 9px 10px;
+    padding: 7px 10px;
     border: none;
     border-radius: 6px;
     background: none;
@@ -199,7 +199,7 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .sidebar-footer { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid #1f2937; }
 
 .content { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
-.view { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 18px 16px; gap: 12px; overflow: auto; }
+.view { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 10px 14px 12px; gap: 8px; overflow: auto; }
 .view-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
 .view-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; min-width: 0; }
 .view-title h1 { font-size: 19px; overflow-wrap: anywhere; }
@@ -210,7 +210,7 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .toolbar input[type="search"] { width: 240px; }
 .date-field { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
 
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
 .card h3 { font-size: 15px; margin-bottom: 4px; }
 
 /* "Jan 5 - Jan 7 x" chip and the Live badge, as in Message-Sandbox */
@@ -247,7 +247,7 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .form-status { margin: 0; font-size: 13px; color: var(--muted); }
 .form-status.error { color: var(--danger); }
 .how-list { margin: 8px 0 0; padding-left: 18px; color: var(--text-soft); line-height: 1.7; }
-.code { display: block; margin: 8px 0 0; padding: 10px 12px; border-radius: 6px; background: var(--code-bg); font-family: var(--mono); font-size: 12.5px; overflow-x: auto; white-space: pre; }
+.code { display: block; margin: 8px 0 0; padding: 12px 14px; border-radius: 6px; background: var(--code-bg); font-family: var(--mono); font-size: 12.5px; line-height: 1.7; overflow-x: auto; white-space: pre; }
 
 /* ===== Stash page ===== */
 .state-card { max-width: 480px; margin: 40px auto; text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
@@ -257,7 +257,7 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 /* Two panes: the clip list on the left, the open clip on the right */
 .view-stash { overflow: hidden; }
 /* The saved list width is capped here too, so a narrow window never squeezes the clip pane out */
-.split { flex: 1; min-height: 0; display: grid; grid-template-columns: max(200px, min(var(--list-width, 320px), calc(100% - 332px))) 12px minmax(0, 1fr); gap: 0; }
+.split { flex: 1; min-height: 0; display: grid; grid-template-columns: max(200px, min(var(--list-width, 440px), calc(100% - 332px))) 12px minmax(0, 1fr); gap: 0; }
 /* The grip between the panes: a wide hit area with a thin line that shows on hover, focus and drag */
 .splitter { position: relative; cursor: col-resize; touch-action: none; outline: none; }
 .splitter::before { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; margin-left: -1.5px; border-radius: 2px; background: transparent; transition: background 0.1s; }
@@ -266,7 +266,7 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .split.resizing .pane { pointer-events: none; }
 .pane { min-height: 0; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 
-.clip-tools { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); }
+.clip-tools { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); }
 .clip-tools .primary.active { box-shadow: inset 0 0 0 2px var(--blue-soft-hover); }
 .search-row { display: flex; gap: 6px; }
 .search-row input[type="search"] { flex: 1; min-width: 0; }
@@ -277,12 +277,12 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .clip-list { flex: 1; min-height: 0; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
 .clip {
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr) auto;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
     align-items: center;
     justify-content: stretch;
-    gap: 10px;
+    gap: 8px;
     width: 100%;
-    padding: 8px 10px;
+    padding: 5px 8px;
     text-align: left;
     white-space: normal;
     background: transparent;
@@ -292,7 +292,7 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .clip.selected { background: var(--blue-soft); border-color: var(--blue); }
 .clip.new { animation: flash 1.6s ease-out; }
 @keyframes flash { from { background: var(--blue-soft); border-color: var(--blue); } }
-.clip-thumb, .clip-icon { width: 40px; height: 40px; border-radius: 6px; flex: none; }
+.clip-thumb, .clip-icon { width: 34px; height: 34px; border-radius: 6px; flex: none; }
 .clip-thumb { object-fit: cover; border: 1px solid var(--border); background: var(--code-bg); }
 .clip-icon { display: inline-flex; align-items: center; justify-content: center; background: var(--code-bg); color: var(--muted); }
 .clip-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -305,8 +305,8 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .clip-time { white-space: nowrap; align-self: start; padding-top: 2px; }
 .clip-list + .empty-state { margin: 12px; }
 
-.detail-pane { overflow: auto; padding: 18px 20px; gap: 14px; }
-.detail { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.detail-pane { overflow: auto; padding: 12px 14px; gap: 10px; }
+.detail { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
 .pane-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 14px; }
 .pane-title { min-width: 0; flex: 1 1 220px; display: flex; flex-direction: column; gap: 3px; }
 .pane-title h2 { font-size: 17px; overflow-wrap: anywhere; }
@@ -332,11 +332,11 @@ audio.detail-media { max-height: none; }
 /* The composer: one small row that is always on the page: a small title box, the note box, buttons.
    Expanded, the title goes on top, the note box is bigger and a drop zone appears.
    The note box can be dragged taller or shorter by its bottom-right corner. */
-.composer-bar { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
+.composer-bar { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; }
 .composer-row { display: flex; align-items: flex-start; gap: 8px; }
 .composer-fields { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 8px; }
-.composer-fields textarea { flex: 1; min-width: 0; height: 38px; min-height: 38px; max-height: 70vh; resize: vertical; padding: 8px 10px; line-height: 1.4; overflow: auto; }
-.composer-title { flex: 0 0 160px; width: 160px; height: 38px; }
+.composer-fields textarea { flex: 1; min-width: 0; height: 34px; min-height: 34px; max-height: 70vh; resize: vertical; padding: 8px 10px; line-height: 1.4; overflow: auto; }
+.composer-title { flex: 0 0 160px; width: 160px; height: 34px; }
 .composer-buttons { display: flex; gap: 6px; flex: none; }
 .composer-bar .icon-collapse { display: none; }
 .composer-bar.expanded .icon-expand { display: none; }
