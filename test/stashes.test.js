@@ -24,7 +24,7 @@ test('creating a stash returns its link and expiry', async () => {
     assert.equal(get.body.hasPassword, false);
 });
 
-test('the name is required, at least 4 characters, and only safe characters', async () => {
+test('the name is required, long enough, and only safe characters', async () => {
     const { app } = makeApp();
     for (const slug of [undefined, '', '   ', 'abc', 'a b c d', 'café', 'x/y/z/w', 'a'.repeat(65), 'suggest']) {
         const res = await request(app).post('/api/stashes').send({ slug });

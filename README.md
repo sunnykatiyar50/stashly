@@ -2,7 +2,7 @@
 
 A self-hosted shared stash. Two machines that can't reach each other open the same link, drop text, images and files on it, and copy them across. No accounts.
 
-- **A stash** is one shared link: `/s/<name>`. The name is always required. The form pre-fills a random 12-character one; you can type your own (4 to 64 characters: `a-z 0-9 - _`).
+- **A stash** is one shared link: `/s/<name>`. The name is always required. The form pre-fills a random 12-character one; you can type your own (letters, numbers, `-` and `_`).
 - **Items** are notes, images and files. Add by typing, attaching, dragging files onto the page, or pasting a screenshot (Ctrl+V).
 - **Live**: items appear on every open page without a refresh (Server-Sent Events).
 - **Password** (optional, per stash): stored as a salted scrypt hash; unlocking sets an HttpOnly cookie for that stash only.

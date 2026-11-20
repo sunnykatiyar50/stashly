@@ -113,7 +113,7 @@ class StashController {
             if (typeof body.password !== 'string' || body.password.length < MIN_PASSWORD || body.password.length > MAX_PASSWORD) {
                 return res
                     .status(400)
-                    .json({ error: `The password must be ${MIN_PASSWORD} to ${MAX_PASSWORD} characters.`, field: 'password' });
+                    .json({ error: 'That password is too short or too long.', field: 'password' });
             }
             password = body.password;
         }
