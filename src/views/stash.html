@@ -103,13 +103,15 @@
                         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="14.01"/><line x1="18" y1="14" x2="21" y2="14"/><line x1="14" y1="18" x2="14" y2="21"/><line x1="18" y1="18" x2="21" y2="18"/><line x1="21" y1="21" x2="21" y2="21.01"/></svg>
                         QR code
                     </button>
-                    <button type="button" id="optionsButton" class="ghost small" title="Auto-copy, notifications and how many items to keep">Options</button>
-                    <button type="button" id="shareButton" class="ghost small hidden" title="Make a read-only link or a drop-box link for this stash">Share links</button>
                     <button type="button" id="copyLatestButton" class="ghost small" title="Copy the newest note (Alt+C)">Copy latest</button>
                     <button type="button" id="copyLinkButton" class="ghost small">Copy link</button>
+                    <button type="button" id="shareButton" class="ghost small hidden" title="Make a read-only link or a drop-box link for this stash">Share links</button>
                     <button type="button" id="extendButton" class="ghost small">Extend</button>
-                    <button type="button" id="deleteStashButton" class="danger-ghost small">Delete stash</button>
                     <button type="button" id="logoutButton" class="ghost small" title="Leave this stash">Exit</button>
+                    <!-- Everything that is rarely needed (and the dangerous Delete) lives behind this icon -->
+                    <button type="button" id="optionsButton" class="ghost icon-only header-gear" title="Options" aria-label="Options">
+                        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    </button>
                 </div>
             </header>
 
@@ -260,6 +262,22 @@
                 <strong>Keep only the last</strong>
                 <label class="opt"><select id="keepSelect"></select></label>
                 <span class="muted">Older items are deleted as new ones arrive, so the stash works like a rolling clipboard. Pinned items are never deleted by this.</span>
+            </div>
+            <!-- Kept here, out of the header, and behind typing the name, so it cannot be hit by accident -->
+            <div class="share-row danger-row" data-option="danger">
+                <strong>Delete this stash</strong>
+                <span class="muted">Deletes the stash with every note and file in it, for everyone. This cannot be undone.</span>
+                <div class="share-actions">
+                    <button type="button" id="deleteStashButton" class="danger-ghost small">Delete this stash...</button>
+                </div>
+                <form id="deleteStashForm" class="edit-form hidden" novalidate>
+                    <label class="muted" for="deleteStashName">Type <code id="deleteStashSlug"></code> to confirm.</label>
+                    <input type="text" id="deleteStashName" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Type the stash name to confirm" />
+                    <div class="share-actions">
+                        <button type="submit" id="deleteStashConfirm" class="danger-ghost small" disabled>Delete forever</button>
+                        <button type="button" id="deleteStashCancel" class="ghost small">Cancel</button>
+                    </div>
+                </form>
             </div>
             <div class="qr-actions">
                 <button type="button" id="optionsClose" class="primary">Close</button>

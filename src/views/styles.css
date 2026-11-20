@@ -492,8 +492,8 @@ audio.detail-media { max-height: none; }
 .share-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .share-body .qr-actions { justify-content: flex-end; }
 /* A read-only link: no way to add or change anything. A drop-box link: only the composer. */
-.role-view #composer, .role-view #extendButton, .role-view #deleteStashButton, .role-view #qrButton, .role-view #copyLinkButton { display: none; }
-.role-drop #split, .role-drop #extendButton, .role-drop #deleteStashButton, .role-drop #qrButton, .role-drop #copyLinkButton,
+.role-view #composer, .role-view #extendButton, .role-view #qrButton, .role-view #copyLinkButton { display: none; }
+.role-drop #split, .role-drop #extendButton, .role-drop #qrButton, .role-drop #copyLinkButton,
 .role-drop #copyLatestButton, .role-drop #refreshButton, .role-drop #itemInfo, .role-drop #liveStatus { display: none; }
 
 /* ===== Links, code colours, editing, options ===== */
@@ -512,3 +512,11 @@ audio.detail-media { max-height: none; }
 .clip-flags.pinned { font-weight: 600; }
 .role-drop #optionsButton, .role-drop #presenceChip { display: none; }
 .role-view [data-option="keep"] { display: none; }
+
+/* ===== Header tidy-up and the delete row in Options ===== */
+.header-actions { align-items: center; }
+/* The gear sits on the far right, a little apart from the buttons */
+.header-gear { margin-left: 6px; }
+.header-gear svg { width: 17px; height: 17px; }
+.danger-row { border-color: var(--danger); background: var(--danger-soft); }
+.role-view [data-option="danger"] { display: none; }
