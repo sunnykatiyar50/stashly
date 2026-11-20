@@ -2,7 +2,7 @@
     "name": "Stashly",
     "short_name": "Stashly",
     "description": "A shared stash for text, images and files. Share to it from any app.",
-    "start_url": "/",
+    "start_url": "/?source=pwa",
     "scope": "/",
     "display": "standalone",
     "background_color": "#0b0f17",

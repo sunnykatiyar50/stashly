@@ -526,3 +526,29 @@ audio.detail-media { max-height: none; }
 .clip-flag-burn { background: var(--warning-bg); color: var(--warning-text); }
 .clip-flag-expiry { font-variant-numeric: tabular-nums; }
 .lock-chip { padding: 2px 6px; }
+
+/* ===== Rendered Markdown in the open clip, and the extra code colours ===== */
+.detail-text.md { font-family: var(--sans); font-size: 14px; line-height: 1.6; white-space: normal; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p { margin: 0 0 10px; }
+.md .md-h { margin: 16px 0 8px; line-height: 1.3; }
+.md .md-h1 { font-size: 1.5em; }
+.md .md-h2 { font-size: 1.3em; }
+.md .md-h3 { font-size: 1.15em; }
+.md .md-h4, .md .md-h5, .md .md-h6 { font-size: 1em; }
+.md ul, .md ol { margin: 0 0 10px; padding-left: 24px; }
+.md li { margin: 2px 0; }
+.md li > ul, .md li > ol { margin: 2px 0 2px; }
+.md .md-task { list-style: none; margin-left: -20px; }
+.md blockquote { margin: 0 0 10px; padding: 2px 12px; border-left: 3px solid var(--border-strong); color: var(--text-soft); }
+.md hr { border: none; border-top: 1px solid var(--border-strong); margin: 14px 0; }
+.md .md-inline-code { font-family: var(--mono); font-size: 0.92em; padding: 1px 5px; border-radius: 4px; background: var(--surface-alt); border: 1px solid var(--border); }
+.md .md-code { margin: 0 0 10px; padding: 10px 12px; border-radius: 6px; background: var(--surface-alt); border: 1px solid var(--border); overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.5; white-space: pre; }
+.md .md-code code { font-family: inherit; }
+.md .md-table { border-collapse: collapse; margin: 0 0 10px; display: block; overflow-x: auto; }
+.md .md-table th, .md .md-table td { border: 1px solid var(--border-strong); padding: 5px 10px; }
+.md .md-table th { background: var(--surface-alt); }
+.tok-add { color: light-dark(#0b7a3b, #7ee0a1); }
+.tok-del { color: light-dark(#b91c1c, #f28b82); }
+.tok-hunk { color: light-dark(#1d4ed8, #8ab4ff); }

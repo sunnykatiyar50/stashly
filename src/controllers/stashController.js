@@ -322,6 +322,45 @@ class StashController {
         res.json({ ok: true, sessionEndsAt: new Date(Math.min(this.now().getTime() + session.ms, stashEnd)).toISOString() });
     };
 
+    // Renames the stash (full access only). The address changes, so:
+    //  - the old name stops working at once, and is free for anyone to take;
+    //  - on a password-protected stash everyone else is signed out (their sign-in is tied to the old name), while this
+    //    browser is signed in again under the new name for the time it had left;
+    //  - the read-only and drop-box links are cancelled, since they carry the old name.
+    // Open pages are told the new address and follow it.
+    rename = (req, res) => {
+        const stash = req.stash;
+        const parsed = parseSlug(req.body && req.body.slug);
+        if (parsed.error) return res.status(400).json({ error: parsed.error, field: 'slug' });
+        if (parsed.slug === stash.slug) return res.status(400).json({ error: 'That is already the name of this stash.', field: 'slug' });
+        // The same rule as creating: without a password the name is the only lock, so it has to be long enough
+        const minName = this.config.minOpenNameLength;
+        if (!stash.password_hash && minName && parsed.slug.length < minName) {
+            return res.status(400).json({ error: `Without a password the name must be at least ${minName} characters.`, field: 'slug' });
+        }
+
+        const end = this.sessionEnd(req, stash, 'full');
+        const remaining = end ? Math.max(0, new Date(end).getTime() - this.now().getTime()) : this.sessionMs(null);
+        let updated;
+        try {
+            updated = this.model.renameStash(stash.id, parsed.slug);
+        } catch (err) {
+            if (err.code === 'DUPLICATE') return res.status(409).json({ error: err.message, field: 'slug' });
+            throw err;
+        }
+
+        // A wrong-password count belongs to the stash, not the name
+        const failures = this.failures.get(stash.slug);
+        if (failures) {
+            this.failures.delete(stash.slug);
+            this.failures.set(updated.slug, failures);
+        }
+        for (const kind of ['full', 'view', 'drop']) res.clearCookie(this.cookieFor(stash.slug, kind), { path: '/' });
+        if (updated.password_hash) this.setAccessCookie(req, res, updated, 'full', remaining);
+        this.events.closeAll(stash.slug, 'stash-renamed', { slug: updated.slug, origin: this.withOrigin({}, req).origin });
+        res.json({ ok: true, slug: updated.slug, url: `/s/${updated.slug}` });
+    };
+
     // Changes the stash's password. Stashly has no accounts, so there is no separate "owner": the owner is whoever knows
     // the current password, and they prove it again here (so a browser someone walked away from cannot be used to take
     // the stash over). Wrong guesses count towards the same lockout as unlocking.
