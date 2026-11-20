@@ -460,3 +460,11 @@ audio.detail-media { max-height: none; }
 @media (prefers-reduced-motion: reduce) {
     .live::before, .clip.new { animation: none; }
 }
+
+/* ===== Note options: burn after reading, secret, per-note expiry ===== */
+.note-options { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-bottom: 8px; }
+.note-options .opt { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-soft); }
+.note-options select { padding: 3px 6px; font-size: 12.5px; }
+.clip-flags { font-size: 11.5px; color: var(--blue); }
+.burn-card { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: var(--radius); background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--border); }
+.burn-card .muted { color: inherit; opacity: 0.85; }

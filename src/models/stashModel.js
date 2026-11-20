@@ -68,11 +68,38 @@ class StashModel {
 
     // ---- items ----
 
-    addNote(stashId, text, now = new Date(), title = null) {
+    // options: expiresAt (ISO, the note goes at that time), burn (text withheld until revealed, then deleted), secret (masked)
+    addNote(stashId, text, now = new Date(), title = null, { expiresAt = null, burn = false, secret = false } = {}) {
         const result = this.db
-            .prepare(`INSERT INTO items (stash_id, kind, title, text, created_at) VALUES (?, 'note', ?, ?, ?)`)
-            .run(stashId, title, text, now.toISOString());
+            .prepare(
+                `INSERT INTO items (stash_id, kind, title, text, created_at, expires_at, burn, secret)
+                 VALUES (?, 'note', ?, ?, ?, ?, ?, ?)`
+            )
+            .run(stashId, title, text, now.toISOString(), expiresAt, burn ? 1 : 0, secret ? 1 : 0);
         return this.getItem(stashId, Number(result.lastInsertRowid));
+    }
+
+    // Deletes notes whose own expiry has passed. Returns { id, slug } for each, so pages can be told.
+    purgeExpiredItems(now = new Date()) {
+        const rows = this.db
+            .prepare(
+                `SELECT i.id, s.slug FROM items i JOIN stashes s ON s.id = i.stash_id
+                 WHERE i.expires_at IS NOT NULL AND i.expires_at <= ?`
+            )
+            .all(now.toISOString());
+        if (!rows.length) return [];
+        const remove = this.db.prepare('DELETE FROM items WHERE id = ?');
+        for (const row of rows) remove.run(row.id);
+        return rows;
+    }
+
+    // An item past its own expiry counts as gone, even before the cleanup job removes it
+    getLiveItem(stashId, id, now = new Date()) {
+        return (
+            this.db
+                .prepare('SELECT * FROM items WHERE stash_id = ? AND id = ? AND (expires_at IS NULL OR expires_at > ?)')
+                .get(stashId, id, now.toISOString()) || null
+        );
     }
 
     addFile(stashId, { fileName, fileType, content }, now = new Date()) {
@@ -99,11 +126,12 @@ class StashModel {
     }
 
     // Newest first. Filters: search (note text or file name), from/to (ISO instants, to is exclusive)
-    listItems(stashId, { search, from, to } = {}) {
-        const where = ['stash_id = ?'];
-        const params = [stashId];
+    // Items past their own expiry are left out, and the text of a burn-after-reading note is never searched.
+    listItems(stashId, { search, from, to, now = new Date() } = {}) {
+        const where = ['stash_id = ?', '(expires_at IS NULL OR expires_at > ?)'];
+        const params = [stashId, now.toISOString()];
         if (search) {
-            where.push(`(text LIKE ? ESCAPE '\\' OR file_name LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\')`);
+            where.push(`((burn = 0 AND text LIKE ? ESCAPE '\\') OR file_name LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\')`);
             const pattern = `%${escapeLike(search)}%`;
             params.push(pattern, pattern, pattern);
         }
@@ -120,11 +148,14 @@ class StashModel {
             .all(...params);
     }
 
-    latestNote(stashId) {
+    latestNote(stashId, now = new Date()) {
         return (
             this.db
-                .prepare(`SELECT * FROM items WHERE stash_id = ? AND kind = 'note' ORDER BY created_at DESC, id DESC LIMIT 1`)
-                .get(stashId) || null
+                .prepare(
+                    `SELECT * FROM items WHERE stash_id = ? AND kind = 'note' AND (expires_at IS NULL OR expires_at > ?)
+                     ORDER BY created_at DESC, id DESC LIMIT 1`
+                )
+                .get(stashId, now.toISOString()) || null
         );
     }
 

@@ -45,6 +45,13 @@ function loadConfig(env = process.env, overrides = {}) {
         rateAdminLogin: num(env.RATE_ADMIN_LOGIN, 10),
         ttlOptions,
         defaultTtl: '1d',
+        // How long a single note can live (shorter than its stash); a note with none lives as long as the stash
+        itemTtlOptions: [
+            { key: '5m', label: '5 minutes', ms: 5 * 60 * 1000 },
+            { key: '1h', label: '1 hour', ms: HOUR },
+            { key: '8h', label: '8 hours', ms: 8 * HOUR },
+            { key: '1d', label: '1 day', ms: 24 * HOUR },
+        ],
         rateCreate: num(env.RATE_CREATE, 20),
         ratePost: num(env.RATE_POST, 120),
         rateUpload: num(env.RATE_UPLOAD, 40),

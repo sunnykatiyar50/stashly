@@ -14,6 +14,7 @@
         es: null,
         connectedOnce: false,
         selectedId: null,  // the clip open on the right, or null
+        revealedId: null,  // a burn note whose text is on screen and nowhere else
         started: false,    // the first successful load picks what to show
     };
     var sections = { loading: $('stateLoading'), gone: $('stateGone'), locked: $('stateLocked'), main: $('stateMain') };
@@ -157,10 +158,24 @@
         return item.title || '(empty note)';
     }
 
+    var MASK = '••••••••';
+
+    // "Burns after reading", "Secret" and "Deletes in 4 min" for a note; baseOnly leaves out the countdown
+    function flagsText(item, baseOnly) {
+        if (item.kind !== 'note') return '';
+        var parts = [];
+        if (item.burn) parts.push('Burns after reading');
+        if (item.secret) parts.push('Secret');
+        if (item.expiresAt && !baseOnly) parts.push(expiryText(item.expiresAt));
+        return parts.join(' · ');
+    }
+
     // The line under the title in the list: a few lines of the note, or the size of a file.
     // A note without a title shows its whole content here (no separate title row).
     function itemSub(item) {
         if (item.kind !== 'note') return window.StashlyUpload.formatSize(item.fileSize);
+        if (item.burn) return '';
+        if (item.secret) return MASK;
         var text = item.text || '';
         return text.replace(/\s+/g, ' ').trim().slice(0, 240);
     }
@@ -185,12 +200,20 @@
         el.appendChild(lead);
 
         var text = make('span', 'clip-text');
-        // A note with no title of its own shows just its content, not a made-up title
-        var untitled = item.kind === 'note' && !item.hasTitle;
+        // A note with no title of its own shows just its content, not a made-up title.
+        // Secret and burn notes always show a title, because their content must not show here.
+        var untitled = item.kind === 'note' && !item.hasTitle && !item.secret && !item.burn;
         if (!untitled) text.appendChild(make('span', 'clip-title', itemTitle(item)));
         var sub = itemSub(item);
         if (untitled && !sub) text.appendChild(make('span', 'clip-title', '(empty note)'));
         else if (sub) text.appendChild(make('span', untitled ? 'clip-preview clip-body' : item.kind === 'note' ? 'clip-sub clip-preview' : 'clip-sub', sub));
+        var flags = flagsText(item);
+        if (flags) {
+            var flagLine = make('span', 'clip-sub clip-flags', flags);
+            if (item.expiresAt) flagLine.dataset.expires = item.expiresAt;
+            flagLine.dataset.base = flagsText(item, true);
+            text.appendChild(flagLine);
+        }
         el.appendChild(text);
 
         var time = make('span', 'clip-time item-time', relativeTime(item.createdAt));
@@ -255,6 +278,7 @@
     function openItem(id) {
         var item = findItem(id);
         if (!item) return;
+        state.revealedId = null;
         state.selectedId = id;
         $('detailEmpty').classList.add('hidden');
         $('detail').classList.remove('hidden');
@@ -302,6 +326,50 @@
             .catch(function () { box.remove(); });
     }
 
+    function copyButton(label, className, value) {
+        return button(label, className, function (event) {
+            var target = event.currentTarget;
+            Promise.resolve(copyText(value)).then(function (ok) {
+                toast(ok ? 'Copied' : 'Could not copy. Select the text and copy it by hand.', !ok);
+                if (ok) { target.textContent = 'Copied'; setTimeout(function () { target.textContent = label; }, 1500); }
+            });
+        });
+    }
+
+    // Asks the server for a burn note's text. The note is deleted as it is handed over, so what is shown here
+    // is the only copy; it stays on screen until another clip is opened.
+    function revealBurn(item, trigger) {
+        trigger.disabled = true;
+        state.revealedId = item.id;
+        api(base + '/items/' + item.id + '/reveal', { method: 'POST' }).then(function (res) {
+            if (res.status === 401) { locked(); return; }
+            if (!res.ok) {
+                trigger.disabled = false;
+                state.revealedId = null;
+                toast((res.body && res.body.error) || 'Could not reveal that note.', true);
+                if (res.status === 404) onItemDeleted(item.id);
+                return;
+            }
+            onItemDeleted(item.id);
+            if (state.selectedId !== item.id) return;
+            var actions = $('detailActions');
+            var body = $('detailBody');
+            actions.textContent = '';
+            body.textContent = '';
+            $('detailMeta').textContent = 'Revealed once · now deleted for everyone';
+            body.appendChild(make('pre', 'detail-text', res.body.text));
+            actions.appendChild(copyButton('Copy', 'primary', res.body.text));
+            actions.appendChild(button('Done', 'ghost', function () {
+                state.revealedId = null;
+                showSomethingElse(0);
+            }));
+        }).catch(function () {
+            trigger.disabled = false;
+            state.revealedId = null;
+            toast('Could not reach the server.', true);
+        });
+    }
+
     function renderDetail(item) {
         var actions = $('detailActions');
         var body = $('detailBody');
@@ -310,16 +378,27 @@
         $('detailTitle').textContent = itemTitle(item);
         var when = new Date(item.createdAt).toLocaleString();
 
-        if (item.kind === 'note') {
-            $('detailMeta').textContent = 'Note · ' + (item.text || '').length + ' characters · ' + when;
-            body.appendChild(make('pre', 'detail-text', item.text));
-            actions.appendChild(button('Copy', 'primary', function (event) {
-                var target = event.currentTarget;
-                Promise.resolve(copyText(item.text)).then(function (ok) {
-                    toast(ok ? 'Copied' : 'Could not copy. Select the text and copy it by hand.', !ok);
-                    if (ok) { target.textContent = 'Copied'; setTimeout(function () { target.textContent = 'Copy'; }, 1500); }
-                });
-            }));
+        if (item.kind === 'note' && item.burn) {
+            // The text is not here: it stays on the server until someone reveals it, and then it is deleted
+            $('detailMeta').textContent = ['Note', 'Burns after reading', item.expiresAt ? expiryText(item.expiresAt) : '', when].filter(Boolean).join(' · ');
+            var warning = make('div', 'burn-card');
+            warning.appendChild(make('strong', null, 'This note burns after reading.'));
+            warning.appendChild(make('span', 'muted', 'Its text has not been sent to this page. Revealing it shows it once and deletes it for everyone, so be ready to copy it.'));
+            body.appendChild(warning);
+            actions.appendChild(button('Reveal and delete', 'primary', function (event) { revealBurn(item, event.currentTarget); }));
+        } else if (item.kind === 'note') {
+            $('detailMeta').textContent = ['Note', item.secret ? 'Secret' : '', item.expiresAt ? expiryText(item.expiresAt) : '', (item.text || '').length + ' characters', when].filter(Boolean).join(' · ');
+            var pre = make('pre', 'detail-text', item.secret ? MASK : item.text);
+            body.appendChild(pre);
+            actions.appendChild(copyButton('Copy', 'primary', item.text));
+            if (item.secret) {
+                var shown = false;
+                actions.appendChild(button('Show', 'ghost', function (event) {
+                    shown = !shown;
+                    pre.textContent = shown ? item.text : MASK;
+                    event.currentTarget.textContent = shown ? 'Hide' : 'Show';
+                }));
+            }
         } else {
             $('detailMeta').textContent = window.StashlyUpload.formatSize(item.fileSize) + ' · ' + when;
 
@@ -427,6 +506,12 @@
         Array.prototype.forEach.call(document.querySelectorAll('.item-time'), function (el) {
             el.textContent = relativeTime(el.dataset.iso);
         });
+        // Notes with their own expiry: count down, and drop them from the page when the time is up
+        state.items.filter(function (item) { return item.expiresAt && new Date(item.expiresAt).getTime() <= Date.now(); })
+            .forEach(function (item) { onItemDeleted(item.id); });
+        Array.prototype.forEach.call(document.querySelectorAll('.clip-flags[data-expires]'), function (el) {
+            el.textContent = (el.dataset.base ? el.dataset.base + ' · ' : '') + expiryText(el.dataset.expires);
+        });
         updateExpiry();
     }
 
@@ -462,7 +547,7 @@
                 state.started = true;
                 // Desktop opens the newest clip (the usual reason to visit); a phone starts on the list
                 if (!narrow.matches && state.items.length) openItem(state.items[0].id);
-            } else if (state.selectedId !== null) {
+            } else if (state.selectedId !== null && state.revealedId !== state.selectedId) {
                 if (findItem(state.selectedId)) renderDetail(findItem(state.selectedId));
                 else showSomethingElse(previousIndex);
             }
@@ -529,7 +614,8 @@
         var el = document.querySelector('.clip[data-id="' + id + '"]');
         if (el) el.remove();
         updateCounts();
-        if (state.selectedId === id) showSomethingElse(index);
+        // A note that was just revealed stays on screen (its text is no longer anywhere else) until another clip is opened
+        if (state.selectedId === id && state.revealedId !== id) showSomethingElse(index);
     }
 
     function connect() {
@@ -578,11 +664,22 @@
         if (!text.trim()) { error.textContent = 'Write something first.'; input.focus(); return; }
         var submit = $('addNoteButton');
         submit.disabled = true;
-        api(base + '/notes', { method: 'POST', body: { title: $('titleInput').value, text: text } }).then(function (res) {
+        var note = {
+            title: $('titleInput').value,
+            text: text,
+            burn: $('burnInput').checked,
+            secret: $('secretInput').checked,
+            expires: $('itemTtlSelect').value,
+        };
+        api(base + '/notes', { method: 'POST', body: note }).then(function (res) {
             submit.disabled = false;
             if (res.ok) {
                 input.value = '';
                 $('titleInput').value = '';
+                // The options are for one note: the next one starts plain
+                $('burnInput').checked = false;
+                $('secretInput').checked = false;
+                $('itemTtlSelect').value = '';
                 onItemAdded(res.body);
                 toast('Note added');
                 input.focus();
@@ -880,6 +977,11 @@
 
     api('/api/config').then(function (res) {
         if (!res.ok) return;
+        (res.body.itemTtlOptions || []).forEach(function (option) {
+            var el = make('option', null, option.label);
+            el.value = option.key;
+            $('itemTtlSelect').appendChild(el);
+        });
         var max = res.body.limits.maxFileBytes;
         $('limitHint').textContent = 'Up to ' + window.StashlyUpload.formatSize(max) + ' per file. Images, PDF, Office files, zip, certificates and any text file.';
         uploader = window.StashlyUpload.create({
@@ -891,6 +993,6 @@
         });
     });
 
-    setInterval(updateTimes, 30000);
+    setInterval(updateTimes, 15000);
     load();
 })();
