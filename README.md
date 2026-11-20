@@ -3,7 +3,8 @@
 A self-hosted shared stash. Two machines that can't reach each other open the same link, drop text, images and files on it, and copy them across. No accounts.
 
 - **A stash** is one shared link: `/s/<name>`. The name is always required. The form pre-fills a random 12-character one; you can type your own (letters, numbers, `-` and `_`).
-- **Items** are notes, images and files. Add by typing, attaching, dragging files onto the page, or pasting a screenshot (Ctrl+V).
+- **Items** are notes, images and files. The new-note box sits above the list and stays small; the expand button opens a bigger box with a title and a drop zone. Add files with the paperclip, by dragging them onto the page, or by pasting a screenshot (Ctrl+V).
+- **Titles**: a note can have an optional title (up to 150 characters). Without one, the first five words of the note are used. The list shows the title and two lines of the note; search matches titles too.
 - **Live**: items appear on every open page without a refresh (Server-Sent Events).
 - **Password** (optional, per stash): stored as a salted scrypt hash; unlocking sets an HttpOnly cookie for that stash only.
 - **Auto-expiry**: pick 1 hour to 30 days. A stash is deleted with everything in it when its time is up. "Extend" restarts the timer.
@@ -122,7 +123,7 @@ Files are always downloaded as attachments, except images, which are shown inlin
 | GET | `/api/stashes/suggest` | a fresh random name |
 | GET | `/api/stashes/:slug` | the stash and its items (`search`, `startDate`, `endDate`, `tz`) |
 | POST | `/api/stashes/:slug/unlock` | `{password}` sets the cookie |
-| POST | `/api/stashes/:slug/notes` | `{text}` (or a plain-text body) |
+| POST | `/api/stashes/:slug/notes` | `{title?, text}` (or a plain-text body, which gets an automatic title) |
 | POST | `/api/stashes/:slug/files` | raw body, `X-File-Name` header |
 | GET | `/api/stashes/:slug/files/:id` | the file (`?download=1` to force a download) |
 | GET | `/api/stashes/:slug/latest` | newest note as plain text |

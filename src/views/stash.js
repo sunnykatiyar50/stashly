@@ -13,8 +13,7 @@
         filters: { search: '', startDate: '', endDate: '' },
         es: null,
         connectedOnce: false,
-        view: 'compose',   // what the right pane shows: 'compose' or 'detail'
-        selectedId: null,
+        selectedId: null,  // the clip open on the right, or null
         started: false,    // the first successful load picks what to show
     };
     var sections = { loading: $('stateLoading'), gone: $('stateGone'), locked: $('stateLocked'), main: $('stateMain') };
@@ -152,16 +151,19 @@
 
     // ---- the list on the left ----
 
+    // A note shows its title (the first five words when it was not given one); a file shows its name
     function itemTitle(item) {
         if (item.kind !== 'note') return item.fileName;
-        var first = (item.text || '').split('\n').filter(function (line) { return line.trim(); })[0] || '';
-        return first.trim().slice(0, 100) || '(empty note)';
+        return item.title || '(empty note)';
     }
 
+    // The line under the title in the list: a few lines of the note, or the size of a file.
+    // A note without a title already shows its first five words as the title, so those are left out here.
     function itemSub(item) {
         if (item.kind !== 'note') return window.StashlyUpload.formatSize(item.fileSize);
-        var lines = (item.text || '').split('\n').length;
-        return lines > 1 ? lines + ' lines' : (item.text || '').length + ' characters';
+        var text = item.text || '';
+        if (!item.hasTitle) text = text.replace(/^\s*(?:\S+\s*){1,5}/, '');
+        return text.replace(/\s+/g, ' ').trim().slice(0, 240);
     }
 
     function buildClip(item) {
@@ -185,7 +187,8 @@
 
         var text = make('span', 'clip-text');
         text.appendChild(make('span', 'clip-title', itemTitle(item)));
-        text.appendChild(make('span', 'clip-sub', itemSub(item)));
+        var sub = itemSub(item);
+        if (sub) text.appendChild(make('span', item.kind === 'note' ? 'clip-sub clip-preview' : 'clip-sub', sub));
         el.appendChild(text);
 
         var time = make('span', 'clip-time item-time', relativeTime(item.createdAt));
@@ -215,11 +218,10 @@
 
     function markSelected() {
         Array.prototype.forEach.call($('items').children, function (el) {
-            var on = state.view === 'detail' && Number(el.dataset.id) === state.selectedId;
+            var on = Number(el.dataset.id) === state.selectedId;
             el.classList.toggle('selected', on);
             if (on) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current');
         });
-        $('newClipButton').classList.toggle('active', state.view === 'compose');
     }
 
     function renderItems() {
@@ -235,42 +237,42 @@
     // On a narrow screen only one pane shows at a time; "right" means the detail pane
     function setPane(pane) {
         $('split').classList.toggle('show-detail', pane === 'right');
+        // On a phone the composer would crowd out an open clip
+        sections.main.classList.toggle('detail-open', pane === 'right');
     }
 
-    function showComposer(focus) {
-        state.view = 'compose';
+    // Nothing open: the right pane shows a hint
+    function showNothing() {
         state.selectedId = null;
-        $('composer').classList.remove('hidden');
         $('detail').classList.add('hidden');
+        $('detailEmpty').classList.remove('hidden');
         markSelected();
-        setPane('right');
-        if (focus) $('noteInput').focus();
+        setPane('list');
     }
 
     function openItem(id) {
         var item = findItem(id);
         if (!item) return;
-        state.view = 'detail';
         state.selectedId = id;
-        $('composer').classList.add('hidden');
+        $('detailEmpty').classList.add('hidden');
         $('detail').classList.remove('hidden');
         renderDetail(item);
         markSelected();
         setPane('right');
     }
 
-    // What to show when the clip on the right has gone: its neighbour, or the composer
+    // What to open when the clip on the right has gone: its neighbour (on a phone, back to the list)
     function showSomethingElse(preferIndex) {
         if (!narrow.matches && state.items.length) {
             var item = state.items[Math.min(Math.max(preferIndex, 0), state.items.length - 1)];
             openItem(item.id);
         } else {
-            showComposer(false);
-            setPane('list');
+            showNothing();
         }
     }
 
-    var TEXT_PREVIEW = { txt: 1, csv: 1, json: 1, md: 1, log: 1 };
+    // Text files are stored as text/* (or JSON), so any of them can be previewed
+    function isTextType(type) { return /^text\//.test(type || '') || /^application\/json/.test(type || ''); }
     var TEXT_PREVIEW_MAX = 512 * 1024;
 
     function renderDetail(item) {
@@ -327,8 +329,7 @@
                 card.appendChild(info);
                 body.appendChild(card);
 
-                var ext = item.fileName.slice(item.fileName.lastIndexOf('.') + 1).toLowerCase();
-                if (TEXT_PREVIEW[ext] && item.fileSize <= TEXT_PREVIEW_MAX) {
+                if (isTextType(item.fileType) && item.fileSize <= TEXT_PREVIEW_MAX) {
                     var pre = make('pre', 'detail-text', 'Loading preview...');
                     body.appendChild(pre);
                     fetch(item.url, { credentials: 'same-origin' })
@@ -352,7 +353,6 @@
     document.querySelectorAll('[data-back]').forEach(function (el) {
         el.addEventListener('click', function () { setPane('list'); });
     });
-    $('newClipButton').addEventListener('click', function () { showComposer(true); });
 
     function updateHeader() {
         var stash = state.stash;
@@ -417,8 +417,7 @@
                 state.started = true;
                 // Desktop opens the newest clip (the usual reason to visit); a phone starts on the list
                 if (!narrow.matches && state.items.length) openItem(state.items[0].id);
-                else if (!narrow.matches) showComposer(false);
-            } else if (state.view === 'detail') {
+            } else if (state.selectedId !== null) {
                 if (findItem(state.selectedId)) renderDetail(findItem(state.selectedId));
                 else showSomethingElse(previousIndex);
             }
@@ -457,7 +456,7 @@
     function matchesFilters(item) {
         var f = state.filters;
         if (f.search) {
-            var hay = ((item.text || '') + ' ' + (item.fileName || '')).toLowerCase();
+            var hay = ((item.text || '') + ' ' + (item.fileName || '') + ' ' + (item.hasTitle ? item.title : '')).toLowerCase();
             if (hay.indexOf(f.search.toLowerCase()) === -1) return false;
         }
         var created = new Date(item.createdAt).getTime();
@@ -485,7 +484,7 @@
         var el = document.querySelector('.clip[data-id="' + id + '"]');
         if (el) el.remove();
         updateCounts();
-        if (state.view === 'detail' && state.selectedId === id) showSomethingElse(index);
+        if (state.selectedId === id) showSomethingElse(index);
     }
 
     function connect() {
@@ -534,10 +533,11 @@
         if (!text.trim()) { error.textContent = 'Write something first.'; input.focus(); return; }
         var submit = $('addNoteButton');
         submit.disabled = true;
-        api(base + '/notes', { method: 'POST', body: { text: text } }).then(function (res) {
+        api(base + '/notes', { method: 'POST', body: { title: $('titleInput').value, text: text } }).then(function (res) {
             submit.disabled = false;
             if (res.ok) {
                 input.value = '';
+                $('titleInput').value = '';
                 onItemAdded(res.body);
                 toast('Note added');
                 input.focus();
@@ -557,6 +557,22 @@
             event.preventDefault();
             $('composer').requestSubmit();
         }
+    });
+    $('titleInput').addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') { event.preventDefault(); $('noteInput').focus(); }
+    });
+
+    // The composer is always there but small. The expand button opens a bigger note box with the title and a drop zone.
+    function setExpanded(expanded) {
+        $('composer').classList.toggle('expanded', expanded);
+        var button = $('expandButton');
+        button.setAttribute('aria-expanded', String(expanded));
+        button.title = expanded ? 'Make smaller' : 'Expand';
+        button.setAttribute('aria-label', button.title);
+        if (expanded) $('titleInput').focus();
+    }
+    $('expandButton').addEventListener('click', function () {
+        setExpanded(!$('composer').classList.contains('expanded'));
     });
 
     $('unlockForm').addEventListener('submit', function (event) {
@@ -661,15 +677,14 @@
         onLocked: locked,
     });
 
-    // Upload progress lives in the composer, so show it whenever files are added
+    // Upload progress shows under the composer, which is always on the page
     function addFiles(files) {
-        if (state.view !== 'compose') showComposer(false);
-        else setPane('right');
         uploader.add(files);
     }
 
     var dropZone = $('dropZone');
     function chooseFiles() { $('fileInput').click(); }
+    $('attachButton').addEventListener('click', chooseFiles);
     dropZone.addEventListener('click', chooseFiles);
     dropZone.addEventListener('keydown', function (event) {
         if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); chooseFiles(); }
@@ -717,7 +732,7 @@
     api('/api/config').then(function (res) {
         if (!res.ok) return;
         var max = res.body.limits.maxFileBytes;
-        $('limitHint').textContent = 'Up to ' + window.StashlyUpload.formatSize(max) + ' per file. Images, PDF, Office files, zip, text, csv, json.';
+        $('limitHint').textContent = 'Up to ' + window.StashlyUpload.formatSize(max) + ' per file. Images, PDF, Office files, zip, certificates and any text file.';
         uploader = window.StashlyUpload.create({
             container: $('uploads'),
             url: base + '/files',
