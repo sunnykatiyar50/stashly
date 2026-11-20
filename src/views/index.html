@@ -43,6 +43,15 @@
     <main class="content">
         <section class="view">
           <div class="home-stack">
+            <div class="card form-card">
+                <h3>Open an existing stash</h3>
+                <form id="openForm" class="input-row" novalidate>
+                    <input type="text" id="openInput" class="mono" placeholder="stash name" autocomplete="off" autocapitalize="off"
+                           spellcheck="false" aria-label="Stash name" />
+                    <button type="submit" class="ghost">Open</button>
+                </form>
+            </div>
+
             <header class="view-header">
                 <div class="view-title">
                     <h1>New stash</h1>
@@ -88,15 +97,6 @@
                     <p id="createStatus" class="form-status" role="status"></p>
                 </div>
             </form>
-
-            <div class="card form-card">
-                <h3>Open an existing stash</h3>
-                <form id="openForm" class="input-row" novalidate>
-                    <input type="text" id="openInput" class="mono" placeholder="stash name" autocomplete="off" autocapitalize="off"
-                           spellcheck="false" aria-label="Stash name" />
-                    <button type="submit" class="ghost">Open</button>
-                </form>
-            </div>
 
             <div class="card form-card">
                 <h3>How it works</h3>
