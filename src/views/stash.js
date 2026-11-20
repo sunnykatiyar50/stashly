@@ -169,15 +169,17 @@
 
     var MASK = '••••••••';
 
-    // "Burns after reading", "Secret" and "Deletes in 4 min" for a note; baseOnly leaves out the countdown
-    function flagsText(item, baseOnly) {
-        var parts = [];
-        if (item.pinned) parts.push('Pinned');
-        if (item.kind !== 'note') return parts.join(' · ');
-        if (item.burn) parts.push('Burns after reading');
-        if (item.secret) parts.push('Secret');
-        if (item.expiresAt && !baseOnly) parts.push(expiryText(item.expiresAt));
-        return parts.join(' · ');
+    // The properties of a clip, shown as small chips on the right of its row so they read as labels, not as content:
+    // Pinned, Burns after reading, Secret, and a countdown when the note has its own expiry
+    function clipFlags(item) {
+        var flags = [];
+        if (item.pinned) flags.push({ text: 'Pinned', kind: 'pinned' });
+        if (item.kind === 'note') {
+            if (item.burn) flags.push({ text: 'Burns after reading', kind: 'burn' });
+            if (item.secret) flags.push({ text: 'Secret', kind: 'secret' });
+            if (item.expiresAt) flags.push({ text: expiryText(item.expiresAt), kind: 'expiry', expires: item.expiresAt });
+        }
+        return flags;
     }
 
     // The line under the title in the list: a few lines of the note, or the size of a file.
@@ -219,11 +221,14 @@
         var sub = itemSub(item);
         if (untitled && !sub) text.appendChild(make('span', 'clip-title', '(empty note)'));
         else if (sub) text.appendChild(make('span', untitled ? 'clip-preview clip-body' : item.kind === 'note' ? 'clip-sub clip-preview' : 'clip-sub', sub));
-        var flags = flagsText(item);
-        if (flags) {
-            var flagLine = make('span', 'clip-sub clip-flags', flags);
-            if (item.expiresAt) flagLine.dataset.expires = item.expiresAt;
-            flagLine.dataset.base = flagsText(item, true);
+        var flags = clipFlags(item);
+        if (flags.length) {
+            var flagLine = make('span', 'clip-flags');
+            flags.forEach(function (flag) {
+                var chip = make('span', 'clip-flag clip-flag-' + flag.kind, flag.text);
+                if (flag.expires) chip.dataset.expires = flag.expires;
+                flagLine.appendChild(chip);
+            });
             text.appendChild(flagLine);
         }
         el.appendChild(text);
@@ -620,8 +625,8 @@
         // Notes with their own expiry: count down, and drop them from the page when the time is up
         state.items.filter(function (item) { return item.expiresAt && new Date(item.expiresAt).getTime() <= Date.now(); })
             .forEach(function (item) { onItemDeleted(item.id); });
-        Array.prototype.forEach.call(document.querySelectorAll('.clip-flags[data-expires]'), function (el) {
-            el.textContent = (el.dataset.base ? el.dataset.base + ' · ' : '') + expiryText(el.dataset.expires);
+        Array.prototype.forEach.call(document.querySelectorAll('.clip-flag[data-expires]'), function (el) {
+            el.textContent = expiryText(el.dataset.expires);
         });
         updateExpiry();
         updateSessionInfo();
@@ -1030,12 +1035,41 @@
         });
     });
 
-    $('deleteStashButton').addEventListener('click', function () {
-        if (!window.confirm('Delete "' + slug + '" and everything in it? This cannot be undone.')) return;
+    // Deleting the stash lives in Options, and needs the stash's name typed in, so it cannot happen by accident
+    var deleteForm = $('deleteStashForm');
+    function closeDeleteForm() {
+        deleteForm.classList.add('hidden');
+        deleteForm.reset();
+        $('deleteStashConfirm').disabled = true;
+        $('deleteStashButton').classList.remove('hidden');
+    }
+    $('deleteStashSlug').textContent = slug;
+    $('deleteStashButton').addEventListener('click', function (event) {
+        deleteForm.classList.remove('hidden');
+        event.currentTarget.classList.add('hidden');
+        $('deleteStashName').focus();
+    });
+    $('deleteStashCancel').addEventListener('click', closeDeleteForm);
+    $('deleteStashName').addEventListener('input', function (event) {
+        $('deleteStashConfirm').disabled = event.target.value.trim().toLowerCase() !== slug;
+    });
+    deleteForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        if ($('deleteStashName').value.trim().toLowerCase() !== slug) return;
+        $('deleteStashConfirm').disabled = true;
         api(base, { method: 'DELETE' }).then(function (res) {
-            if (res.ok) gone();
-            else toast((res.body && res.body.error) || 'Could not delete the stash.', true);
-        });
+            if (res.ok) {
+                closeDeleteForm();
+                $('optionsDialog').close();
+                gone();
+            } else if (res.status === 401) {
+                $('optionsDialog').close();
+                locked();
+            } else {
+                $('deleteStashConfirm').disabled = false;
+                toast((res.body && res.body.error) || 'Could not delete the stash.', true);
+            }
+        }).catch(function () { $('deleteStashConfirm').disabled = false; toast('Could not reach the server.', true); });
     });
 
     // ---- signing out ----
@@ -1172,9 +1206,15 @@
     var KEEP_CHOICES = [5, 10, 20, 50, 100, 200, 500];
 
     function renderOptions() {
+        // Start with the delete confirmation closed, so it always has to be asked for again
+        closeDeleteForm();
         var protectedStash = Boolean(state.stash && state.stash.hasPassword);
         document.querySelector('[data-option="session"]').classList.toggle('hidden', !protectedStash);
-        // Only someone with full access can change the password (a read-only link cannot)
+        // The dialog sits outside the page section that carries the role classes, so the rows are hidden here. Only
+        // someone with full access can keep-last, delete the stash or change the password.
+        var full = role() === 'full';
+        document.querySelector('[data-option="keep"]').classList.toggle('hidden', !full);
+        document.querySelector('[data-option="danger"]').classList.toggle('hidden', !full);
         closePasswordForm();
         $('changePasswordToggle').classList.toggle('hidden', role() !== 'full');
         if (protectedStash) {
