@@ -85,12 +85,12 @@
             <header class="view-header">
                 <div class="view-title">
                     <h1 id="stashTitle" class="mono"></h1>
+                    <!-- A padlock right after the name instead of the word "Password" -->
+                    <span id="lockChip" class="chip lock-chip hidden" title="Password protected" role="img" aria-label="Password protected">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </span>
                     <span id="itemInfo" class="muted"></span>
                     <span id="expiryInfo" class="chip" title="When this stash is deleted"></span>
-                    <span id="lockChip" class="chip hidden" title="Protected by a password">
-                        <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                        Password
-                    </span>
                     <span id="liveStatus" class="live hidden" title="New items appear as they arrive">Live</span>
                     <span id="presenceChip" class="chip hidden" title="Pages open on this stash right now. A device with two tabs counts twice."></span>
                     <button type="button" id="rangeChip" class="filter-chip hidden" title="Clear the date range">
