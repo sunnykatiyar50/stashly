@@ -1,7 +1,10 @@
 # Creates the GitHub Release when a version tag is pushed (scripts/release.js does this).
 # The image itself is built and published by docker.yml, which runs on the same tag.
 #
-# The release carries a docker-compose.yml pinned to the released image version, and .env.example.
+# The release carries a docker-compose.yml pinned to the released image version, .env.example, and the browser
+# extension built for the same version: stashly-extension-<version>-chromium.zip and -firefox.zip. When the
+# AMO_JWT_ISSUER and AMO_JWT_SECRET secrets are set, the Firefox build is also signed on addons.mozilla.org as an
+# unlisted add-on and attached as -firefox-signed.xpi (stable versions only).
 name: Release
 
 on:
@@ -15,8 +18,16 @@ jobs:
   release:
     name: GitHub Release
     runs-on: ubuntu-latest
+    env:
+      # Optional: an addons.mozilla.org API key (JWT issuer) and secret, for signing the Firefox build
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
 
       - name: Check the tag matches package.json
         run: |
@@ -34,6 +45,41 @@ jobs:
           grep -q "IMAGE_TAG:-$version" release-assets/docker-compose.yml
           cp .env.example release-assets/.env.example
 
+      # The extension's version comes only from package.json (already checked against the tag above); the
+      # manifest in the repo says 0.0.0. This checks the build wrote it in.
+      - name: Build the browser extension
+        run: |
+          npm run build:extension
+          version="${GITHUB_REF_NAME#v}"
+          base="${version%%-*}"
+          base="${base%%+*}"
+          for browser in chromium firefox; do
+            built="$(node -p "require('./dist/$browser/manifest.json').version")"
+            if [ "$built" != "$base" ]; then
+              echo "The $browser build has version $built, expected $base" >&2
+              exit 1
+            fi
+            cp "dist/stashly-extension-$version-$browser.zip" release-assets/
+          done
+
+      # Runs only when both secrets exist, and only for stable versions: addons.mozilla.org takes digits-only
+      # versions, so a pre-release (1.8.0-rc.1, built as 1.8.0) would use up the number the real 1.8.0 needs.
+      # A failure here does not stop the release; it is then published without the .xpi.
+      - name: Sign the Firefox build (unlisted, addons.mozilla.org)
+        id: sign
+        if: env.AMO_JWT_ISSUER != '' && env.AMO_JWT_SECRET != '' && !contains(github.ref_name, '-')
+        continue-on-error: true
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          npx --yes web-ext@8.3.0 sign --channel=unlisted --source-dir dist/firefox --artifacts-dir dist/signed \
+            --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
+          xpi="$(ls dist/signed/*.xpi | head -n 1)"
+          cp "$xpi" "release-assets/stashly-extension-$version-firefox-signed.xpi"
+
+      - name: Note a failed signing
+        if: steps.sign.outcome == 'failure'
+        run: echo "::warning::Signing the Firefox build failed; the release has no signed .xpi. See the 'Sign the Firefox build' step."
+
       - name: Create the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -43,4 +89,5 @@ jobs:
           case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
           # --generate-notes lists the pull requests and commits since the previous release
           gh release create "$GITHUB_REF_NAME" release-assets/docker-compose.yml release-assets/.env.example \
+            release-assets/stashly-extension-* \
             --title "$GITHUB_REF_NAME" --generate-notes $prerelease

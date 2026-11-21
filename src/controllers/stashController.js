@@ -13,6 +13,16 @@ const ROLE_COOKIES = { view: slug => `stashlyv_${slug}`, drop: slug => `stashlyd
 // What a share link signs: its own label plus the hash of its token, so a new link voids cookies from the old one
 const roleSubject = (slug, kind) => `${slug}:${kind}`;
 const DAY = 24 * 60 * 60 * 1000;
+// The most items one listing can be asked for with `limit` (the extension asks for a few; without a limit, all come)
+const MAX_LIST_LIMIT = 200;
+
+// The optional `limit` of a listing: undefined for none, a whole number from 1 to MAX_LIST_LIMIT, or an error
+function parseLimit(value) {
+    if (value === undefined || value === null || value === '') return { value: undefined };
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 1) return { error: `limit must be a whole number from 1 to ${MAX_LIST_LIMIT}.` };
+    return { value: Math.min(n, MAX_LIST_LIMIT) };
+}
 const RESERVED_MESSAGE = 'That name belonged to a stash that was deleted, expired or renamed recently, so it is reserved for now. Pick another.';
 
 // "bytes=START-END", "bytes=START-" or "bytes=-SUFFIX" for one range. Returns { start, end }, 'invalid', or null when
@@ -508,10 +518,15 @@ class StashController {
         const range = dateRange(input);
         if (range.error) return res.status(400).json({ error: range.error });
         const search = typeof input.search === 'string' ? input.search.trim().slice(0, 200) : '';
+        // Optional: only the first `limit` items (pinned, then newest), with `total` still counting every match
+        const limit = parseLimit(input.limit);
+        if (limit.error) return res.status(400).json({ error: limit.error, field: 'limit' });
 
         // A drop-box visitor can add but not read: they get the stash's shape and no items or counts
         const dropOnly = req.role === 'drop';
-        const rows = dropOnly ? [] : this.model.listItems(stash.id, { search, from: range.from, to: range.to, now: this.now() });
+        const filters = { search, from: range.from, to: range.to, now: this.now() };
+        const rows = dropOnly ? [] : this.model.listItems(stash.id, { ...filters, limit: limit.value });
+        const total = dropOnly ? 0 : limit.value && rows.length === limit.value ? this.model.countItems(stash.id, filters) : rows.length;
         res.json({
             slug: stash.slug,
             role: req.role,
@@ -526,7 +541,7 @@ class StashController {
             keepLast: stash.keep_last || null,
             usage: dropOnly ? { items: 0, files: 0, bytes: 0 } : this.model.usage(stash.id),
             limits: this.limits(),
-            total: rows.length,
+            total,
             items: rows.map(row => this.presentItem(stash.slug, row)),
         });
     };

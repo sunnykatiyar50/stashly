@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Stashly options</title>
+    <link rel="stylesheet" href="ui.css">
+</head>
+<body class="page">
+    <h1>Stashly</h1>
+    <form id="form">
+        <label for="server">Your Stashly server</label>
+        <input id="server" type="url" placeholder="https://stash.example.com" required autocomplete="url">
+        <p class="hint">The extension asks for access to this one host only (on any port, because Firefox cannot limit it to one). Changing it gives up access to the old one.</p>
+        <button type="submit">Save</button>
+    </form>
+    <p id="status" role="status"></p>
+    <script src="common.js"></script>
+    <script src="options.js"></script>
+</body>
+</html>

@@ -214,3 +214,52 @@ test('a database from before titles gets the column, and its notes show their fi
     assert.equal(added.title, 'Given');
     db.close();
 });
+
+test('a listing can be cut to the first few items, and total still counts every match', async () => {
+    const ctx = makeApp();
+    const base = await stash(ctx, 'limited');
+    const ids = [];
+    for (const text of ['apple one', 'apple two', 'pear', 'apple three', 'apple four']) {
+        ctx.clock.time = new Date(ctx.clock.time.getTime() + 1000);
+        ids.push((await request(ctx.app).post(`${base}/notes`).send({ text }).expect(201)).body.id);
+    }
+    // The oldest note is pinned, so it still comes first
+    await request(ctx.app).post(`${base}/items/${ids[0]}/pin`).send({ pinned: true }).expect(200);
+
+    const viaGet = await request(ctx.app).get(`${base}?limit=2`).expect(200);
+    assert.deepEqual(viaGet.body.items.map(i => i.text), ['apple one', 'apple four']);
+    assert.equal(viaGet.body.total, 5);
+
+    // In the body, with a search, as the extension sends it
+    const viaQuery = await request(ctx.app).post(`${base}/query`).send({ search: 'apple', limit: 3 }).expect(200);
+    assert.deepEqual(viaQuery.body.items.map(i => i.text), ['apple one', 'apple four', 'apple three']);
+    assert.equal(viaQuery.body.total, 4);
+
+    // A limit above the number of matches returns them all
+    const few = await request(ctx.app).post(`${base}/query`).send({ search: 'pear', limit: 10 }).expect(200);
+    assert.deepEqual(few.body.items.map(i => i.text), ['pear']);
+    assert.equal(few.body.total, 1);
+
+    // A very large limit is capped rather than refused
+    assert.equal((await request(ctx.app).get(`${base}?limit=100000`).expect(200)).body.items.length, 5);
+
+    for (const limit of ['0', '-1', '1.5', 'abc']) {
+        const bad = await request(ctx.app).get(`${base}?limit=${limit}`).expect(400);
+        assert.equal(bad.body.field, 'limit');
+    }
+    await request(ctx.app).post(`${base}/query`).send({ limit: 0 }).expect(400);
+});
+
+test('without a limit the listing is unchanged: every item, and total is their number', async () => {
+    const ctx = makeApp();
+    const base = await stash(ctx, 'unlimited');
+    for (let i = 0; i < 30; i += 1) {
+        ctx.clock.time = new Date(ctx.clock.time.getTime() + 1000);
+        await request(ctx.app).post(`${base}/notes`).send({ text: `note ${i}` }).expect(201);
+    }
+    for (const res of [await request(ctx.app).get(base).expect(200), await request(ctx.app).post(`${base}/query`).send({}).expect(200)]) {
+        assert.equal(res.body.items.length, 30);
+        assert.equal(res.body.total, 30);
+        assert.equal(res.body.items[0].text, 'note 29');
+    }
+});

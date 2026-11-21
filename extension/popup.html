@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Stashly</title>
+    <link rel="stylesheet" href="ui.css">
+</head>
+<body class="popup">
+    <section id="setup" hidden>
+        <p>Set your Stashly server first.</p>
+        <button id="open-options" type="button">Open options</button>
+    </section>
+
+    <main id="main" hidden>
+        <form id="stash-form" class="row">
+            <input id="stash" list="recent" placeholder="Stash name or link" aria-label="Stash" autocomplete="off" spellcheck="false" required>
+            <datalist id="recent"></datalist>
+            <button id="open-stash" type="button" title="Open the stash in a tab">Open</button>
+        </form>
+
+        <form id="unlock-form" hidden>
+            <p class="hint">This stash has a password.</p>
+            <div class="row">
+                <input id="password" type="password" placeholder="Password" aria-label="Password" autocomplete="current-password" required>
+                <select id="session" aria-label="Stay signed in for"></select>
+                <button type="submit">Unlock</button>
+            </div>
+        </form>
+
+        <form id="note-form">
+            <textarea id="text" rows="4" placeholder="Type a note, or drop a file here" aria-label="Note"></textarea>
+            <div class="row">
+                <button type="submit">Send note</button>
+                <button id="send-clipboard" type="button">Send clipboard</button>
+                <label class="button" title="Or drop a file onto this window">File…<input id="file" type="file" hidden></label>
+            </div>
+        </form>
+
+        <p id="status" role="status"></p>
+
+        <section class="notes">
+            <input id="search" type="search" placeholder="Search notes and file names" aria-label="Search the stash" autocomplete="off" spellcheck="false">
+            <ul id="notes" aria-label="Recent notes"></ul>
+            <p id="notes-info" class="hint" aria-live="polite"></p>
+        </section>
+    </main>
+    <div id="drop-hint" hidden>Drop to upload</div>
+    <script src="common.js"></script>
+    <script src="popup.js"></script>
+</body>
+</html>
