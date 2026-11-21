@@ -5,3 +5,4 @@ test
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+extension

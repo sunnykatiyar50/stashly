@@ -171,6 +171,11 @@ Whatever the mode, files are downloaded as attachments (images show inline), and
 | GET | `/api/stashes/:slug/events` | live stream |
 | GET | `/health`, `/api/config` | liveness; expiry options and limits |
 
+## Browser extension
+
+`extension/` holds a small Manifest V3 extension for Chrome, Edge and Firefox. It sends notes, links and files to a stash
+from any tab and copies the newest note. Load it unpacked; see [extension/README.md](extension/README.md).
+
 ## Tests
 
 ```powershell

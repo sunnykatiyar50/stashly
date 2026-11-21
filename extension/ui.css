@@ -1,0 +1,87 @@
+:root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #111827;
+    --muted: #6b7280;
+    --border: #d1d5db;
+    --field: #f9fafb;
+    --accent: #2563eb;
+    --ok: #15803d;
+    --error: #b91c1c;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0b0f17;
+        --fg: #e5e7eb;
+        --muted: #9ca3af;
+        --border: #374151;
+        --field: #111827;
+        --accent: #3b82f6;
+        --ok: #4ade80;
+        --error: #f87171;
+    }
+}
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.4 system-ui, sans-serif;
+}
+body.popup { width: 360px; padding: 12px; }
+body.page { max-width: 480px; margin: 40px auto; padding: 0 16px; }
+h1 { font-size: 20px; }
+label { display: block; margin-bottom: 4px; font-weight: 600; }
+form, section { margin-bottom: 12px; }
+.row { display: flex; gap: 6px; align-items: center; }
+.row > input { flex: 1; min-width: 0; }
+input, select, textarea {
+    font: inherit;
+    color: inherit;
+    background: var(--field);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+}
+textarea { width: 100%; resize: vertical; margin-bottom: 6px; }
+input[type="url"] { width: 100%; margin-bottom: 6px; }
+button, .button {
+    font: inherit;
+    font-weight: 600;
+    margin: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--field);
+    color: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+}
+button[type="submit"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.hint { color: var(--muted); font-size: 12px; margin: 0 0 6px; }
+pre {
+    margin: 6px 0 0;
+    padding: 8px;
+    max-height: 160px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: var(--field);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+#status { min-height: 1.4em; margin: 0; }
+.ok { color: var(--ok); }
+.error { color: var(--error); }
+[hidden] { display: none !important; }
+#drop-hint {
+    position: fixed;
+    inset: 6px;
+    display: grid;
+    place-items: center;
+    border: 2px dashed var(--accent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    font-weight: 600;
+    pointer-events: none;
+}

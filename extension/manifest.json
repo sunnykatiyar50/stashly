@@ -1,0 +1,33 @@
+{
+    "manifest_version": 3,
+    "name": "Stashly",
+    "version": "1.7.0",
+    "description": "Send text, links and files to a Stashly stash from any tab, and copy the newest note.",
+    "icons": { "128": "icons/icon-192.png" },
+    "action": {
+        "default_title": "Stashly",
+        "default_popup": "popup.html",
+        "default_icon": { "32": "icons/icon-192.png" }
+    },
+    "options_ui": { "page": "options.html", "open_in_tab": true },
+    "background": {
+        "service_worker": "background.js",
+        "scripts": ["common.js", "background.js"]
+    },
+    "permissions": ["storage", "contextMenus"],
+    "optional_permissions": ["clipboardRead"],
+    "optional_host_permissions": ["http://*/*", "https://*/*"],
+    "commands": {
+        "_execute_action": {
+            "suggested_key": { "default": "Alt+Shift+S" },
+            "description": "Open the Stashly popup"
+        }
+    },
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "stashly@stashly.extension",
+            "strict_min_version": "128.0",
+            "data_collection_permissions": { "required": ["none"] }
+        }
+    }
+}
