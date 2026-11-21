@@ -2,60 +2,61 @@ const MB = 1024 * 1024;
 const round = value => Math.round(value * 100) / 100;
 
 // The limits the admin can change at runtime. The environment gives the defaults; changes made in the admin
-// page are saved in the database and win over them (until "Reset to defaults").
+// page are saved in the database and win over them (until "Reset to defaults"). `group` is the tab the admin
+// page shows the setting under; tabs appear in the order their first setting appears here.
 const FIELDS = {
     maxFileMb: {
-        label: 'Largest file', unit: 'MB', type: 'int', min: 1, max: 2048,
+        group: 'Limits', label: 'Largest file', unit: 'MB', type: 'int', min: 1, max: 2048,
         help: 'The biggest single file that can be uploaded.',
         read: c => round(c.maxFileBytes / MB), write: (c, v) => { c.maxFileBytes = v * MB; },
     },
     maxFilesPerStash: {
-        label: 'Files per stash', unit: 'files', type: 'int', min: 1, max: 100000,
+        group: 'Limits', label: 'Files per stash', unit: 'files', type: 'int', min: 1, max: 100000,
         help: 'How many files one stash can hold.',
         read: c => c.maxFilesPerStash, write: (c, v) => { c.maxFilesPerStash = v; },
     },
     maxItemsPerStash: {
-        label: 'Items per stash', unit: 'items', type: 'int', min: 1, max: 200000,
+        group: 'Limits', label: 'Items per stash', unit: 'items', type: 'int', min: 1, max: 200000,
         help: 'Notes and files together. Keep it at or above the file limit.',
         read: c => c.maxItemsPerStash, write: (c, v) => { c.maxItemsPerStash = v; },
     },
     maxStashMb: {
-        label: 'File space per stash', unit: 'MB', type: 'int', min: 1, max: 1048576,
+        group: 'Limits', label: 'File space per stash', unit: 'MB', type: 'int', min: 1, max: 1048576,
         help: 'Total size of the files in one stash.',
         read: c => round(c.maxStashBytes / MB), write: (c, v) => { c.maxStashBytes = v * MB; },
     },
     maxTotalMb: {
-        label: 'File space on the server', unit: 'MB', type: 'int', min: 1, max: 10485760,
+        group: 'Limits', label: 'File space on the server', unit: 'MB', type: 'int', min: 1, max: 10485760,
         help: 'Total size of all files in all stashes. Protects the disk.',
         read: c => round(c.maxTotalBytes / MB), write: (c, v) => { c.maxTotalBytes = v * MB; },
     },
     maxNoteKb: {
-        label: 'Largest note', unit: 'KB', type: 'int', min: 1, max: 10240,
+        group: 'Limits', label: 'Largest note', unit: 'KB', type: 'int', min: 1, max: 10240,
         help: 'The biggest single note.',
         read: c => round(c.maxNoteBytes / 1024), write: (c, v) => { c.maxNoteBytes = v * 1024; },
     },
     maxStashes: {
-        label: 'Stashes on the server', unit: 'stashes', type: 'int', min: 1, max: 1000000,
+        group: 'Limits', label: 'Stashes on the server', unit: 'stashes', type: 'int', min: 1, max: 1000000,
         help: 'New stashes are refused once this many exist.',
         read: c => c.maxStashes, write: (c, v) => { c.maxStashes = v; },
     },
     minOpenNameLength: {
-        label: 'Shortest name without a password', unit: 'characters', type: 'int', min: 0, max: 64,
+        group: 'Security', label: 'Shortest name without a password', unit: 'characters', type: 'int', min: 0, max: 64,
         help: 'A stash with no password is protected only by its name. Names shorter than this need a password. 0 turns the rule off. Stashes that already exist are not changed.',
         read: c => c.minOpenNameLength, write: (c, v) => { c.minOpenNameLength = v; },
     },
     minPasswordLength: {
-        label: 'Shortest stash password', unit: 'characters', type: 'int', min: 4, max: 200,
+        group: 'Security', label: 'Shortest stash password', unit: 'characters', type: 'int', min: 4, max: 200,
         help: 'Applies when a password is set or changed. Passwords that already exist keep working.',
         read: c => c.minPasswordLength, write: (c, v) => { c.minPasswordLength = v; },
     },
     reserveOldNamesDays: {
-        label: 'Keep old names reserved', unit: 'days', type: 'int', min: 0, max: 3650,
+        group: 'Security', label: 'Keep old names reserved', unit: 'days', type: 'int', min: 0, max: 3650,
         help: 'A name given up by a deleted, expired or renamed stash cannot be used by a new stash for this long, so a device or script still using it does not send to someone else. 0 turns it off.',
         read: c => c.reserveOldNamesDays, write: (c, v) => { c.reserveOldNamesDays = v; },
     },
     fileTypes: {
-        label: 'File types', type: 'choice',
+        group: 'Files', label: 'File types', type: 'choice',
         options: [
             { value: 'safe', label: 'Safe list: images, audio, video, PDF, zip, Office files, certificates, text' },
             { value: 'no-programs', label: 'Any file except programs' },
@@ -65,7 +66,7 @@ const FIELDS = {
         read: c => c.fileTypes, write: (c, v) => { c.fileTypes = v; },
     },
     allowNoExpiry: {
-        label: 'Allow stashes that never expire', type: 'bool',
+        group: 'Stashes', label: 'Allow stashes that never expire', type: 'bool',
         help: 'Adds a "Never" choice to the expiry list.',
         read: c => c.allowNoExpiry,
         write: (c, v) => {
@@ -75,7 +76,7 @@ const FIELDS = {
         },
     },
     requireAdminToCreate: {
-        label: 'Only the admin can create stashes', type: 'bool',
+        group: 'Stashes', label: 'Only the admin can create stashes', type: 'bool',
         help: 'Visitors can still open and use stashes they have the link to.',
         read: c => c.requireAdminToCreate, write: (c, v) => { c.requireAdminToCreate = v; },
     },
@@ -108,8 +109,8 @@ class SettingsStore {
     describe() {
         const values = this.values();
         return Object.keys(FIELDS).map(key => {
-            const { label, unit, type, min, max, help, options } = FIELDS[key];
-            return { key, label, unit, type, min, max, help, options, value: values[key], default: this.defaults[key] };
+            const { group, label, unit, type, min, max, help, options } = FIELDS[key];
+            return { key, group, label, unit, type, min, max, help, options, value: values[key], default: this.defaults[key] };
         });
     }
 

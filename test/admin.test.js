@@ -150,6 +150,24 @@ test('the settings page lists every limit with its value and default', async () 
     assert.ok(byKey.maxFileMb.label && byKey.maxFileMb.unit && byKey.maxFileMb.help);
 });
 
+test('every setting names the tab it is shown under', async () => {
+    const ctx = await adminApp();
+    const res = await ctx.admin.get('/api/admin/settings').expect(200);
+    for (const field of res.body.fields) assert.ok(field.group, `${field.key} has no group`);
+    const byKey = Object.fromEntries(res.body.fields.map(f => [f.key, f.group]));
+    assert.equal(byKey.maxFileMb, 'Limits');
+    assert.equal(byKey.maxStashes, 'Limits');
+    assert.equal(byKey.minOpenNameLength, 'Security');
+    assert.equal(byKey.minPasswordLength, 'Security');
+    assert.equal(byKey.reserveOldNamesDays, 'Security');
+    assert.equal(byKey.fileTypes, 'Files');
+    assert.equal(byKey.allowNoExpiry, 'Stashes');
+    assert.equal(byKey.requireAdminToCreate, 'Stashes');
+    // Tabs follow the order the groups first appear in
+    const order = [...new Set(res.body.fields.map(f => f.group))];
+    assert.deepEqual(order, ['Limits', 'Security', 'Files', 'Stashes']);
+});
+
 test('changed limits apply at once, with no restart', async () => {
     const ctx = await adminApp();
     await request(ctx.app).post('/api/stashes').send({ slug: 'live-limits' }).expect(201);

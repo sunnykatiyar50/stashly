@@ -280,74 +280,192 @@
         });
     }
 
+    // The settings are shown in tabs, one per group the server gives each field. The open tab is remembered.
+    var TAB_KEY = 'sl_admin_settings_tab';
+    var activeGroup = null;
+    var narrow = window.matchMedia('(max-width: 760px)');
+
+    function savedGroup() {
+        try { return localStorage.getItem(TAB_KEY); } catch (e) { return null; }
+    }
+
+    function rememberGroup(name) {
+        try { localStorage.setItem(TAB_KEY, name); } catch (e) { /* not remembered */ }
+    }
+
+    function settingGroups() {
+        var groups = [];
+        var byName = {};
+        fields.forEach(function (field) {
+            var name = field.group || 'Other';
+            if (!byName[name]) {
+                byName[name] = { name: name, id: 'settings-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), fields: [] };
+                groups.push(byName[name]);
+            }
+            byName[name].fields.push(field);
+        });
+        return groups;
+    }
+
+    function groupOf(key) {
+        var field = fields.filter(function (f) { return f.key === key; })[0];
+        return field ? (field.group || 'Other') : null;
+    }
+
+    function settingTabs() {
+        return Array.prototype.slice.call($('settingsFields').querySelectorAll('[role="tab"]'));
+    }
+
+    function selectGroup(name, focus) {
+        settingTabs().forEach(function (tab) {
+            var selected = tab.dataset.group === name;
+            tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+            tab.tabIndex = selected ? 0 : -1;
+            $(tab.getAttribute('aria-controls')).hidden = !selected;
+            if (selected && focus) tab.focus();
+        });
+        activeGroup = name;
+        rememberGroup(name);
+    }
+
+    function setTabOrientation() {
+        var list = $('settingsFields').querySelector('[role="tablist"]');
+        if (list) list.setAttribute('aria-orientation', narrow.matches ? 'horizontal' : 'vertical');
+    }
+    if (narrow.addEventListener) narrow.addEventListener('change', setTabOrientation);
+
+    // Arrow keys move between tabs (either direction, so it works for side and top tabs), Home and End jump
+    function onTabKey(event) {
+        var tabs = settingTabs();
+        var index = tabs.indexOf(event.target);
+        if (index === -1) return;
+        var next = null;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+        else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = tabs.length - 1;
+        if (next === null) return;
+        event.preventDefault();
+        selectGroup(tabs[next].dataset.group, true);
+    }
+
     function renderSettings() {
         var host = $('settingsFields');
         host.textContent = '';
-        fields.forEach(function (field) {
-            var row = document.createElement('div');
-            row.className = 'settings-row';
+        var groups = settingGroups();
+        var names = groups.map(function (group) { return group.name; });
+        if (names.indexOf(activeGroup) === -1) activeGroup = savedGroup();
+        if (names.indexOf(activeGroup) === -1) activeGroup = names[0];
 
-            var text = document.createElement('div');
-            text.className = 'settings-text';
-            var label = document.createElement('label');
-            label.htmlFor = 'setting-' + field.key;
-            label.textContent = field.label;
-            var help = document.createElement('small');
-            help.className = 'field-hint';
-            help.textContent = field.help;
-            text.appendChild(label);
-            text.appendChild(help);
+        var layout = document.createElement('div');
+        layout.className = 'settings-layout';
+        var list = document.createElement('div');
+        list.className = 'settings-tabs';
+        list.setAttribute('role', 'tablist');
+        list.setAttribute('aria-label', 'Settings categories');
+        list.addEventListener('keydown', onTabKey);
+        layout.appendChild(list);
+        host.appendChild(layout);
 
-            var control = document.createElement('div');
-            control.className = 'settings-control';
-            var input = document.createElement(field.type === 'choice' ? 'select' : 'input');
-            input.id = 'setting-' + field.key;
-            input.dataset.key = field.key;
-            if (field.type === 'choice') {
-                field.options.forEach(function (option) {
-                    var el = document.createElement('option');
-                    el.value = option.value;
-                    el.textContent = option.label;
-                    if (option.value === field.value) el.selected = true;
-                    input.appendChild(el);
-                });
-            } else if (field.type === 'bool') {
-                input.type = 'checkbox';
-                input.checked = Boolean(field.value);
-            } else {
-                input.type = 'number';
-                input.min = field.min;
-                input.max = field.max;
-                input.step = 1;
-                input.value = field.value;
-            }
-            control.appendChild(input);
-            if (field.unit) {
-                var unit = document.createElement('span');
-                unit.className = 'muted';
-                unit.textContent = field.unit;
-                control.appendChild(unit);
-            }
-            var note = document.createElement('small');
-            note.className = 'field-hint';
-            var defaultText = field.default;
-            if (field.type === 'bool') defaultText = field.default ? 'on' : 'off';
-            if (field.type === 'choice') {
-                defaultText = field.options.filter(function (option) { return option.value === field.default; })[0].label;
-            }
-            note.textContent = 'Default: ' + defaultText;
-            control.appendChild(note);
+        groups.forEach(function (group) {
+            var tab = document.createElement('button');
+            tab.type = 'button';
+            tab.className = 'settings-tab';
+            tab.id = group.id + '-tab';
+            tab.dataset.group = group.name;
+            tab.setAttribute('role', 'tab');
+            tab.setAttribute('aria-controls', group.id + '-panel');
+            var name = document.createElement('span');
+            name.textContent = group.name;
+            var flag = document.createElement('span');
+            flag.className = 'settings-tab-flag';
+            flag.title = 'Has a problem to fix';
+            var flagText = document.createElement('span');
+            flagText.className = 'offscreen';
+            flagText.textContent = ', has a problem to fix';
+            flag.appendChild(flagText);
+            tab.appendChild(name);
+            tab.appendChild(flag);
+            tab.addEventListener('click', function () { selectGroup(group.name, false); });
+            list.appendChild(tab);
 
-            var error = document.createElement('small');
-            error.className = 'field-error';
-            error.id = 'error-' + field.key;
-            error.setAttribute('role', 'alert');
-            control.appendChild(error);
-
-            row.appendChild(text);
-            row.appendChild(control);
-            host.appendChild(row);
+            var panel = document.createElement('div');
+            panel.className = 'settings-panel';
+            panel.id = group.id + '-panel';
+            panel.setAttribute('role', 'tabpanel');
+            panel.setAttribute('aria-labelledby', tab.id);
+            panel.tabIndex = 0;
+            layout.appendChild(panel);
+            group.fields.forEach(function (field) { panel.appendChild(settingRow(field)); });
         });
+        setTabOrientation();
+        selectGroup(activeGroup, false);
+    }
+
+    function settingRow(field) {
+        var row = document.createElement('div');
+        row.className = 'settings-row';
+
+        var text = document.createElement('div');
+        text.className = 'settings-text';
+        var label = document.createElement('label');
+        label.htmlFor = 'setting-' + field.key;
+        label.textContent = field.label;
+        var help = document.createElement('small');
+        help.className = 'field-hint';
+        help.textContent = field.help;
+        text.appendChild(label);
+        text.appendChild(help);
+
+        var control = document.createElement('div');
+        control.className = 'settings-control';
+        var input = document.createElement(field.type === 'choice' ? 'select' : 'input');
+        input.id = 'setting-' + field.key;
+        input.dataset.key = field.key;
+        if (field.type === 'choice') {
+            field.options.forEach(function (option) {
+                var el = document.createElement('option');
+                el.value = option.value;
+                el.textContent = option.label;
+                if (option.value === field.value) el.selected = true;
+                input.appendChild(el);
+            });
+        } else if (field.type === 'bool') {
+            input.type = 'checkbox';
+            input.checked = Boolean(field.value);
+        } else {
+            input.type = 'number';
+            input.min = field.min;
+            input.max = field.max;
+            input.step = 1;
+            input.value = field.value;
+        }
+        control.appendChild(input);
+        if (field.unit) {
+            var unit = document.createElement('span');
+            unit.className = 'muted';
+            unit.textContent = field.unit;
+            control.appendChild(unit);
+        }
+        var note = document.createElement('small');
+        note.className = 'field-hint';
+        var defaultText = field.default;
+        if (field.type === 'bool') defaultText = field.default ? 'on' : 'off';
+        if (field.type === 'choice') {
+            defaultText = field.options.filter(function (option) { return option.value === field.default; })[0].label;
+        }
+        note.textContent = 'Default: ' + defaultText;
+        control.appendChild(note);
+
+        var error = document.createElement('small');
+        error.className = 'field-error';
+        error.id = 'error-' + field.key;
+        error.setAttribute('role', 'alert');
+        control.appendChild(error);
+
+        row.appendChild(text);
+        row.appendChild(control);
+        return row;
     }
 
     function collectSettings() {
@@ -360,16 +478,44 @@
         return values;
     }
 
+    // Puts each error next to its field and flags the tabs that have one. When the open tab has none,
+    // the first tab with a problem is opened, so an error is never left out of sight.
+    function showSettingErrors(errors) {
+        var status = $('settingsStatus');
+        var flagged = {};
+        fields.forEach(function (field) {
+            var message = errors[field.key] || '';
+            $('error-' + field.key).textContent = message;
+            var input = $('setting-' + field.key);
+            if (message) input.setAttribute('aria-invalid', 'true');
+            else input.removeAttribute('aria-invalid');
+            if (message) flagged[field.group || 'Other'] = true;
+        });
+        Object.keys(errors).forEach(function (key) {
+            if (!groupOf(key)) { status.textContent = errors[key]; status.classList.add('error'); }
+        });
+        var tabs = settingTabs();
+        tabs.forEach(function (tab) { tab.classList.toggle('has-error', Boolean(flagged[tab.dataset.group])); });
+        if (!flagged[activeGroup]) {
+            var first = tabs.filter(function (tab) { return flagged[tab.dataset.group]; })[0];
+            if (first) selectGroup(first.dataset.group, false);
+        }
+        var firstInvalid = $('settingsFields').querySelector('.settings-panel:not([hidden]) [aria-invalid="true"]');
+        if (firstInvalid) firstInvalid.focus();
+    }
+
     $('settingsForm').addEventListener('submit', function (event) {
         event.preventDefault();
         var status = $('settingsStatus');
         status.textContent = '';
         status.classList.remove('error');
-        fields.forEach(function (field) { $('error-' + field.key).textContent = ''; });
+        showSettingErrors({});
         var values = collectSettings();
         for (var key in values) {
             if (typeof values[key] === 'number' && !isFinite(values[key])) {
-                $('error-' + key).textContent = 'Enter a whole number.';
+                var invalid = {};
+                invalid[key] = 'Enter a whole number.';
+                showSettingErrors(invalid);
                 return;
             }
         }
@@ -382,11 +528,7 @@
                 renderSettings();
                 toast('Settings saved');
             } else if (res.body && res.body.errors) {
-                Object.keys(res.body.errors).forEach(function (key) {
-                    var el = $('error-' + key);
-                    if (el) el.textContent = res.body.errors[key];
-                    else { status.textContent = res.body.errors[key]; status.classList.add('error'); }
-                });
+                showSettingErrors(res.body.errors);
             } else {
                 status.textContent = (res.body && res.body.error) || 'Could not save.';
                 status.classList.add('error');
