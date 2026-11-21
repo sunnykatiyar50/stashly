@@ -15,7 +15,8 @@
         <form id="stash-form" class="row">
             <input id="stash" list="recent" placeholder="Stash name or link" aria-label="Stash" autocomplete="off" spellcheck="false" required>
             <datalist id="recent"></datalist>
-            <button id="open-stash" type="button" title="Open the stash in a tab">Open</button>
+            <button id="open-stash" type="submit" title="Show this stash's clips here">Open</button>
+            <button id="open-tab" type="button" class="icon" title="Open the stash in a browser tab" aria-label="Open the stash in a browser tab"></button>
         </form>
 
         <form id="unlock-form" hidden>
@@ -28,19 +29,18 @@
         </form>
 
         <form id="note-form">
-            <textarea id="text" rows="4" placeholder="Type a note, or drop a file here" aria-label="Note"></textarea>
+            <textarea id="text" rows="3" placeholder="Type or paste text to add, or drop a file here" aria-label="Text to add"></textarea>
             <div class="row">
-                <button type="submit">Send note</button>
-                <button id="send-clipboard" type="button">Send clipboard</button>
-                <label class="button" title="Or drop a file onto this window">File…<input id="file" type="file" hidden></label>
+                <button id="add" type="submit">Add</button>
+                <button id="send-clipboard" type="button" class="icon" title="Add what is on the clipboard" aria-label="Add what is on the clipboard"></button>
+                <label id="file-button" class="button icon" title="Add a file (or drop one onto this window)" aria-label="Add a file"><input id="file" type="file" hidden></label>
+                <p id="status" role="status"></p>
             </div>
         </form>
 
-        <p id="status" role="status"></p>
-
-        <section class="notes">
-            <input id="search" type="search" placeholder="Search notes and file names" aria-label="Search the stash" autocomplete="off" spellcheck="false">
-            <ul id="notes" aria-label="Recent notes"></ul>
+        <section class="clips">
+            <input id="search" type="search" placeholder="Search clips" aria-label="Search the stash" autocomplete="off" spellcheck="false">
+            <ul id="notes" aria-label="Clips"></ul>
             <p id="notes-info" class="hint" aria-live="polite"></p>
         </section>
     </main>
