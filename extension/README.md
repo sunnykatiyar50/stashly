@@ -62,45 +62,39 @@ A stash's sign-in cookie is `HttpOnly; SameSite=Strict`. The question was whethe
 Chromium treats a request from an extension with host permission for the URL as same-site, so Strict cookies go along.
 No server change is needed for Chromium.
 
-**Firefox: documented, not yet tested here** (this machine has no Firefox). Since Firefox 77
-([bug 1629436](https://bugzilla.mozilla.org/show_bug.cgi?id=1629436)), requests from extension pages and background
-scripts count as first-party when the extension has host permission for the URL. So SameSite cookies are expected to be
-sent, and the extension sets `strict_min_version` 128. Two Firefox catches have shaped the code:
+**Firefox (tested on Zen 1.24.1b, which is Firefox 159.0.1)**: yes, the same as Chromium. As documented since
+Firefox 77 ([bug 1629436](https://bugzilla.mozilla.org/show_bug.cgi?id=1629436)), requests from extension pages and
+background scripts count as first-party when the extension has host permission for the URL. The extension sets
+`strict_min_version` 128. Two Firefox catches have shaped the code:
 
 - A host pattern with a port is shown as granted but matches nothing. The CORS bypass and cookies then silently do not
   apply ([bug 2052000](https://bugzilla.mozilla.org/show_bug.cgi?id=2052000), a duplicate of 1362809). Fixed by
   requesting the host without a port.
 - MV3 host permissions are not granted at install in Firefox. The options page asks for them when you save.
 
-### Firefox checks still to run
+### Firefox checks
 
-Start a local server with `PORT=3917 node src/app.js`. Create a stash with a password and one without, then load the
-extension from `about:debugging`. Open the extension's console with *Inspect* next to the add-on: the background
-script's console, or the popup's.
+Run on Zen 1.24.1b (Firefox 159.0.1) with a fresh temporary profile, driven over WebDriver BiDi against
+`PORT=3917 node src/app.js`. The extension was installed as a temporary add-on. Most checks used a test copy that has
+the `127.0.0.1` host permission already granted, plus a small hook that opens its pages in tabs, because BiDi cannot
+answer the permission prompt or open `moz-extension://` addresses. The extension code itself was unchanged.
 
-1. **Loads**: there are no errors in `about:debugging`. The popup shows "Set your Stashly server first".
-2. **Permission**: save `http://127.0.0.1:3917` in options. Firefox asks for access to `127.0.0.1` and the status
-   says *Saved*. In the console, `await browser.permissions.getAll()` lists `http://127.0.0.1/*`.
-3. **Cookie from a tab → background script (the key check)**: unlock the locked stash in a normal tab. Then, in the
-   background console, run
-   `(await fetch('http://127.0.0.1:3917/api/stashes/NAME/latest', {credentials: 'include'})).status`.
-   It must give 200 or 404 ("No notes yet"), not 401.
-4. **Cookie from a tab → popup**: the same `fetch` in the popup's console, or **Show newest note** in the popup.
-   It must not ask for the password.
-5. **Unlock from the extension**: clear the site's cookies (Storage tab in the tab's dev tools), then send a note from
-   the popup. The popup asks for the password; enter it, and the note is sent. Reload the stash page in a tab: it is
-   signed in too.
-6. **Open stash, no password**: send a note, **Send clipboard**, **Show newest note** with **Copy**, drag a file from
-   the desktop onto the popup, and **Open**.
-7. **Context menu and shortcut**: right-click a selection, a link and a page, and choose *Send to Stashly*. The
-   button shows **OK**. <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> opens the popup.
+| # | Check | Result |
+| --- | --- | --- |
+| 1 | The real extension loads with no console errors. The popup shows the setup step. No host access at install (only `storage` and `contextMenus`). | Passed |
+| 2 | Options saves the server, verifies it, and access to `http://127.0.0.1/*` is in place | Passed. The real permission prompt was not clicked. |
+| 3 | **Key check**: unlock in a normal tab, then `fetch(…/latest, {credentials: 'include'})` from the **background script** | Passed: 404 "No notes yet", not 401. The Strict cookie was sent. |
+| 4 | The same from the **popup**; the popup sends to the locked stash without asking for the password | Passed |
+| 5 | Cookies cleared → the popup asks for the password; a wrong password shows the error. Then it unlocks and retries the send. The normal tab and the background script are signed in by the cookie the extension got. | Passed |
+| 6 | Open stash: send a note, **Show newest note**, drop a file (the CRLF bytes arrive intact), and the recent list is kept in order | Passed |
+| 6 | **Copy**, **Send clipboard**, dragging a real file from the desktop, **Open** | Not run: these need a real click, and BiDi cannot send input to extension pages |
+| 7 | Context menu: selection and link sent, the badge shows **OK**, and the submenu lists the recent stashes. <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> is bound to `_execute_action`. | Passed. The menu was not clicked by hand and the key was not pressed. |
 
-If check 3 or 4 gets a 401 while the tab is signed in, Firefox is not sending the Strict cookie. Then the server
-change below is needed.
+So no server change is needed for Firefox either.
 
-**If Firefox turns out not to send the cookie**, here is the smallest server change. It is a proposal only; server
-auth is unchanged. Let the API routes also accept the token in an `Authorization: Bearer <token>` header. That token is
-either a share-link token (`view` or `drop`, checked with the same `linkTokenMatches` as `/redeem`), or a signed
-full-access token returned in the `/unlock` response body when the request asks for it. `access()` in
+**Had a browser not sent the cookie**, this was the smallest server change. It is not needed now and is kept only as
+a record. Let the API routes also accept the token in an `Authorization: Bearer <token>` header. That token is either
+a share-link token (`view` or `drop`, checked with the same `linkTokenMatches` as `/redeem`), or a signed full-access
+token returned in the `/unlock` response body when the request asks for it. `access()` in
 `src/controllers/stashController.js` would check the header after the cookies. A header cannot be sent cross-site
 without a CORS preflight, which Stashly does not answer, so CSRF stays closed.

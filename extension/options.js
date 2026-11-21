@@ -17,8 +17,11 @@ form.addEventListener('submit', async event => {
     if (!server) return show('Enter the full address, starting with http:// or https://', true);
     input.value = server;
 
-    // Asked here, in the click, because browsers only show the permission prompt in answer to the user
-    const granted = await ext.permissions.request({ origins: [hostPattern(server)] }).catch(() => false);
+    // Asked here, in the click, because browsers only show the permission prompt in answer to the user. Firefox
+    // refuses the request outright when the save did not come from a click or key, so access that is already
+    // there still counts.
+    const origins = [hostPattern(server)];
+    const granted = await ext.permissions.request({ origins }).catch(() => ext.permissions.contains({ origins }));
     if (!granted) return show(`Without access to ${server} the extension cannot send anything.`, true);
 
     const { server: old } = await loadSettings();
