@@ -8,6 +8,8 @@ Stashly page. It has no build step: load this folder as it is.
   text and choose **Add** (or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>). The clipboard icon adds what is on the clipboard, and
   the paperclip icon, or dropping a file onto the popup, adds a file. Each clip has a copy icon. The search box finds
   older clips. The ↗ icon next to **Open** opens the stash in a browser tab.
+  Closing the popup loses nothing. It reopens on the same stash, with the same search, any half-typed text, and the
+  list scrolled to the same place.
 - **Right-click → Send to Stashly**: sends the selected text, the link or the page address. With more than one recent
   stash it becomes a submenu. The toolbar button shows **OK**, or **!** with the reason in its tooltip.
 - **Password-protected stashes**: the popup asks for the password the first time and then retries what you were doing.
@@ -117,6 +119,9 @@ The extension does not read pages. It sends only what you choose to send, and on
 - **Burn-after-reading notes** appear without their text. **Reveal**, then **Reveal and delete?**, fetches the text
   once and deletes the note for everyone, as on the stash page. Only full access can reveal; listing never uses a
   note up.
+- **Where the popup was left** is kept in `storage.session`: the stash, search, half-typed text and scroll position.
+  That storage is held in memory and cleared when the browser closes, so a draft is never written to disk. Passwords
+  and revealed burn-after-reading text are never kept.
 - In Firefox the popup can close when a file dialog opens. Drag the file onto the popup instead.
 - A drop-box share link (`#drop=…`) or a read-only link (`#view=…`) should work too, though this is not yet tested.
   Open the link once in the same browser and the extension uses that cookie. A drop-box link can send but cannot show

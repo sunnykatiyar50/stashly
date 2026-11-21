@@ -43,6 +43,29 @@ function fillRecent(recent) {
     $('recent').replaceChildren(...recent.map(slug => Object.assign(document.createElement('option'), { value: slug })));
 }
 
+// ---- Where the popup was left ----
+// A popup is thrown away each time it closes, so what it shows is kept in storage.session: the stash, the search,
+// the text being typed and how far the list was scrolled. That storage lives in memory and is cleared when the
+// browser closes, so a draft never lands on disk. Passwords and revealed burn-after-reading text are never kept.
+const VIEW_KEY = 'popupView';
+const viewStore = ext.storage.session;
+let restoreScroll = null;
+let scrollTimer = null;
+
+async function loadView() {
+    try {
+        return (viewStore && (await viewStore.get(VIEW_KEY))[VIEW_KEY]) || null;
+    } catch {
+        return null;
+    }
+}
+
+function saveView() {
+    if (!viewStore) return;
+    const view = { stash: stashInput.value, search: $('search').value, draft: $('text').value, scroll: $('notes').scrollTop };
+    viewStore.set({ [VIEW_KEY]: view }).catch(() => {});
+}
+
 async function init() {
     const settings = await loadSettings();
     server = settings.server;
@@ -52,8 +75,19 @@ async function init() {
     }
     $('main').hidden = false;
     fillRecent(settings.recent);
-    stashInput.value = settings.recent[0] || '';
-    (stashInput.value ? $('text') : stashInput).focus();
+    const view = await loadView();
+    if (view) {
+        stashInput.value = view.stash || '';
+        $('search').value = view.search || '';
+        $('text').value = view.draft || '';
+        restoreScroll = view.scroll || 0;
+    } else {
+        stashInput.value = settings.recent[0] || '';
+    }
+    const focus = !stashInput.value ? stashInput : view && view.search && !view.draft ? $('search') : $('text');
+    focus.focus();
+    // The cursor goes to the end of what was there
+    if (focus.value) focus.setSelectionRange(focus.value.length, focus.value.length);
     loadNotes();
 }
 
@@ -95,7 +129,10 @@ async function sendText(text) {
     const result = await sendNote(server, slug, text);
     await handle(result, slug, () => {
         // Also after a retry that followed the password, so the box only clears once the note is in
-        if ($('text').value === text) $('text').value = '';
+        if ($('text').value === text) {
+            $('text').value = '';
+            saveView();
+        }
         show('Added.');
         loadNotes();
     }, () => sendText(text));
@@ -120,6 +157,9 @@ function openStash() {
     $('search').value = '';
     retry = null;
     show('');
+    restoreScroll = null;
+    $('notes').scrollTop = 0;
+    saveView();
     loadNotes();
 }
 $('stash-form').addEventListener('submit', event => {
@@ -318,10 +358,21 @@ async function loadNotes() {
         else if (total > items.length) info = `The newest ${items.length} of ${total}${search ? ' matches' : ''}. Search to find others.`;
         else info = search ? `${total} match${total === 1 ? '' : 'es'}.` : '';
         $('notes-info').textContent = info;
+        if (restoreScroll !== null) {
+            $('notes').scrollTop = restoreScroll;
+            restoreScroll = null;
+        }
     }, () => loadNotes());
 }
 
+stashInput.addEventListener('input', saveView);
+$('text').addEventListener('input', saveView);
+$('notes').addEventListener('scroll', () => {
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(saveView, 100);
+});
 $('search').addEventListener('input', () => {
+    saveView();
     clearTimeout(searchTimer);
     // Waits for a pause in typing, so each key press is not a request
     searchTimer = setTimeout(loadNotes, 300);
