@@ -231,6 +231,14 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .home-stack .view-title { flex-direction: column; align-items: center; gap: 4px; }
 .home-stack .view-title h1 { font-size: 26px; }
 .home-stack .form-card, .home-stack .notice { max-width: none; }
+/* "Open an existing stash" stands out from the rest of the home page: accent border, larger controls */
+.open-card { padding: 18px 20px; border: 1px solid var(--blue); border-left-width: 4px; box-shadow: 0 4px 14px var(--shadow); }
+.open-card-title { display: flex; align-items: center; gap: 12px; }
+.open-card-title h3 { font-size: 17px; margin-bottom: 2px; }
+.open-card-icon { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 38px; height: 38px; border-radius: 50%; background: var(--blue-soft); color: var(--blue); }
+.open-card-icon svg { width: 20px; height: 20px; }
+.open-card input { padding: 9px 12px; font-size: 15px; }
+.open-card button { padding: 9px 18px; font-size: 14px; }
 .form-card { max-width: 640px; display: flex; flex-direction: column; gap: 14px; }
 .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .field label { font-weight: 600; font-size: 13px; }

@@ -48,12 +48,20 @@
     <main class="content">
         <section class="view">
           <div class="home-stack">
-            <div class="card form-card">
-                <h3>Open an existing stash</h3>
-                <form id="openForm" class="input-row" novalidate>
+            <div class="card form-card open-card">
+                <div class="open-card-title">
+                    <span class="open-card-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                    </span>
+                    <div>
+                        <h3 id="openTitle">Open an existing stash</h3>
+                        <small class="field-hint">Type the stash's name to jump straight in.</small>
+                    </div>
+                </div>
+                <form id="openForm" class="input-row" novalidate aria-labelledby="openTitle">
                     <input type="text" id="openInput" class="mono" placeholder="stash name" autocomplete="off" autocapitalize="off"
                            spellcheck="false" aria-label="Stash name" />
-                    <button type="submit" class="ghost">Open</button>
+                    <button type="submit" class="primary">Open</button>
                 </form>
             </div>
 
