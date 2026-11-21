@@ -9,6 +9,9 @@ function connect(filePath = ':memory:') {
     db.exec('PRAGMA auto_vacuum = INCREMENTAL');
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA foreign_keys = ON');
+    // Deleted notes and files are overwritten with zeros instead of lingering in free pages, so a burned or expired
+    // secret cannot be read back from the database file
+    db.exec('PRAGMA secure_delete = ON');
 
     db.exec(
         `CREATE TABLE IF NOT EXISTS stashes (
@@ -27,6 +30,8 @@ function connect(filePath = ':memory:') {
     if (!stashColumns.includes('drop_token_hash')) db.exec('ALTER TABLE stashes ADD COLUMN drop_token_hash TEXT');
     // Keep only the newest N unpinned items (null = keep everything)
     if (!stashColumns.includes('keep_last')) db.exec('ALTER TABLE stashes ADD COLUMN keep_last INTEGER');
+    // Raised by "Sign out other devices": every sign-in cookie is tied to it, so raising it ends them all
+    if (!stashColumns.includes('session_version')) db.exec('ALTER TABLE stashes ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
     db.exec('CREATE INDEX IF NOT EXISTS idx_stashes_expires ON stashes (expires_at)');
     db.exec(
         `CREATE TABLE IF NOT EXISTS items (
@@ -63,6 +68,9 @@ function connect(filePath = ':memory:') {
         )`
     );
     db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+    // Names of stashes that were deleted, expired or renamed away. They stay reserved for a while, so a device or
+    // script still using the old name cannot end up sending to a stranger's new stash of the same name.
+    db.exec('CREATE TABLE IF NOT EXISTS retired_slugs (slug TEXT PRIMARY KEY, retired_at TEXT NOT NULL)');
     return db;
 }
 

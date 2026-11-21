@@ -5,6 +5,7 @@
     var MIN = 4;
     var GENERATED = 12;
     var minOpen = 0; // from the server: the shortest name allowed without a password
+    var minPassword = 10; // from the server: the shortest password accepted
     var $ = function (id) { return document.getElementById(id); };
 
     var slugInput = $('slugInput');
@@ -83,6 +84,7 @@
             if (!res.ok) return;
             if (!res.body.canCreate) lockCreateForm();
             minOpen = Number(res.body.minOpenNameLength) || 0;
+            minPassword = Number(res.body.minPasswordLength) || minPassword;
             updateHint();
             ttlSelect.textContent = '';
             res.body.ttlOptions.forEach(function (option) {
@@ -113,8 +115,8 @@
             slugInput.focus();
             return;
         }
-        if (passwordInput.value && passwordInput.value.length < 4) {
-            errors.password.textContent = 'That password is too short.';
+        if (passwordInput.value && passwordInput.value.length < minPassword) {
+            errors.password.textContent = 'The password must be at least ' + minPassword + ' characters.';
             passwordInput.focus();
             return;
         }

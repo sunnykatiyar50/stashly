@@ -1,5 +1,5 @@
 const { generateSlug, parseSlug } = require('../utils/slug');
-const { hashPassword, verifyPassword, MIN_PASSWORD, MAX_PASSWORD } = require('../utils/password');
+const { hashPassword, verifyPassword, MAX_PASSWORD } = require('../utils/password');
 const { signToken, verifyToken, parseCookies, generateLinkToken, hashLinkToken, linkTokenMatches } = require('../utils/token');
 const { detectFile, cleanFileName } = require('../utils/fileType');
 const { dateRange } = require('../utils/time');
@@ -12,6 +12,8 @@ const cookieName = slug => `stashly_${slug}`;
 const ROLE_COOKIES = { view: slug => `stashlyv_${slug}`, drop: slug => `stashlyd_${slug}` };
 // What a share link signs: its own label plus the hash of its token, so a new link voids cookies from the old one
 const roleSubject = (slug, kind) => `${slug}:${kind}`;
+const DAY = 24 * 60 * 60 * 1000;
+const RESERVED_MESSAGE = 'That name belonged to a stash that was deleted, expired or renamed recently, so it is reserved for now. Pick another.';
 
 // "bytes=START-END", "bytes=START-" or "bytes=-SUFFIX" for one range. Returns { start, end }, 'invalid', or null when
 // there is no range to honour (no header, or several ranges, which are served whole).
@@ -92,7 +94,7 @@ class StashController {
     loadStash = (req, res, next) => {
         const stash = this.model.findBySlug(String(req.params.slug || '').toLowerCase());
         if (stash && stash.expires_at && stash.expires_at <= this.now().toISOString()) {
-            this.model.deleteStash(stash.id);
+            this.model.deleteStash(stash.id, this.now());
             this.events.closeAll(stash.slug, 'stash-gone', { reason: 'expired' });
             return res.status(404).json({ error: 'This stash has expired or does not exist.' });
         }
@@ -104,26 +106,43 @@ class StashController {
     // What this visitor may do in this stash: 'full' (no password, or unlocked), 'view' (a read-only link),
     // 'drop' (a drop-box link: can add, cannot read) or null (locked out).
     roleOf(req, stash) {
-        if (!stash.password_hash) return 'full';
+        return this.access(req, stash).role;
+    }
+
+    // The role, plus the valid sign-in token it came from ({ expiresAt, signedInAt }; none for a stash with no password)
+    access(req, stash) {
+        if (!stash.password_hash) return { role: 'full', token: null };
         const cookies = parseCookies(req.headers.cookie);
         const now = this.now().getTime();
-        if (verifyToken(this.secret, stash.slug, stash.password_salt, cookies[cookieName(stash.slug)], now)) return 'full';
+        const full = verifyToken(this.secret, stash.slug, this.saltFor(stash, 'full'), cookies[cookieName(stash.slug)], now);
+        if (full) return { role: 'full', token: full };
         for (const kind of ['view', 'drop']) {
-            const hash = stash[`${kind}_token_hash`];
-            if (hash && verifyToken(this.secret, roleSubject(stash.slug, kind), hash, cookies[ROLE_COOKIES[kind](stash.slug)], now)) return kind;
+            if (!stash[`${kind}_token_hash`]) continue;
+            const token = verifyToken(this.secret, roleSubject(stash.slug, kind), this.saltFor(stash, kind), cookies[ROLE_COOKIES[kind](stash.slug)], now);
+            if (token) return { role: kind, token };
         }
-        return null;
+        return { role: null, token: null };
+    }
+
+    // What a sign-in cookie is tied to: the password's salt (or the share link's hash), and the stash's session
+    // version, which "Sign out other devices" raises to end every sign-in at once. Version 0 leaves the salt as it
+    // was, so sign-ins made before the version existed keep working.
+    saltFor(stash, kind) {
+        const base = kind === 'full' ? stash.password_salt : stash[`${kind}_token_hash`];
+        const version = stash.session_version || 0;
+        return version ? `${base}.v${version}` : base;
     }
 
     // Route guard: the roles that may use the route. A locked-out visitor is asked for the password; a share-link
     // visitor who goes beyond what the link allows is told no.
     allow = (...roles) => (req, res, next) => {
-        const role = this.roleOf(req, req.stash);
+        const { role, token } = this.access(req, req.stash);
         if (!role) return res.status(401).json({ error: 'This stash is locked. Enter the password.', locked: true });
         if (!roles.includes(role)) {
             return res.status(403).json({ error: role === 'view' ? 'This link is read-only.' : 'This drop-box link can only add things.', role });
         }
         req.role = role;
+        req.signIn = token;
         next();
     };
 
@@ -136,6 +155,7 @@ class StashController {
             limits: this.limits(),
             allowNoExpiry: this.config.allowNoExpiry,
             minOpenNameLength: this.config.minOpenNameLength,
+            minPasswordLength: this.config.minPasswordLength,
             sessionOptions: this.config.sessionOptions.map(({ key, label }) => ({ key, label })),
             defaultSession: this.config.defaultSession,
             itemTtlOptions: this.config.itemTtlOptions.map(({ key, label }) => ({ key, label })),
@@ -148,6 +168,14 @@ class StashController {
 
     canCreate(req) {
         return !this.config.requireAdminToCreate || this.isAdmin(req);
+    }
+
+    // A name another stash gave up recently (deleted, expired or renamed away) is kept from new stashes for a while:
+    // a device or script still using it would otherwise send its notes to whoever took the name next
+    nameReserved(slug) {
+        const days = this.config.reserveOldNamesDays;
+        if (!days) return false;
+        return this.model.isRetired(slug, new Date(this.now().getTime() - days * DAY));
     }
 
     suggest = (req, res) => {
@@ -170,10 +198,11 @@ class StashController {
 
         let password = null;
         if (body.password !== undefined && body.password !== null && body.password !== '') {
-            if (typeof body.password !== 'string' || body.password.length < MIN_PASSWORD || body.password.length > MAX_PASSWORD) {
+            const min = this.config.minPasswordLength;
+            if (typeof body.password !== 'string' || body.password.length < min || body.password.length > MAX_PASSWORD) {
                 return res
                     .status(400)
-                    .json({ error: 'That password is too short or too long.', field: 'password' });
+                    .json({ error: `The password must be ${min} to ${MAX_PASSWORD} characters.`, field: 'password' });
             }
             password = body.password;
         }
@@ -186,6 +215,8 @@ class StashController {
                 field: 'slug',
             });
         }
+
+        if (this.nameReserved(parsed.slug)) return res.status(409).json({ error: RESERVED_MESSAGE, field: 'slug' });
 
         if (this.model.countStashes() >= this.config.maxStashes) {
             return res.status(503).json({ error: 'This server has reached its limit of stashes. Try again later.' });
@@ -218,22 +249,36 @@ class StashController {
     // Always HttpOnly and SameSite=Strict. Secure follows the connection, or is forced with COOKIE_SECURE=true
     // (for a TLS proxy that Express was not told about).
     // durationMs is how long this browser stays signed in (the person's choice), never past the end of the stash.
-    setAccessCookie(req, res, stash, kind = 'full', durationMs = this.sessionMs(null)) {
+    // signedInAt is when this browser first signed in: a session can be changed later, but never made to run past the
+    // longest session length counted from then, so a copied cookie cannot be kept alive forever.
+    // Returns when the session ends (ms).
+    setAccessCookie(req, res, stash, kind = 'full', durationMs = this.sessionMs(null), signedInAt = null) {
         const now = this.now().getTime();
+        const since = Number.isFinite(signedInAt) ? signedInAt : now;
         const stashEnd = stash.expires_at ? new Date(stash.expires_at).getTime() : Infinity;
-        const expiresAt = Math.min(now + durationMs, stashEnd);
-        const [name, subject, salt] =
-            kind === 'full'
-                ? [cookieName(stash.slug), stash.slug, stash.password_salt]
-                : [ROLE_COOKIES[kind](stash.slug), roleSubject(stash.slug, kind), stash[`${kind}_token_hash`]];
+        const expiresAt = Math.max(now, Math.min(now + durationMs, since + this.maxSessionMs(), stashEnd));
+        const [name, subject] =
+            kind === 'full' ? [cookieName(stash.slug), stash.slug] : [ROLE_COOKIES[kind](stash.slug), roleSubject(stash.slug, kind)];
+        const salt = this.saltFor(stash, kind);
         const secure = this.config.cookieSecure === 'true' ? true : this.config.cookieSecure === 'false' ? false : req.secure;
-        res.cookie(name, signToken(this.secret, subject, salt, expiresAt), {
+        res.cookie(name, signToken(this.secret, subject, salt, expiresAt, since), {
             httpOnly: true,
             sameSite: 'strict',
             secure,
             path: '/',
             maxAge: Math.max(0, expiresAt - now),
         });
+        return expiresAt;
+    }
+
+    // The longest session on offer: no sign-in lasts longer than this from when it started
+    maxSessionMs() {
+        return Math.max(...this.config.sessionOptions.map(option => option.ms));
+    }
+
+    // When the visitor's current sign-in started (null for an older cookie that does not say, or no password)
+    signedInAt(req) {
+        return req.signIn && Number.isFinite(req.signIn.signedInAt) ? req.signIn.signedInAt : null;
     }
 
     // How long a session lasts, from one of the listed choices (the default when none is given). null when the choice
@@ -317,9 +362,12 @@ class StashController {
         const session = this.sessionOptionFor(req.body && req.body.session);
         if (!session || !(req.body && req.body.session)) return res.status(400).json({ error: 'Pick one of the listed session lengths.', field: 'session' });
         if (!stash.password_hash) return res.status(400).json({ error: 'This stash has no password, so there is no session to change.' });
-        this.setAccessCookie(req, res, stash, req.role, session.ms);
+        // An older cookie does not say when it signed in, so its limit is counted from now
+        const ends = this.setAccessCookie(req, res, stash, req.role, session.ms, this.signedInAt(req));
         const stashEnd = stash.expires_at ? new Date(stash.expires_at).getTime() : Infinity;
-        res.json({ ok: true, sessionEndsAt: new Date(Math.min(this.now().getTime() + session.ms, stashEnd)).toISOString() });
+        // capped: the choice was cut short by the longest-session limit (not by the stash's own end)
+        const capped = ends < this.now().getTime() + session.ms && ends < stashEnd;
+        res.json({ ok: true, sessionEndsAt: new Date(ends).toISOString(), capped });
     };
 
     // Renames the stash (full access only). The address changes, so:
@@ -339,11 +387,13 @@ class StashController {
             return res.status(400).json({ error: `Without a password the name must be at least ${minName} characters.`, field: 'slug' });
         }
 
+        if (this.nameReserved(parsed.slug)) return res.status(409).json({ error: RESERVED_MESSAGE, field: 'slug' });
+
         const end = this.sessionEnd(req, stash, 'full');
         const remaining = end ? Math.max(0, new Date(end).getTime() - this.now().getTime()) : this.sessionMs(null);
         let updated;
         try {
-            updated = this.model.renameStash(stash.id, parsed.slug);
+            updated = this.model.renameStash(stash.id, parsed.slug, this.now());
         } catch (err) {
             if (err.code === 'DUPLICATE') return res.status(409).json({ error: err.message, field: 'slug' });
             throw err;
@@ -356,7 +406,7 @@ class StashController {
             this.failures.set(updated.slug, failures);
         }
         for (const kind of ['full', 'view', 'drop']) res.clearCookie(this.cookieFor(stash.slug, kind), { path: '/' });
-        if (updated.password_hash) this.setAccessCookie(req, res, updated, 'full', remaining);
+        if (updated.password_hash) this.setAccessCookie(req, res, updated, 'full', remaining, this.signedInAt(req));
         this.events.closeAll(stash.slug, 'stash-renamed', { slug: updated.slug, origin: this.withOrigin({}, req).origin });
         res.json({ ok: true, slug: updated.slug, url: `/s/${updated.slug}` });
     };
@@ -371,8 +421,9 @@ class StashController {
         const stash = req.stash;
         if (!stash.password_hash) return res.status(400).json({ error: 'This stash has no password to change.' });
         const { currentPassword, newPassword } = req.body || {};
-        if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORD || newPassword.length > MAX_PASSWORD) {
-            return res.status(400).json({ error: `The new password must be ${MIN_PASSWORD} to ${MAX_PASSWORD} characters.`, field: 'newPassword' });
+        const min = this.config.minPasswordLength;
+        if (typeof newPassword !== 'string' || newPassword.length < min || newPassword.length > MAX_PASSWORD) {
+            return res.status(400).json({ error: `The new password must be ${min} to ${MAX_PASSWORD} characters.`, field: 'newPassword' });
         }
         const wait = this.lockedFor(stash.slug);
         if (wait) {
@@ -397,10 +448,23 @@ class StashController {
         const hashed = await hashPassword(newPassword);
         const updated = this.model.setPassword(stash.id, hashed.hash, hashed.salt);
         this.failures.delete(stash.slug);
-        this.setAccessCookie(req, res, updated, 'full', remaining);
+        const ends = this.setAccessCookie(req, res, updated, 'full', remaining, this.signedInAt(req));
         this.events.closeAll(stash.slug, 'access-changed', { origin: this.withOrigin({}, req).origin });
-        const stashEnd = updated.expires_at ? new Date(updated.expires_at).getTime() : Infinity;
-        res.json({ ok: true, sessionEndsAt: new Date(Math.min(this.now().getTime() + remaining, stashEnd)).toISOString() });
+        res.json({ ok: true, sessionEndsAt: new Date(ends).toISOString() });
+    };
+
+    // Ends every other sign-in to this stash (other browsers, a forgotten shared computer, a copied cookie), and the
+    // sessions opened from read-only and drop-box links. This browser stays signed in for the time it had left. The
+    // links themselves still work; cancel them under Share links to stop new visits.
+    signOutOthers = (req, res) => {
+        const stash = req.stash;
+        if (!stash.password_hash) return res.status(400).json({ error: 'This stash has no password, so nobody is signed in to it.' });
+        const end = this.sessionEnd(req, stash, 'full');
+        const remaining = end ? Math.max(0, new Date(end).getTime() - this.now().getTime()) : this.sessionMs(null);
+        const updated = this.model.bumpSessionVersion(stash.id);
+        const ends = this.setAccessCookie(req, res, updated, 'full', remaining, this.signedInAt(req));
+        this.events.closeAll(stash.slug, 'access-changed', { origin: this.withOrigin({}, req).origin });
+        res.json({ ok: true, sessionEndsAt: new Date(ends).toISOString() });
     };
 
     // ---- share links (password-protected stashes only) ----
@@ -438,9 +502,12 @@ class StashController {
 
     get = (req, res) => {
         const stash = req.stash;
-        const range = dateRange(req.query);
+        // The page sends its search in the body (POST .../query), so the words never appear in an address that a
+        // proxy logs; GET with ?search= still works for scripts
+        const input = req.method === 'POST' ? req.body || {} : req.query;
+        const range = dateRange(input);
         if (range.error) return res.status(400).json({ error: range.error });
-        const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 200) : '';
+        const search = typeof input.search === 'string' ? input.search.trim().slice(0, 200) : '';
 
         // A drop-box visitor can add but not read: they get the stash's shape and no items or counts
         const dropOnly = req.role === 'drop';
@@ -678,6 +745,7 @@ class StashController {
 
     // Deletes a note that has been read and tells every open page
     burn(stash, row) {
+        // The model overwrites the text and empties the write-ahead log, so it cannot be read back from the files
         this.model.deleteItem(stash.id, row.id);
         this.events.publish(stash.slug, 'item-deleted', { id: row.id, burned: true });
     }
@@ -712,7 +780,7 @@ class StashController {
 
     remove = (req, res) => {
         const stash = req.stash;
-        this.model.deleteStash(stash.id);
+        this.model.deleteStash(stash.id, this.now());
         this.events.closeAll(stash.slug, 'stash-gone', { reason: 'deleted' });
         res.json({ ok: true });
     };
@@ -726,6 +794,8 @@ class StashController {
         const removed = this.model.purgeExpired(this.now());
         for (const slug of removed) this.events.closeAll(slug, 'stash-gone', { reason: 'expired' });
         for (const item of this.model.purgeExpiredItems(this.now())) this.events.publish(item.slug, 'item-deleted', { id: item.id });
+        // Names reserved long enough are free again
+        if (this.config.reserveOldNamesDays) this.model.purgeRetired(new Date(this.now().getTime() - this.config.reserveOldNamesDays * DAY));
         // Forget wrong-password counts whose window has passed
         const window = this.config.stashUnlockWindowMs;
         for (const [slug, entry] of this.failures) if (this.now().getTime() - entry.start >= window) this.failures.delete(slug);

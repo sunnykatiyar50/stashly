@@ -59,6 +59,11 @@ function loadConfig(env = process.env, overrides = {}) {
         // A stash with no password is protected only by its name, so the name has to be long enough not to be guessed.
         // 0 turns the rule off. Stashes made before the rule are not affected.
         minOpenNameLength: num(env.MIN_OPEN_NAME_LENGTH, 10),
+        // Shortest stash password accepted when one is set or changed. Existing passwords keep working.
+        minPasswordLength: Math.max(4, Math.min(200, num(env.MIN_PASSWORD_LENGTH, 10))),
+        // A name given up by a stash (deleted, expired or renamed away) cannot be taken by a new stash for this many
+        // days, so a device or script still using it does not send to a stranger. 0 turns it off.
+        reserveOldNamesDays: num(env.RESERVE_OLD_NAMES_DAYS, 30),
         // Wrong passwords for one stash, from anyone: after this many in the window, unlocking it is refused until
         // the window ends (a person already signed in is not affected). 0 turns it off.
         stashUnlockFailures: num(env.STASH_UNLOCK_FAILURES, 10),

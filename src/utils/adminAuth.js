@@ -31,7 +31,7 @@ class AdminAuth {
     isAdmin = req => {
         if (!this.enabled) return false;
         const token = parseCookies(req.headers.cookie)[COOKIE];
-        return verifyToken(this.secret, 'admin', this.salt, token, this.now().getTime());
+        return Boolean(verifyToken(this.secret, 'admin', this.salt, token, this.now().getTime()));
     };
 
     startSession(req, res) {

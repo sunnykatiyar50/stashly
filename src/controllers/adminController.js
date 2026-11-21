@@ -2,7 +2,7 @@
 // No note text or file content is exposed here, and the admin session does not unlock a password-protected stash.
 // Setting a new password is the one way in: it signs everyone out of that stash, but whoever knows the new password
 // (the admin included) can open it. That is what makes it a reset for a forgotten password.
-const { hashPassword, MIN_PASSWORD, MAX_PASSWORD } = require('../utils/password');
+const { hashPassword, MAX_PASSWORD } = require('../utils/password');
 
 class AdminController {
     constructor({ model, events, config, adminAuth, settings, now = () => new Date(), resetFailures = () => {} }) {
@@ -64,7 +64,7 @@ class AdminController {
     deleteStash = (req, res) => {
         const stash = this.findStash(req, res);
         if (!stash) return;
-        this.model.deleteStash(stash.id);
+        this.model.deleteStash(stash.id, this.now());
         this.events.closeAll(stash.slug, 'stash-gone', { reason: 'deleted' });
         res.json({ ok: true });
     };
@@ -84,8 +84,9 @@ class AdminController {
         const stash = this.findStash(req, res);
         if (!stash) return;
         const password = req.body && req.body.password;
-        if (typeof password !== 'string' || password.length < MIN_PASSWORD || password.length > MAX_PASSWORD) {
-            return res.status(400).json({ error: `The password must be ${MIN_PASSWORD} to ${MAX_PASSWORD} characters.`, field: 'password' });
+        const min = this.config.minPasswordLength;
+        if (typeof password !== 'string' || password.length < min || password.length > MAX_PASSWORD) {
+            return res.status(400).json({ error: `The password must be ${min} to ${MAX_PASSWORD} characters.`, field: 'password' });
         }
         const hashed = await hashPassword(password);
         this.model.setPassword(stash.id, hashed.hash, hashed.salt);

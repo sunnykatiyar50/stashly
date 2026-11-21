@@ -653,12 +653,12 @@
 
     function load(quiet) {
         var f = state.filters;
-        var query = new URLSearchParams();
-        if (f.search) query.set('search', f.search);
-        if (f.startDate) query.set('startDate', f.startDate);
-        if (f.endDate) query.set('endDate', f.endDate);
-        query.set('tz', String(new Date().getTimezoneOffset()));
-        return api(base + '?' + query.toString()).then(function (res) {
+        // Sent in the body, not the address, so search words never end up in a proxy's access log
+        var query = { tz: String(new Date().getTimezoneOffset()) };
+        if (f.search) query.search = f.search;
+        if (f.startDate) query.startDate = f.startDate;
+        if (f.endDate) query.endDate = f.endDate;
+        return api(base + '/query', { method: 'POST', body: query }).then(function (res) {
             if (res.status === 404) return gone();
             if (res.status === 401) return locked();
             if (res.status === 400) {
@@ -1197,7 +1197,8 @@
         var current = $('currentPasswordInput').value;
         var next = $('newPasswordInput').value;
         if (!current) { error.textContent = 'Enter the current password.'; $('currentPasswordInput').focus(); return; }
-        if (next.length < 4) { error.textContent = 'The new password must be at least 4 characters.'; $('newPasswordInput').focus(); return; }
+        var minPassword = state.minPassword || 10;
+        if (next.length < minPassword) { error.textContent = 'The new password must be at least ' + minPassword + ' characters.'; $('newPasswordInput').focus(); return; }
         if (next !== $('repeatPasswordInput').value) { error.textContent = 'The two new passwords do not match.'; $('repeatPasswordInput').focus(); return; }
         $('changePasswordSave').disabled = true;
         api(base + '/password', { method: 'POST', body: { currentPassword: current, newPassword: next } }).then(function (res) {
@@ -1265,7 +1266,8 @@
 
     // A note or file that came from another device
     function onIncoming(item) {
-        if (state.autoCopy && item.kind === 'note' && !item.burn && item.text) autoCopyNote(item.text);
+        // Secret notes are left alone: auto-copying would put them in the system's clipboard history (and its cloud sync)
+        if (state.autoCopy && item.kind === 'note' && !item.burn && !item.secret && item.text) autoCopyNote(item.text);
         if (state.notify) notifyItem(item);
     }
 
@@ -1355,12 +1357,36 @@
             if (res.ok) {
                 state.stash.sessionEndsAt = res.body.sessionEndsAt;
                 updateSessionInfo();
-                toast('You will be signed out ' + untilText(res.body.sessionEndsAt));
+                toast(res.body.capped
+                    ? 'A sign-in lasts at most 30 days, so you will be signed out ' + untilText(res.body.sessionEndsAt) + '. Unlock again to start a new one.'
+                    : 'You will be signed out ' + untilText(res.body.sessionEndsAt));
             } else if (res.status === 401) {
                 locked();
             } else {
                 toast((res.body && res.body.error) || 'Could not change that.', true);
             }
+        });
+    });
+
+    // Ends every other sign-in to this stash (and sessions opened from share links); this browser stays signed in
+    $('signOutOthers').addEventListener('click', function () {
+        if (!window.confirm('Sign out every other browser and device from this stash? They will need the password again. Read-only and drop-box links keep working; cancel them under Share links if you need to.')) return;
+        var button = $('signOutOthers');
+        button.disabled = true;
+        api(base + '/sign-out-others', { method: 'POST' }).then(function (res) {
+            button.disabled = false;
+            if (res.ok) {
+                state.stash.sessionEndsAt = res.body.sessionEndsAt;
+                updateSessionInfo();
+                toast('Every other device was signed out');
+            } else if (res.status === 401) {
+                locked();
+            } else {
+                toast((res.body && res.body.error) || 'Could not sign the others out.', true);
+            }
+        }).catch(function () {
+            button.disabled = false;
+            toast('Could not reach the server.', true);
         });
     });
 
@@ -1626,6 +1652,7 @@
 
     api('/api/config').then(function (res) {
         if (!res.ok) return;
+        state.minPassword = Number(res.body.minPasswordLength) || 10;
         // How long to stay signed in: on the unlock form, and in Options to change it later
         var sessionOptions = res.body.sessionOptions || [];
         if (sessionOptions.length) {

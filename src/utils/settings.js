@@ -44,6 +44,16 @@ const FIELDS = {
         help: 'A stash with no password is protected only by its name. Names shorter than this need a password. 0 turns the rule off. Stashes that already exist are not changed.',
         read: c => c.minOpenNameLength, write: (c, v) => { c.minOpenNameLength = v; },
     },
+    minPasswordLength: {
+        label: 'Shortest stash password', unit: 'characters', type: 'int', min: 4, max: 200,
+        help: 'Applies when a password is set or changed. Passwords that already exist keep working.',
+        read: c => c.minPasswordLength, write: (c, v) => { c.minPasswordLength = v; },
+    },
+    reserveOldNamesDays: {
+        label: 'Keep old names reserved', unit: 'days', type: 'int', min: 0, max: 3650,
+        help: 'A name given up by a deleted, expired or renamed stash cannot be used by a new stash for this long, so a device or script still using it does not send to someone else. 0 turns it off.',
+        read: c => c.reserveOldNamesDays, write: (c, v) => { c.reserveOldNamesDays = v; },
+    },
     fileTypes: {
         label: 'File types', type: 'choice',
         options: [
