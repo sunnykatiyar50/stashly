@@ -251,6 +251,22 @@
         time.title = new Date(item.createdAt).toLocaleString();
         var side = make('span', 'clip-side');
         side.appendChild(time);
+        // Quick buttons that show when the row is hovered (always on touch screens): pin and copy
+        var quick = make('span', 'clip-quick');
+        if (role() === 'full') {
+            var pinLabel = item.pinned ? 'Unpin' : 'Pin to the top';
+            var pin = make('button', 'clip-copy clip-pin ghost' + (item.pinned ? ' on' : ''));
+            pin.type = 'button';
+            pin.title = pinLabel;
+            pin.setAttribute('aria-label', pinLabel);
+            pin.setAttribute('aria-pressed', item.pinned ? 'true' : 'false');
+            pin.appendChild(svg(PIN_ICON));
+            pin.addEventListener('click', function (event) {
+                event.stopPropagation();
+                setPinned(item, !item.pinned);
+            });
+            quick.appendChild(pin);
+        }
         // A note whose text is on the page can be copied without opening it (a burn note's text is not here)
         if (item.kind === 'note' && !item.burn && item.text) {
             var copy = make('button', 'clip-copy ghost');
@@ -262,8 +278,9 @@
                 event.stopPropagation();
                 copyNote(item.text, copy);
             });
-            side.appendChild(copy);
+            quick.appendChild(copy);
         }
+        if (quick.children.length) side.appendChild(quick);
         el.appendChild(side);
 
         el.addEventListener('click', function () { openItem(item.id); });
@@ -279,6 +296,7 @@
         return el;
     }
 
+    var PIN_ICON = '<svg viewBox="0 0 24 24"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z"/></svg>';
     var GRIP_ICON = '<svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>';
 
     // ---- moving clips ----

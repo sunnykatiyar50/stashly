@@ -603,3 +603,8 @@ body:not(.stash-open) .in-topbar { display: none; }
     .header-actions .icon-label svg { width: 18px; height: 18px; }
     .header-actions .btn-label { display: none; }
 }
+
+/* Pin and copy sit side by side under the time; the pin is filled in on a pinned clip */
+.clip-quick { display: flex; gap: 2px; }
+.clip-pin.on { color: var(--blue); }
+.clip-pin.on svg { fill: currentColor; }
