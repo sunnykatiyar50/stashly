@@ -586,3 +586,13 @@ audio.detail-media { max-height: none; }
 .tok-add { color: light-dark(#0b7a3b, #7ee0a1); }
 .tok-del { color: light-dark(#b91c1c, #f28b82); }
 .tok-hunk { color: light-dark(#1d4ed8, #8ab4ff); }
+
+/* ===== Header buttons: icon and word on wide screens, icon only on phones (one row instead of two) ===== */
+.icon-label svg { width: 15px; height: 15px; }
+@media (max-width: 760px) {
+    .header-actions { flex-wrap: nowrap; gap: 4px; }
+    .header-actions .icon-label { padding: 7px 8px; }
+    .header-actions .icon-label svg { width: 18px; height: 18px; }
+    .header-actions .btn-label { display: none; }
+    .header-gear { margin-left: 2px; }
+}

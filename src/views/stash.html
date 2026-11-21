@@ -99,15 +99,32 @@
                     </button>
                 </div>
                 <div class="header-actions">
-                    <button type="button" id="qrButton" class="ghost small" title="Show a QR code to open this stash on a phone">
+                    <!-- Each button has an icon and a word. On a phone only the icons show, so they fit on one row;
+                         aria-label keeps the word for screen readers there. -->
+                    <button type="button" id="qrButton" class="ghost small icon-label" title="Show a QR code to open this stash on a phone" aria-label="QR code">
                         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="14.01"/><line x1="18" y1="14" x2="21" y2="14"/><line x1="14" y1="18" x2="14" y2="21"/><line x1="18" y1="18" x2="21" y2="18"/><line x1="21" y1="21" x2="21" y2="21.01"/></svg>
-                        QR code
+                        <span class="btn-label">QR code</span>
                     </button>
-                    <button type="button" id="copyLatestButton" class="ghost small" title="Copy the newest note (Alt+C)">Copy latest</button>
-                    <button type="button" id="copyLinkButton" class="ghost small">Copy link</button>
-                    <button type="button" id="shareButton" class="ghost small hidden" title="Make a read-only link or a drop-box link for this stash">Share links</button>
-                    <button type="button" id="extendButton" class="ghost small">Extend</button>
-                    <button type="button" id="logoutButton" class="ghost small" title="Leave this stash">Exit</button>
+                    <button type="button" id="copyLatestButton" class="ghost small icon-label" title="Copy the newest note (Alt+C)" aria-label="Copy latest">
+                        <svg viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><polyline points="9 14 11 16 15 12"/></svg>
+                        <span class="btn-label">Copy latest</span>
+                    </button>
+                    <button type="button" id="copyLinkButton" class="ghost small icon-label" title="Copy this stash's address" aria-label="Copy link">
+                        <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        <span class="btn-label">Copy link</span>
+                    </button>
+                    <button type="button" id="shareButton" class="ghost small icon-label hidden" title="Make a read-only link or a drop-box link for this stash" aria-label="Share links">
+                        <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                        <span class="btn-label">Share links</span>
+                    </button>
+                    <button type="button" id="extendButton" class="ghost small icon-label" title="Keep this stash longer" aria-label="Extend">
+                        <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><polyline points="12 9 12 13 14.5 14.5"/><line x1="9" y1="2" x2="15" y2="2"/></svg>
+                        <span class="btn-label">Extend</span>
+                    </button>
+                    <button type="button" id="logoutButton" class="ghost small icon-label" title="Leave this stash" aria-label="Exit">
+                        <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                        <span class="btn-label">Exit</span>
+                    </button>
                     <!-- Everything that is rarely needed (and the dangerous Delete) lives behind this icon -->
                     <button type="button" id="optionsButton" class="ghost icon-only header-gear" title="Options" aria-label="Options">
                         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
