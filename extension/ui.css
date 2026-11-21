@@ -28,7 +28,7 @@ body {
     color: var(--fg);
     font: 14px/1.4 system-ui, sans-serif;
 }
-body.popup { width: 360px; padding: 12px; }
+body.popup { width: 380px; padding: 12px; }
 body.page { max-width: 480px; margin: 40px auto; padding: 0 16px; }
 h1 { font-size: 20px; }
 label { display: block; margin-bottom: 4px; font-weight: 600; }
@@ -70,13 +70,18 @@ pre {
     border: 1px solid var(--border);
     border-radius: 6px;
 }
-#status { min-height: 1.4em; margin: 0 0 8px; }
+/* The status sits on the Add row, after the buttons */
+#status { flex: 1; min-width: 0; margin: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Square buttons that hold only an icon */
+.icon { display: inline-grid; place-items: center; padding: 6px; line-height: 0; }
+.icon svg { display: block; }
+#add { padding-inline: 18px; }
 input[type="search"] { width: 100%; }
 #notes {
     list-style: none;
     margin: 6px 0;
     padding: 0;
-    max-height: 260px;
+    max-height: 340px;
     overflow-y: auto;
 }
 #notes:empty { display: none; }
@@ -92,6 +97,9 @@ input[type="search"] { width: 100%; }
 .note-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note-meta { color: var(--muted); font-size: 12px; }
 .note button { padding: 3px 8px; font-size: 12px; }
+.note button.icon { padding: 5px; color: var(--muted); }
+.note button.icon:hover { color: var(--fg); }
+.note button.done { color: var(--ok); border-color: var(--ok); }
 .note-text { max-height: 120px; }
 #notes-info { margin: 0; }
 .ok { color: var(--ok); }

@@ -5,6 +5,26 @@ let server = '';
 // Whatever the user tried before being asked for the password, retried once the stash is unlocked
 let retry = null;
 
+// Small line icons (24x24, drawn with the text colour)
+const ICONS = {
+    copy: ['<rect x="9" y="9" width="13" height="13" rx="2"/>', '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'],
+    check: ['<path d="M20 6 9 17l-5-5"/>'],
+    external: ['<path d="M15 3h6v6"/>', '<path d="M10 14 21 3"/>', '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'],
+    clipboard: ['<rect x="8" y="2" width="8" height="4" rx="1"/>', '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>', '<path d="M12 11v6"/>', '<path d="M9 14h6"/>'],
+    paperclip: ['<path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l8.6-8.6a4 4 0 0 1 5.7 5.7l-8.6 8.6a2 2 0 0 1-2.8-2.8l8.5-8.5"/>'],
+};
+const SVG = 'http://www.w3.org/2000/svg';
+function icon(name) {
+    const svg = document.createElementNS(SVG, 'svg');
+    for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', width: '16', height: '16', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) {
+        svg.setAttribute(key, value);
+    }
+    // The shapes are fixed strings above, never page or server data
+    const parsed = new DOMParser().parseFromString(`<svg xmlns="${SVG}">${ICONS[name].join('')}</svg>`, 'image/svg+xml');
+    svg.append(...parsed.documentElement.childNodes);
+    return svg;
+}
+
 function show(message, isError = false) {
     status.textContent = message;
     status.className = isError ? 'error' : 'ok';
@@ -34,7 +54,7 @@ async function init() {
     fillRecent(settings.recent);
     stashInput.value = settings.recent[0] || '';
     (stashInput.value ? $('text') : stashInput).focus();
-    if (stashInput.value) loadNotes();
+    loadNotes();
 }
 
 // Every request ends here: a locked stash asks for its password, other errors are shown
@@ -70,13 +90,13 @@ async function showUnlock() {
 async function sendText(text) {
     const slug = currentStash();
     if (!slug) return;
-    if (!text.trim()) return show('Write something first.', true);
-    show('Sending…');
+    if (!text.trim()) return show('Type or paste something first.', true);
+    show('Adding…');
     const result = await sendNote(server, slug, text);
     await handle(result, slug, () => {
         // Also after a retry that followed the password, so the box only clears once the note is in
         if ($('text').value === text) $('text').value = '';
-        show(`Sent to ${slug}.`);
+        show('Added.');
         loadNotes();
     }, () => sendText(text));
 }
@@ -84,32 +104,37 @@ async function sendText(text) {
 async function upload(file) {
     const slug = currentStash();
     if (!slug || !file) return;
-    show(`Uploading ${file.name}…`);
+    show(`Adding ${file.name}…`);
     const result = await sendFile(server, slug, file);
     await handle(result, slug, () => {
-        show(`Uploaded ${file.name} to ${slug}.`);
+        show(`Added ${file.name}.`);
         loadNotes();
     }, () => upload(file));
 }
 
 $('open-options').addEventListener('click', () => ext.runtime.openOptionsPage());
 
-$('stash-form').addEventListener('submit', event => {
-    event.preventDefault();
-    $('text').focus();
-});
-stashInput.addEventListener('change', () => {
+// Shows the chosen stash's clips in the popup (Open, Enter, or picking a recent stash)
+function openStash() {
     $('unlock-form').hidden = true;
     $('search').value = '';
     retry = null;
     show('');
     loadNotes();
+}
+$('stash-form').addEventListener('submit', event => {
+    event.preventDefault();
+    if (currentStash()) openStash();
 });
+stashInput.addEventListener('change', openStash);
 
-$('open-stash').addEventListener('click', () => {
+$('open-tab').append(icon('external'));
+$('open-tab').addEventListener('click', () => {
     const slug = currentStash();
     if (slug) ext.tabs.create({ url: `${server}/s/${encodeURIComponent(slug)}` });
 });
+$('send-clipboard').append(icon('clipboard'));
+$('file-button').prepend(icon('paperclip'));
 
 $('unlock-form').addEventListener('submit', async event => {
     event.preventDefault();
@@ -131,7 +156,7 @@ $('note-form').addEventListener('submit', event => {
     event.preventDefault();
     sendText($('text').value);
 });
-// Ctrl+Enter (or Cmd+Enter) sends
+// Ctrl+Enter (or Cmd+Enter) adds
 $('text').addEventListener('keydown', event => {
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) $('note-form').requestSubmit();
 });
@@ -155,7 +180,7 @@ $('file').addEventListener('change', event => {
     event.target.value = '';
 });
 
-// ---- The list of recent notes ----
+// ---- The list of clips ----
 
 function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -190,12 +215,21 @@ function formatSize(bytes) {
 }
 
 function copyButton(text) {
-    const node = button('Copy');
+    const node = button('', 'Copy');
+    node.className = 'icon copy';
+    node.setAttribute('aria-label', 'Copy');
+    node.append(icon('copy'));
     node.addEventListener('click', async () => {
         try {
             await navigator.clipboard.writeText(text);
-            node.textContent = 'Copied';
-            setTimeout(() => { node.textContent = 'Copy'; }, 1500);
+            node.replaceChildren(icon('check'));
+            node.classList.add('done');
+            node.setAttribute('aria-label', 'Copied');
+            setTimeout(() => {
+                node.replaceChildren(icon('copy'));
+                node.classList.remove('done');
+                node.setAttribute('aria-label', 'Copy');
+            }, 1500);
         } catch {
             show('Could not copy. Select the text and copy it instead.', true);
         }
@@ -262,7 +296,7 @@ async function loadNotes() {
     const seq = ++listSeq;
     if (!slug) {
         $('notes').replaceChildren();
-        $('notes-info').textContent = '';
+        $('notes-info').textContent = 'Enter a stash name and choose Open to see its clips.';
         return;
     }
     const search = $('search').value.trim();
@@ -280,7 +314,7 @@ async function loadNotes() {
         $('notes').replaceChildren(...items.map(item => noteRow(slug, item, role)));
         let info;
         if (role === 'drop') info = 'This drop-box link can add things but cannot read them.';
-        else if (!items.length) info = search ? 'Nothing matches.' : 'Nothing here yet.';
+        else if (!items.length) info = search ? 'Nothing matches.' : 'No clips yet. Add one above.';
         else if (total > items.length) info = `The newest ${items.length} of ${total}${search ? ' matches' : ''}. Search to find others.`;
         else info = search ? `${total} match${total === 1 ? '' : 'es'}.` : '';
         $('notes-info').textContent = info;

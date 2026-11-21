@@ -3,9 +3,11 @@
 A small Manifest V3 extension for Chrome, Edge and Firefox. It lets you use a stash from any tab without opening the
 Stashly page. It has no build step: load this folder as it is.
 
-- **Popup** (toolbar button, or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>): pick a stash (the last five are
-  remembered), send typed text or the clipboard as a note, see the 20 newest notes with a Copy button on each and
-  search for older ones, drop a file onto the popup (or use **File…**) to upload it, and open the stash in a tab.
+- **Popup** (toolbar button, or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>): type a stash name and choose **Open**
+  to see its clips right in the popup (the last five stashes are remembered and open by themselves). Type or paste
+  text and choose **Add** (or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>). The clipboard icon adds what is on the clipboard, and
+  the paperclip icon, or dropping a file onto the popup, adds a file. Each clip has a copy icon. The search box finds
+  older clips. The ↗ icon next to **Open** opens the stash in a browser tab.
 - **Right-click → Send to Stashly**: sends the selected text, the link or the page address. With more than one recent
   stash it becomes a submenu. The toolbar button shows **OK**, or **!** with the reason in its tooltip.
 - **Password-protected stashes**: the popup asks for the password the first time and then retries what you were doing.
@@ -101,13 +103,13 @@ no errors or warnings).
 | `storage` | The server address and the recent stashes |
 | `contextMenus` | *Send to Stashly* |
 | Your server's host (asked at run time) | To call the Stashly API with your sign-in cookie. Nothing else is declared up front. The pattern has no port, because Firefox ignores a pattern with a port ([bug 1362809](https://bugzilla.mozilla.org/show_bug.cgi?id=1362809)). So access covers that host on any port. |
-| `clipboardRead` (optional, asked the first time) | Only for **Send clipboard**. Pasting into the box needs nothing. |
+| `clipboardRead` (optional, asked the first time) | Only for the clipboard icon next to **Add**. Pasting into the box needs nothing. |
 
 The extension does not read pages. It sends only what you choose to send, and only to your server.
 
 ## Good to know
 
-- **The note list** shows the stash's 20 newest items (pinned ones first), each with its own **Copy**. Files are
+- **The clip list** shows the stash's 20 newest items (pinned ones first), each note with its own copy icon, which turns into a tick once copied. Files are
   listed by name only. A secret note can be copied without being shown. The search box searches the whole stash on
   the server (`POST /api/stashes/:slug/query` with `{ search, limit: 20 }`, so the words stay out of addresses), a
   moment after you stop typing, and only 20 results come back. On a server older than this extension, `limit` is
@@ -160,9 +162,9 @@ answer the permission prompt or open `moz-extension://` addresses. The extension
 | 3 | **Key check**: unlock in a normal tab, then `fetch(…/latest, {credentials: 'include'})` from the **background script** | Passed: 404 "No notes yet", not 401. The Strict cookie was sent. |
 | 4 | The same from the **popup**; the popup sends to the locked stash without asking for the password | Passed |
 | 5 | Cookies cleared → the popup asks for the password; a wrong password shows the error. Then it unlocks and retries the send. The normal tab and the background script are signed in by the cookie the extension got. | Passed |
-| 6 | Open stash: send a note and see it in the list with **Copy**, drop a file (the CRLF bytes arrive intact), and the recent list is kept in order | Passed |
+| 6 | Open stash: add a note and see it in the list with its copy icon, drop a file (the CRLF bytes arrive intact), and the recent list is kept in order | Passed |
 | 6 | Note list: 20 of 26 shown with the total; search waits for typing to stop and finds an older note on the server; no match and a cleared search; a burn note shows no text, the first click only asks, the second reveals it and the server deletes it | Passed |
-| 6 | **Copy**, **Send clipboard**, dragging a real file from the desktop, **Open** | Not run: these need a real click, and BiDi cannot send input to extension pages |
+| 6 | Pressing the copy icon (writing to the clipboard), the clipboard icon, dragging a real file from the desktop, the ↗ tab icon | Not run: these need a real click, and BiDi cannot send input to extension pages |
 | 7 | Context menu: selection and link sent, the badge shows **OK**, and the submenu lists the recent stashes. <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> is bound to `_execute_action`. | Passed. The menu was not clicked by hand and the key was not pressed. |
 
 So no server change is needed for Firefox either.
