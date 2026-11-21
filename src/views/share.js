@@ -15,7 +15,12 @@
     }
 
     // Android usually puts the link in "text" and sometimes repeats it in "url"; share only one copy of it
-    var params = new URLSearchParams(location.search);
+    // The share sheet POSTs to /share, which hands the content over in the fragment (older installs still use the
+    // query string). Either way it is taken out of the address at once, so it is not kept in the browser's history.
+    var params = new URLSearchParams(location.hash.length > 1 ? location.hash.slice(1) : location.search);
+    if (location.hash || location.search) {
+        try { history.replaceState(null, '', '/share'); } catch (e) { /* the address keeps it; nothing else changes */ }
+    }
     var title = (params.get('title') || '').trim();
     var text = (params.get('text') || '').trim();
     var url = (params.get('url') || '').trim();

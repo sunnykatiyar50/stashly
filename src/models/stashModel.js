@@ -31,9 +31,11 @@ class StashModel {
 
     // Gives the stash a new name. Its items, password, expiry and settings stay. The read-only and drop-box links are
     // cancelled, because they point at the old name.
-    renameStash(id, slug) {
+    renameStash(id, slug, now = new Date()) {
+        const before = this.getStashById(id);
         try {
             this.db.prepare('UPDATE stashes SET slug = ?, view_token_hash = NULL, drop_token_hash = NULL WHERE id = ?').run(slug, id);
+            if (before) this.retireSlug(before.slug, now);
         } catch (err) {
             if (/UNIQUE/i.test(String(err.message))) {
                 const duplicate = new Error('A stash with that name already exists.');
@@ -62,6 +64,12 @@ class StashModel {
         return this.getStashById(id);
     }
 
+    // Ends every sign-in to the stash (the cookies are tied to this number)
+    bumpSessionVersion(id) {
+        this.db.prepare('UPDATE stashes SET session_version = session_version + 1 WHERE id = ?').run(id);
+        return this.getStashById(id);
+    }
+
     // kind is 'view' or 'drop'; a null hash revokes the link
     setShareToken(id, kind, hash) {
         const column = kind === 'view' ? 'view_token_hash' : 'drop_token_hash';
@@ -81,8 +89,13 @@ class StashModel {
         return this.getStashById(id);
     }
 
-    deleteStash(id) {
-        return this.db.prepare('DELETE FROM stashes WHERE id = ?').run(id).changes > 0;
+    deleteStash(id, now = new Date()) {
+        const stash = this.getStashById(id);
+        if (!stash) return false;
+        this.db.prepare('DELETE FROM stashes WHERE id = ?').run(id);
+        this.retireSlug(stash.slug, now);
+        this.checkpoint();
+        return true;
     }
 
     // Deletes every stash whose time is up (with its items and files). Returns the removed names.
@@ -92,10 +105,43 @@ class StashModel {
             .all(now.toISOString());
         if (!rows.length) return [];
         const remove = this.db.prepare('DELETE FROM stashes WHERE id = ?');
-        for (const row of rows) remove.run(row.id);
+        for (const row of rows) {
+            remove.run(row.id);
+            this.retireSlug(row.slug, now);
+        }
         // Gives the freed pages back to the file system (needs auto_vacuum = INCREMENTAL)
         this.db.exec('PRAGMA incremental_vacuum');
+        this.checkpoint();
         return rows.map(row => row.slug);
+    }
+
+    // ---- retired names ----
+
+    // Remembers that a name was given up (deleted, expired or renamed away), so it can be kept from new stashes
+    retireSlug(slug, now = new Date()) {
+        this.db
+            .prepare('INSERT INTO retired_slugs (slug, retired_at) VALUES (?, ?) ON CONFLICT(slug) DO UPDATE SET retired_at = excluded.retired_at')
+            .run(slug, now.toISOString());
+    }
+
+    // True when the name was given up at or after `since`
+    isRetired(slug, since) {
+        return Boolean(this.db.prepare('SELECT 1 FROM retired_slugs WHERE slug = ? AND retired_at >= ?').get(slug, since.toISOString()));
+    }
+
+    // Forgets names given up before `before`, which are free again
+    purgeRetired(before) {
+        return this.db.prepare('DELETE FROM retired_slugs WHERE retired_at < ?').run(before.toISOString()).changes;
+    }
+
+    // Moves what the write-ahead log holds into the database file and empties the log, so deleted text does not
+    // linger there either (secure_delete only covers the main file). Does nothing for an in-memory database.
+    checkpoint() {
+        try {
+            this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+        } catch {
+            // busy (a reader is open): the next checkpoint will catch up
+        }
     }
 
     // ---- items ----
@@ -122,6 +168,7 @@ class StashModel {
         if (!rows.length) return [];
         const remove = this.db.prepare('DELETE FROM items WHERE id = ?');
         for (const row of rows) remove.run(row.id);
+        this.checkpoint();
         return rows;
     }
 
@@ -200,7 +247,9 @@ class StashModel {
     }
 
     deleteItem(stashId, id) {
-        return this.db.prepare('DELETE FROM items WHERE stash_id = ? AND id = ?').run(stashId, id).changes > 0;
+        const deleted = this.db.prepare('DELETE FROM items WHERE stash_id = ? AND id = ?').run(stashId, id).changes > 0;
+        if (deleted) this.checkpoint();
+        return deleted;
     }
 
     setPinned(stashId, id, pinned) {
@@ -213,6 +262,8 @@ class StashModel {
         const changed = this.db
             .prepare(`UPDATE items SET text = ?, title = ?, edited_at = ? WHERE stash_id = ? AND id = ? AND kind = 'note'`)
             .run(text, title, now.toISOString(), stashId, id).changes;
+        // The old text is overwritten in the file (secure_delete); this clears it from the log as well
+        if (changed) this.checkpoint();
         return changed ? this.getItem(stashId, id) : null;
     }
 
@@ -229,6 +280,7 @@ class StashModel {
             .all(stashId, keep);
         const remove = this.db.prepare('DELETE FROM items WHERE id = ?');
         for (const row of rows) remove.run(row.id);
+        if (rows.length) this.checkpoint();
         return rows.map(row => row.id);
     }
 

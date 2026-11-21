@@ -12,6 +12,9 @@ function makeApp(overrides = {}, { db = connect(':memory:') } = {}) {
     const config = loadConfig({}, {
         rateCreate: 1000, ratePost: 1000, rateUpload: 1000, rateUnlock: 1000,
         minOpenNameLength: 0, stashUnlockFailures: 0,
+        // Short passwords and reusing a deleted stash's name keep the older tests simple; the tests for those rules
+        // switch them on
+        minPasswordLength: 4, reserveOldNamesDays: 0,
         ...overrides,
     });
     const model = new StashModel(db);

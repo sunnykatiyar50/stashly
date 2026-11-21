@@ -234,7 +234,8 @@
         event.preventDefault();
         var password = $('passwordInput').value;
         $('passwordError').textContent = '';
-        if (password.length < 4) { $('passwordError').textContent = 'The password must be at least 4 characters.'; $('passwordInput').focus(); return; }
+        // The server checks the length against the live "Shortest stash password" setting and says what it needs
+        if (!password) { $('passwordError').textContent = 'Enter a password.'; $('passwordInput').focus(); return; }
         $('passwordSave').disabled = true;
         api('/api/admin/stashes/' + encodeURIComponent(passwordTarget.slug) + '/password', { method: 'PUT', body: { password: password } }).then(function (res) {
             $('passwordSave').disabled = false;

@@ -49,6 +49,8 @@ function createStashRoutes({ controller, config }) {
     router.post('/', createLimiter, c.create);
 
     router.get('/:slug', ...anyRole, c.get);
+    // The same listing with the search and dates in the body, so search words stay out of addresses and proxy logs
+    router.post('/:slug/query', ...anyRole, c.get);
     router.post('/:slug/unlock', unlockLimiter, c.loadStash, c.unlock);
     router.post('/:slug/redeem', unlockLimiter, c.loadStash, c.redeem);
     // Always allowed: signing out must work even when the session has already ended
@@ -70,6 +72,7 @@ function createStashRoutes({ controller, config }) {
     // The wrong-password limit applies here too: a stranger at an unlocked browser cannot guess the current password
     router.post('/:slug/password', unlockLimiter, ...full, c.changePassword);
     router.post('/:slug/rename', postLimiter, ...full, c.rename);
+    router.post('/:slug/sign-out-others', ...full, c.signOutOthers);
     router.post('/:slug/share-links', ...full, c.createShareLink);
     router.delete('/:slug/share-links/:kind', ...full, c.revokeShareLink);
     router.delete('/:slug', ...full, c.remove);

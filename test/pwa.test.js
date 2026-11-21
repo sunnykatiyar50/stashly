@@ -10,7 +10,9 @@ test('the web app manifest is served with a share target that reaches the share 
     const manifest = JSON.parse(res.text);
     assert.equal(manifest.display, 'standalone');
     assert.equal(manifest.share_target.action, '/share');
-    assert.equal(manifest.share_target.method, 'GET');
+    // POST, so what is shared never appears in an address (proxy logs, browser history)
+    assert.equal(manifest.share_target.method, 'POST');
+    assert.equal(manifest.share_target.enctype, 'application/x-www-form-urlencoded');
     assert.deepEqual(Object.keys(manifest.share_target.params).sort(), ['text', 'title', 'url']);
     // The share target must be inside the app's scope
     assert.ok(manifest.share_target.action.startsWith(manifest.scope));

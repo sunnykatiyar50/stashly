@@ -88,6 +88,16 @@ function createApp({ config, model, events, secret, now }) {
     app.get('/s/:slug', (req, res) => res.sendFile(path.join(viewsDir, 'stash.html')));
     // Where the phone's share sheet sends what was shared (the manifest's share target)
     app.get('/share', (req, res) => res.sendFile(path.join(viewsDir, 'share.html')));
+    // The share sheet POSTs what was shared, so it never lands in an address that proxies log or browsers keep in
+    // their history. It is handed to the page in the fragment (#), which is never sent to a server, and the page
+    // clears it from the address as soon as it has read it.
+    app.post('/share', (req, res, next) => express.urlencoded({ extended: false, limit: `${Math.ceil((config.maxNoteBytes * 3) / 1024) + 4}kb` })(req, res, next), (req, res) => {
+        const body = req.body || {};
+        const params = new URLSearchParams();
+        for (const key of ['title', 'text', 'url']) if (typeof body[key] === 'string' && body[key]) params.set(key, body[key]);
+        const fragment = params.toString();
+        res.redirect(303, fragment ? `/share#${fragment}` : '/share');
+    });
     app.get('/admin', (req, res) => res.sendFile(path.join(viewsDir, 'admin.html')));
     app.use(express.static(viewsDir, { index: 'index.html' }));
 
