@@ -34,6 +34,7 @@ async function init() {
     fillRecent(settings.recent);
     stashInput.value = settings.recent[0] || '';
     (stashInput.value ? $('text') : stashInput).focus();
+    if (stashInput.value) loadNotes();
 }
 
 // Every request ends here: a locked stash asks for its password, other errors are shown
@@ -76,6 +77,7 @@ async function sendText(text) {
         // Also after a retry that followed the password, so the box only clears once the note is in
         if ($('text').value === text) $('text').value = '';
         show(`Sent to ${slug}.`);
+        loadNotes();
     }, () => sendText(text));
 }
 
@@ -84,7 +86,10 @@ async function upload(file) {
     if (!slug || !file) return;
     show(`Uploading ${file.name}…`);
     const result = await sendFile(server, slug, file);
-    await handle(result, slug, () => show(`Uploaded ${file.name} to ${slug}.`), () => upload(file));
+    await handle(result, slug, () => {
+        show(`Uploaded ${file.name} to ${slug}.`);
+        loadNotes();
+    }, () => upload(file));
 }
 
 $('open-options').addEventListener('click', () => ext.runtime.openOptionsPage());
@@ -95,10 +100,10 @@ $('stash-form').addEventListener('submit', event => {
 });
 stashInput.addEventListener('change', () => {
     $('unlock-form').hidden = true;
-    $('latest').hidden = true;
-    $('copy-latest').hidden = true;
+    $('search').value = '';
     retry = null;
     show('');
+    loadNotes();
 });
 
 $('open-stash').addEventListener('click', () => {
@@ -150,26 +155,147 @@ $('file').addEventListener('change', event => {
     event.target.value = '';
 });
 
-$('show-latest').addEventListener('click', async function showLatest() {
-    const slug = currentStash();
-    if (!slug) return;
-    const result = await api(server, `${stashPath(slug)}/latest`);
-    // 404 with plain text means the stash is there but has no notes yet
-    if (result.status === 404 && typeof result.data === 'string') return show('No notes yet.');
-    await handle(result, slug, () => {
-        $('latest').textContent = result.data;
-        $('latest').hidden = false;
-        $('copy-latest').hidden = false;
-        show('');
-    }, () => showLatest());
-});
+// ---- The list of recent notes ----
 
-$('copy-latest').addEventListener('click', async () => {
-    try {
-        await navigator.clipboard.writeText($('latest').textContent);
-        show('Copied.');
-    } catch {
-        show('Could not copy. Select the text and copy it instead.', true);
+function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+}
+
+function button(label, title) {
+    const node = el('button', null, label);
+    node.type = 'button';
+    if (title) node.title = title;
+    return node;
+}
+
+function relativeTime(iso) {
+    const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+    if (seconds < 60) return 'just now';
+    const steps = [[60, 'minute'], [24, 'hour'], [7, 'day']];
+    let value = Math.floor(seconds / 60);
+    for (const [size, unit] of steps) {
+        if (value < size) return `${value} ${unit}${value === 1 ? '' : 's'} ago`;
+        value = Math.floor(value / size);
+    }
+    return new Date(iso).toLocaleDateString();
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1048576) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+function copyButton(text) {
+    const node = button('Copy');
+    node.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(text);
+            node.textContent = 'Copied';
+            setTimeout(() => { node.textContent = 'Copy'; }, 1500);
+        } catch {
+            show('Could not copy. Select the text and copy it instead.', true);
+        }
+    });
+    return node;
+}
+
+// A burn-after-reading note: its text is not in the list. The first click asks, the second reveals it, which
+// deletes it on the server for everyone, so the text shown here is the only copy left.
+function revealButton(slug, item, row) {
+    const node = button('Reveal', 'Shows the note once and deletes it for everyone');
+    node.addEventListener('click', async () => {
+        if (!node.dataset.armed) {
+            node.dataset.armed = '1';
+            node.textContent = 'Reveal and delete?';
+            return;
+        }
+        node.disabled = true;
+        const result = await api(server, `${stashPath(slug)}/items/${item.id}/reveal`, { method: 'POST' });
+        if (!result.ok) {
+            if (result.status === 404) row.remove();
+            return handle(result, slug, () => {}, null);
+        }
+        const text = result.data.text;
+        row.replaceChildren(el('div', 'note-main'), copyButton(text));
+        row.firstChild.append(
+            el('div', 'note-title', item.title),
+            el('div', 'note-meta', 'Revealed once · now deleted for everyone'),
+            el('pre', 'note-text', text)
+        );
+    });
+    return node;
+}
+
+function noteRow(slug, item, role) {
+    const row = el('li', 'note');
+    const main = el('div', 'note-main');
+    const isFile = item.kind === 'file';
+    const meta = [
+        isFile ? `File · ${formatSize(item.fileSize)}` : '',
+        item.pinned ? 'Pinned' : '',
+        item.secret ? 'Secret' : '',
+        item.burn ? 'Burns after reading' : '',
+        relativeTime(item.createdAt),
+    ].filter(Boolean);
+    if (item.burn && role !== 'full') meta.push('only full access can reveal it');
+    main.append(el('div', 'note-title', isFile ? item.fileName : item.title), el('div', 'note-meta', meta.join(' · ')));
+    row.append(main);
+    // A file is listed by name only; a secret note is copied without being shown, as on the stash page
+    if (!isFile && !item.burn) row.append(copyButton(item.text));
+    if (item.burn && role === 'full') row.append(revealButton(slug, item, row));
+    return row;
+}
+
+const LIST_LIMIT = 20;
+let listSeq = 0;
+let searchTimer = null;
+
+// The newest notes of the stash, or those matching the search. The search runs on the server (in the request
+// body, so the words stay out of addresses), and only LIST_LIMIT items come back.
+async function loadNotes() {
+    clearTimeout(searchTimer);
+    const slug = parseStash(stashInput.value);
+    const seq = ++listSeq;
+    if (!slug) {
+        $('notes').replaceChildren();
+        $('notes-info').textContent = '';
+        return;
+    }
+    const search = $('search').value.trim();
+    const json = { limit: LIST_LIMIT };
+    if (search) json.search = search;
+    $('notes-info').textContent = search ? 'Searching…' : 'Loading…';
+    const result = await api(server, `${stashPath(slug)}/query`, { method: 'POST', json });
+    // A newer search or another stash has been asked for since
+    if (seq !== listSeq) return;
+    if (!result.ok) $('notes-info').textContent = '';
+    await handle(result, slug, () => {
+        const { role, total } = result.data;
+        // An older server ignores the limit, so it is applied here too
+        const items = (result.data.items || []).slice(0, LIST_LIMIT);
+        $('notes').replaceChildren(...items.map(item => noteRow(slug, item, role)));
+        let info;
+        if (role === 'drop') info = 'This drop-box link can add things but cannot read them.';
+        else if (!items.length) info = search ? 'Nothing matches.' : 'Nothing here yet.';
+        else if (total > items.length) info = `The newest ${items.length} of ${total}${search ? ' matches' : ''}. Search to find others.`;
+        else info = search ? `${total} match${total === 1 ? '' : 'es'}.` : '';
+        $('notes-info').textContent = info;
+    }, () => loadNotes());
+}
+
+$('search').addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    // Waits for a pause in typing, so each key press is not a request
+    searchTimer = setTimeout(loadNotes, 300);
+});
+$('search').addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        loadNotes();
     }
 });
 

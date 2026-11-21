@@ -36,15 +36,13 @@
             </div>
         </form>
 
-        <section class="latest">
-            <div class="row">
-                <button id="show-latest" type="button" title="A burn-after-reading note is used up when shown">Show newest note</button>
-                <button id="copy-latest" type="button" hidden>Copy</button>
-            </div>
-            <pre id="latest" hidden></pre>
-        </section>
-
         <p id="status" role="status"></p>
+
+        <section class="notes">
+            <input id="search" type="search" placeholder="Search notes and file names" aria-label="Search the stash" autocomplete="off" spellcheck="false">
+            <ul id="notes" aria-label="Recent notes"></ul>
+            <p id="notes-info" class="hint" aria-live="polite"></p>
+        </section>
     </main>
     <div id="drop-hint" hidden>Drop to upload</div>
     <script src="common.js"></script>

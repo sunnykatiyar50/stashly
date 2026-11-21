@@ -70,7 +70,30 @@ pre {
     border: 1px solid var(--border);
     border-radius: 6px;
 }
-#status { min-height: 1.4em; margin: 0; }
+#status { min-height: 1.4em; margin: 0 0 8px; }
+input[type="search"] { width: 100%; }
+#notes {
+    list-style: none;
+    margin: 6px 0;
+    padding: 0;
+    max-height: 260px;
+    overflow-y: auto;
+}
+#notes:empty { display: none; }
+.note {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 6px 2px;
+    border-bottom: 1px solid var(--border);
+}
+.note:last-child { border-bottom: 0; }
+.note-main { flex: 1; min-width: 0; }
+.note-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-meta { color: var(--muted); font-size: 12px; }
+.note button { padding: 3px 8px; font-size: 12px; }
+.note-text { max-height: 120px; }
+#notes-info { margin: 0; }
 .ok { color: var(--ok); }
 .error { color: var(--error); }
 [hidden] { display: none !important; }

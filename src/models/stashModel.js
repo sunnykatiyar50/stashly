@@ -206,7 +206,22 @@ class StashModel {
 
     // Newest first. Filters: search (note text or file name), from/to (ISO instants, to is exclusive)
     // Items past their own expiry are left out, and the text of a burn-after-reading note is never searched.
-    listItems(stashId, { search, from, to, now = new Date() } = {}) {
+    // limit (optional) returns only the first that many.
+    listItems(stashId, { limit, ...filters } = {}) {
+        const { where, params } = this.itemFilter(stashId, filters);
+        return this.db
+            // Pinned items first, then newest first
+            .prepare(`SELECT * FROM items WHERE ${where} ORDER BY pinned DESC, created_at DESC, id DESC${limit ? ' LIMIT ?' : ''}`)
+            .all(...params, ...(limit ? [limit] : []));
+    }
+
+    // How many items the same filters match, for a listing cut short by a limit
+    countItems(stashId, filters = {}) {
+        const { where, params } = this.itemFilter(stashId, filters);
+        return this.db.prepare(`SELECT COUNT(*) AS n FROM items WHERE ${where}`).get(...params).n;
+    }
+
+    itemFilter(stashId, { search, from, to, now = new Date() }) {
         const where = ['stash_id = ?', '(expires_at IS NULL OR expires_at > ?)'];
         const params = [stashId, now.toISOString()];
         if (search) {
@@ -222,10 +237,7 @@ class StashModel {
             where.push('created_at < ?');
             params.push(to);
         }
-        return this.db
-            // Pinned items first, then newest first
-            .prepare(`SELECT * FROM items WHERE ${where.join(' AND ')} ORDER BY pinned DESC, created_at DESC, id DESC`)
-            .all(...params);
+        return { where: where.join(' AND '), params };
     }
 
     // includeBurn false leaves out burn-after-reading notes (a reader with a read-only link must not use one up)

@@ -4,8 +4,8 @@ A small Manifest V3 extension for Chrome, Edge and Firefox. It lets you use a st
 Stashly page. It has no build step: load this folder as it is.
 
 - **Popup** (toolbar button, or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>): pick a stash (the last five are
-  remembered), send typed text or the clipboard as a note, show the newest note and copy it, drop a file onto the popup
-  (or use **File…**) to upload it, and open the stash in a tab.
+  remembered), send typed text or the clipboard as a note, see the 20 newest notes with a Copy button on each and
+  search for older ones, drop a file onto the popup (or use **File…**) to upload it, and open the stash in a tab.
 - **Right-click → Send to Stashly**: sends the selected text, the link or the page address. With more than one recent
   stash it becomes a submenu. The toolbar button shows **OK**, or **!** with the reason in its tooltip.
 - **Password-protected stashes**: the popup asks for the password the first time and then retries what you were doing.
@@ -38,9 +38,14 @@ The extension does not read pages. It sends only what you choose to send, and on
 
 ## Good to know
 
-- **Show newest note** calls `GET /api/stashes/:slug/latest`. It does this only when you click, never when the popup
-  opens. If you have full access and the newest note is burn-after-reading, showing it uses it up, as `/latest` always
-  does.
+- **The note list** shows the stash's 20 newest items (pinned ones first), each with its own **Copy**. Files are
+  listed by name only. A secret note can be copied without being shown. The search box searches the whole stash on
+  the server (`POST /api/stashes/:slug/query` with `{ search, limit: 20 }`, so the words stay out of addresses), a
+  moment after you stop typing, and only 20 results come back. On a server older than this extension, `limit` is
+  ignored and the whole list is downloaded, though still only 20 are shown.
+- **Burn-after-reading notes** appear without their text. **Reveal**, then **Reveal and delete?**, fetches the text
+  once and deletes the note for everyone, as on the stash page. Only full access can reveal; listing never uses a
+  note up.
 - In Firefox the popup can close when a file dialog opens. Drag the file onto the popup instead.
 - A drop-box share link (`#drop=…`) or a read-only link (`#view=…`) should work too, though this is not yet tested.
   Open the link once in the same browser and the extension uses that cookie. A drop-box link can send but cannot show
@@ -86,7 +91,8 @@ answer the permission prompt or open `moz-extension://` addresses. The extension
 | 3 | **Key check**: unlock in a normal tab, then `fetch(…/latest, {credentials: 'include'})` from the **background script** | Passed: 404 "No notes yet", not 401. The Strict cookie was sent. |
 | 4 | The same from the **popup**; the popup sends to the locked stash without asking for the password | Passed |
 | 5 | Cookies cleared → the popup asks for the password; a wrong password shows the error. Then it unlocks and retries the send. The normal tab and the background script are signed in by the cookie the extension got. | Passed |
-| 6 | Open stash: send a note, **Show newest note**, drop a file (the CRLF bytes arrive intact), and the recent list is kept in order | Passed |
+| 6 | Open stash: send a note and see it in the list with **Copy**, drop a file (the CRLF bytes arrive intact), and the recent list is kept in order | Passed |
+| 6 | Note list: 20 of 26 shown with the total; search waits for typing to stop and finds an older note on the server; no match and a cleared search; a burn note shows no text, the first click only asks, the second reveals it and the server deletes it | Passed |
 | 6 | **Copy**, **Send clipboard**, dragging a real file from the desktop, **Open** | Not run: these need a real click, and BiDi cannot send input to extension pages |
 | 7 | Context menu: selection and link sent, the badge shows **OK**, and the submenu lists the recent stashes. <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> is bound to `_execute_action`. | Passed. The menu was not clicked by hand and the key was not pressed. |
 
