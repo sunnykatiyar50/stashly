@@ -589,10 +589,17 @@ audio.detail-media { max-height: none; }
 
 /* ===== Header buttons: icon and word on wide screens, icon only on phones (one row instead of two) ===== */
 .icon-label svg { width: 15px; height: 15px; }
+/* The buttons sit on the right, also when they wrap below the stash name */
+.header-actions { margin-left: auto; justify-content: flex-end; }
+/* On a phone, Options and Log out live in the top bar (moved there by stash.js) and look like its icons */
+.in-topbar { background: transparent; border: none; color: var(--sidebar-text, #cbd5e1); padding: 7px 10px; margin: 0; }
+.in-topbar:hover { background: var(--sidebar-hover); color: #fff; }
+.in-topbar .btn-label { display: none; }
+.in-topbar svg { width: 18px; height: 18px; }
+body:not(.stash-open) .in-topbar { display: none; }
 @media (max-width: 760px) {
     .header-actions { flex-wrap: nowrap; gap: 4px; }
     .header-actions .icon-label { padding: 7px 8px; }
     .header-actions .icon-label svg { width: 18px; height: 18px; }
     .header-actions .btn-label { display: none; }
-    .header-gear { margin-left: 2px; }
 }

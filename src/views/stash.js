@@ -63,6 +63,8 @@
 
     function show(name) {
         Object.keys(sections).forEach(function (key) { sections[key].classList.toggle('hidden', key !== name); });
+        // Options and Log out may sit in the top bar on a phone; they only show while the stash itself is open
+        document.body.classList.toggle('stash-open', name === 'main');
     }
 
     function make(tag, className, text) {
@@ -728,6 +730,8 @@
         var r = role();
         sections.main.classList.toggle('role-view', r === 'view');
         sections.main.classList.toggle('role-drop', r === 'drop');
+        // Options has nothing for a drop-box link (it may be in the top bar, outside the section above)
+        $('optionsButton').classList.toggle('hidden', r === 'drop');
         var banner = $('roleBanner');
         banner.classList.toggle('hidden', r === 'full');
         banner.textContent = r === 'view'
@@ -1654,6 +1658,21 @@
         applyFilters();
     });
     $('refreshButton').addEventListener('click', function () { load(); });
+
+    // On a phone, Options and Log out move up into the top bar (next to Admin and Theme), so the row under the
+    // stash name holds only the everyday buttons. On a wider screen they go back to the end of that row.
+    (function placeTopButtons() {
+        var phone = window.matchMedia('(max-width: 760px)');
+        var moved = [$('logoutButton'), $('optionsButton')];
+        function place() {
+            var target = phone.matches ? document.querySelector('.sidebar-footer') : document.querySelector('.header-actions');
+            if (phone.matches) moved.slice().reverse().forEach(function (el) { target.insertBefore(el, target.firstChild); });
+            else moved.forEach(function (el) { target.appendChild(el); });
+            moved.forEach(function (el) { el.classList.toggle('in-topbar', phone.matches); });
+        }
+        place();
+        if (phone.addEventListener) phone.addEventListener('change', place); else phone.addListener(place);
+    })();
 
     // The eye button shows or hides the note lines under each title, for a shorter list or a screen others can
     // see. The choice is kept on this device only.
