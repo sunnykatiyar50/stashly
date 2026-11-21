@@ -29,6 +29,8 @@
     var narrow = window.matchMedia('(max-width: 760px)');
 
     document.title = slug + ' · Stashly';
+    // Lets the phone layout tighten the top bar on this page only
+    document.body.classList.add('stash-page');
     $('thisStashLink').href = location.pathname;
     $('navStashName').textContent = slug;
     $('stashTitle').textContent = slug;
@@ -826,10 +828,32 @@
         }
     }
 
+    // A chip with its full words for wide screens and a short form (icon and number) for phones; the full words
+    // stay as the tooltip
+    var CLOCK_ICON = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>';
+    var PEOPLE_ICON = '<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+    function setChip(chip, long, short, icon) {
+        // The chip's own explanation (from the page) is kept after the words
+        if (chip.dataset.tip === undefined) chip.dataset.tip = chip.title || '';
+        chip.textContent = '';
+        chip.title = long + (chip.dataset.tip ? '. ' + chip.dataset.tip : '');
+        chip.appendChild(make('span', 'chip-long', long));
+        var compact = make('span', 'chip-short');
+        compact.appendChild(svg(icon));
+        compact.appendChild(document.createTextNode(short));
+        chip.appendChild(compact);
+    }
+
+    // "Deletes in 23 h 59 min" becomes "23h 59m"
+    function shortExpiry(text) {
+        return text.replace(/^Deletes in /, '').replace(/under 1 min/, '<1m').replace(/ d /, 'd ').replace(/ h( |$)/, 'h$1').replace(/ min$/, 'm');
+    }
+
     function updateExpiry() {
         if (!state.stash) return;
         var chip = $('expiryInfo');
-        chip.textContent = expiryText(state.stash.expiresAt);
+        var words = expiryText(state.stash.expiresAt);
+        setChip(chip, words, shortExpiry(words), CLOCK_ICON);
         var soon = state.stash.expiresAt && new Date(state.stash.expiresAt).getTime() - Date.now() < 60 * 60 * 1000;
         chip.classList.toggle('warn', Boolean(soon));
         if (state.stash.expiresAt && new Date(state.stash.expiresAt).getTime() <= Date.now()) load(true);
@@ -1474,7 +1498,7 @@
 
     function showPresence(count) {
         var chip = $('presenceChip');
-        chip.textContent = count + ' connected';
+        setChip(chip, count + ' connected', String(count), PEOPLE_ICON);
         chip.classList.remove('hidden');
     }
 

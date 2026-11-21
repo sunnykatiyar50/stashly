@@ -618,3 +618,29 @@ body:not(.stash-open) .in-topbar { display: none; }
     .sidebar-footer #logoutButton { order: 3; }
     .sidebar-footer a[href="/admin"] { order: 4; }
 }
+
+/* ===== Phone: the top of a stash in three rows instead of six =====
+   Row 1, the top bar: logo, +, then Theme, Options, Log out, Admin (no words, no stash pill: the name is just below).
+   Row 2: the stash name, padlock, clip count and a green Live dot.
+   Row 3: short chips (time left, pages open) on the left, the action icons on the right. */
+.chip-short { display: none; }
+@media (max-width: 760px) {
+    .stash-page .sidebar { flex-wrap: nowrap; padding: 6px 10px; gap: 4px; }
+    .stash-page .sidebar .brand-name, .stash-page .sidebar-nav .label { display: none; }
+    .stash-page #thisStashLink { display: none; }
+    .stash-page .sidebar-nav .nav-link { padding: 7px 9px; }
+    .stash-page .sidebar-footer { gap: 0; }
+
+    #stateMain .view-header { gap: 6px 8px; justify-content: flex-start; align-items: center; }
+    #stateMain .view-title { display: contents; }
+    #stashTitle, #lockChip, #itemInfo, #liveStatus { order: 1; }
+    #stateMain .view-header::after { content: ''; order: 2; flex-basis: 100%; height: 0; }
+    #expiryInfo, #presenceChip, #rangeChip { order: 3; }
+    #stateMain .header-actions { order: 4; margin-left: auto; }
+    #stashTitle { max-width: calc(100% - 115px); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Live becomes just its pulsing dot */
+    #liveStatus { font-size: 0; padding: 0; gap: 0; background: none; align-self: center; }
+    .chip .chip-long { display: none; }
+    .chip .chip-short { display: inline-flex; align-items: center; gap: 4px; }
+    .chip .chip-short svg { width: 13px; height: 13px; }
+}
