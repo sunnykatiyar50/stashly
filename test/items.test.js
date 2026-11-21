@@ -146,7 +146,7 @@ test('malformed JSON is a 400', async () => {
     await request(ctx.app).post('/api/stashes').set('Content-Type', 'application/json').send('{not json').expect(400);
 });
 
-test('a note can have a title; without one the first five words are used', async () => {
+test('a note can have a title; without one the first 40 characters are used', async () => {
     const ctx = makeApp();
     const base = await stash(ctx);
 
@@ -154,8 +154,8 @@ test('a note can have a title; without one the first five words are used', async
     assert.equal(titled.body.title, 'Deploy token');
     assert.equal(titled.body.hasTitle, true);
 
-    const auto = await request(ctx.app).post(`${base}/notes`).send({ text: 'one two three four five six seven' }).expect(201);
-    assert.equal(auto.body.title, 'one two three four five');
+    const auto = await request(ctx.app).post(`${base}/notes`).send({ text: 'one two three four five six seven eight nine ten' }).expect(201);
+    assert.equal(auto.body.title, 'one two three four five six seven eight…');
     assert.equal(auto.body.hasTitle, false);
 
     const short = await request(ctx.app).post(`${base}/notes`).send({ title: '   ', text: 'two words\nand more lines' }).expect(201);
@@ -164,10 +164,10 @@ test('a note can have a title; without one the first five words are used', async
 
     // a plain-text note from curl has no title either
     const curl = await request(ctx.app).post(`${base}/notes`).set('Content-Type', 'text/plain').send('from curl with a long sentence here').expect(201);
-    assert.equal(curl.body.title, 'from curl with a long');
+    assert.equal(curl.body.title, 'from curl with a long sentence here');
 });
 
-test('a title is at most 150 characters; one word of any length is cut to fit when derived', async () => {
+test('a title is at most 150 characters; a derived title is cut at 40 characters', async () => {
     const ctx = makeApp();
     const base = await stash(ctx);
     const ok = await request(ctx.app).post(`${base}/notes`).send({ title: 'x'.repeat(150), text: 'body' }).expect(201);
@@ -177,7 +177,7 @@ test('a title is at most 150 characters; one word of any length is cut to fit wh
     await request(ctx.app).post(`${base}/notes`).send({ title: 42, text: 'body' }).expect(400);
 
     const derived = await request(ctx.app).post(`${base}/notes`).send({ text: 'y'.repeat(400) }).expect(201);
-    assert.equal(derived.body.title.length, 150);
+    assert.equal(derived.body.title, 'y'.repeat(40) + '…');
 });
 
 test('search also matches titles', async () => {

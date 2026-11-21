@@ -150,10 +150,10 @@ class StashModel {
     addNote(stashId, text, now = new Date(), title = null, { expiresAt = null, burn = false, secret = false } = {}) {
         const result = this.db
             .prepare(
-                `INSERT INTO items (stash_id, kind, title, text, created_at, expires_at, burn, secret)
-                 VALUES (?, 'note', ?, ?, ?, ?, ?, ?)`
+                `INSERT INTO items (stash_id, kind, title, text, created_at, expires_at, burn, secret, sort_order)
+                 VALUES (?, 'note', ?, ?, ?, ?, ?, ?, ?)`
             )
-            .run(stashId, title, text, now.toISOString(), expiresAt, burn ? 1 : 0, secret ? 1 : 0);
+            .run(stashId, title, text, now.toISOString(), expiresAt, burn ? 1 : 0, secret ? 1 : 0, this.nextOrder(stashId));
         return this.getItem(stashId, Number(result.lastInsertRowid));
     }
 
@@ -186,10 +186,10 @@ class StashModel {
         try {
             const result = this.db
                 .prepare(
-                    `INSERT INTO items (stash_id, kind, file_name, file_type, file_size, created_at)
-                     VALUES (?, 'file', ?, ?, ?, ?)`
+                    `INSERT INTO items (stash_id, kind, file_name, file_type, file_size, created_at, sort_order)
+                     VALUES (?, 'file', ?, ?, ?, ?, ?)`
                 )
-                .run(stashId, fileName, fileType, content.length, now.toISOString());
+                .run(stashId, fileName, fileType, content.length, now.toISOString(), this.nextOrder(stashId));
             const id = Number(result.lastInsertRowid);
             this.db.prepare('INSERT INTO files (item_id, content) VALUES (?, ?)').run(id, content);
             this.db.exec('COMMIT');
@@ -204,14 +204,13 @@ class StashModel {
         return this.db.prepare('SELECT * FROM items WHERE stash_id = ? AND id = ?').get(stashId, id) || null;
     }
 
-    // Newest first. Filters: search (note text or file name), from/to (ISO instants, to is exclusive)
+    // In list order: pinned first, then by place (new items go on top, dragging moves them). Filters: search (note text or file name), from/to (ISO instants, to is exclusive)
     // Items past their own expiry are left out, and the text of a burn-after-reading note is never searched.
     // limit (optional) returns only the first that many.
     listItems(stashId, { limit, ...filters } = {}) {
         const { where, params } = this.itemFilter(stashId, filters);
         return this.db
-            // Pinned items first, then newest first
-            .prepare(`SELECT * FROM items WHERE ${where} ORDER BY pinned DESC, created_at DESC, id DESC${limit ? ' LIMIT ?' : ''}`)
+            .prepare(`SELECT * FROM items WHERE ${where} ORDER BY pinned DESC, sort_order DESC, id DESC${limit ? ' LIMIT ?' : ''}`)
             .all(...params, ...(limit ? [limit] : []));
     }
 
@@ -262,6 +261,32 @@ class StashModel {
         const deleted = this.db.prepare('DELETE FROM items WHERE stash_id = ? AND id = ?').run(stashId, id).changes > 0;
         if (deleted) this.checkpoint();
         return deleted;
+    }
+
+    // The place a new item takes: above everything already in the stash
+    nextOrder(stashId) {
+        return this.db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM items WHERE stash_id = ?').get(stashId).n;
+    }
+
+    // Puts the given items in the given order (first = top). Only their places are swapped among themselves, so
+    // items left out (a search that matched only some, the pinned group) keep theirs. Returns [{ id, order }], or
+    // null if any id is not in the stash or is listed twice, in which case nothing changes.
+    reorderItems(stashId, ids) {
+        if (!ids.length) return [];
+        const marks = ids.map(() => '?').join(',');
+        const rows = this.db.prepare(`SELECT id, sort_order FROM items WHERE stash_id = ? AND id IN (${marks})`).all(stashId, ...ids);
+        if (rows.length !== ids.length) return null;
+        const places = rows.map(row => row.sort_order).sort((a, b) => b - a);
+        const set = this.db.prepare('UPDATE items SET sort_order = ? WHERE stash_id = ? AND id = ?');
+        this.db.exec('BEGIN');
+        try {
+            ids.forEach((id, index) => set.run(places[index], stashId, id));
+            this.db.exec('COMMIT');
+        } catch (err) {
+            this.db.exec('ROLLBACK');
+            throw err;
+        }
+        return ids.map((id, index) => ({ id, order: places[index] }));
     }
 
     setPinned(stashId, id, pinned) {

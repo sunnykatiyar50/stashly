@@ -29,6 +29,8 @@
     var narrow = window.matchMedia('(max-width: 760px)');
 
     document.title = slug + ' · Stashly';
+    // Lets the phone layout tighten the top bar on this page only
+    document.body.classList.add('stash-page');
     $('thisStashLink').href = location.pathname;
     $('navStashName').textContent = slug;
     $('stashTitle').textContent = slug;
@@ -63,6 +65,8 @@
 
     function show(name) {
         Object.keys(sections).forEach(function (key) { sections[key].classList.toggle('hidden', key !== name); });
+        // Options and Log out may sit in the top bar on a phone; they only show while the stash itself is open
+        document.body.classList.toggle('stash-open', name === 'main');
     }
 
     function make(tag, className, text) {
@@ -153,15 +157,60 @@
     }
 
     function button(label, className, onClick) {
-        var el = make('button', className, label);
+        var el = make('button', className);
         el.type = 'button';
+        setLabel(el, label);
         el.addEventListener('click', onClick);
         return el;
     }
 
+    // Icons for the action buttons, picked by the button's words (the words change as a button toggles)
+    var ACTION_ICONS = {
+        copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+        check: '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>',
+        edit: '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+        pin: '<svg viewBox="0 0 24 24"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z"/></svg>',
+        unpin: '<svg viewBox="0 0 24 24"><line x1="2" y1="2" x2="22" y2="22"/><line x1="12" y1="17" x2="12" y2="22"/><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h12"/><path d="M15 9.34V6h1a2 2 0 0 0 0-4H7.89"/></svg>',
+        trash: '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
+        eye: '<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
+        eyeOff: '<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
+        text: '<svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
+        code: '<svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+        flame: '<svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>',
+        x: '<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+        download: '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+        open: '<svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
+    };
+
+    function iconFor(label) {
+        if (/^Copied/.test(label) || label === 'Done' || label === 'Save') return ACTION_ICONS.check;
+        if (/^Copy/.test(label)) return ACTION_ICONS.copy;
+        if (label === 'Edit') return ACTION_ICONS.edit;
+        if (label === 'Pin') return ACTION_ICONS.pin;
+        if (label === 'Unpin') return ACTION_ICONS.unpin;
+        if (label === 'Delete') return ACTION_ICONS.trash;
+        if (label === 'Show') return ACTION_ICONS.eye;
+        if (label === 'Hide') return ACTION_ICONS.eyeOff;
+        if (label === 'Plain text') return ACTION_ICONS.text;
+        if (/^(Render|Highlight) /.test(label)) return ACTION_ICONS.code;
+        if (/^Reveal/.test(label)) return ACTION_ICONS.flame;
+        if (label === 'Cancel') return ACTION_ICONS.x;
+        if (label === 'Download') return ACTION_ICONS.download;
+        if (label === 'Open') return ACTION_ICONS.open;
+        return null;
+    }
+
+    // Puts an icon (when there is one for these words) and the words on a button or link, replacing what was there
+    function setLabel(el, label) {
+        el.textContent = '';
+        var icon = iconFor(label);
+        if (icon) el.appendChild(svg(icon));
+        el.appendChild(make('span', 'btn-text', label));
+    }
+
     // ---- the list on the left ----
 
-    // A note shows its title (the first five words when it was not given one); a file shows its name
+    // A note shows its title (the first 40 characters when it was not given one); a file shows its name
     function itemTitle(item) {
         if (item.kind !== 'note') return item.fileName;
         return item.title || '(empty note)';
@@ -183,7 +232,7 @@
     }
 
     // The line under the title in the list: a few lines of the note, or the size of a file.
-    // A note without a title shows its whole content here (no separate title row).
+    // The note lines can be hidden with the eye button above the list.
     function itemSub(item) {
         if (item.kind !== 'note') return window.StashlyUpload.formatSize(item.fileSize);
         if (item.burn) return '';
@@ -198,6 +247,19 @@
         el.setAttribute('role', 'button');
         el.tabIndex = 0;
         el.dataset.id = item.id;
+
+        // A handle to drag the clip to another place (only with full access; pinned and unpinned clips each keep
+        // to their own group)
+        if (role() === 'full') {
+            el.classList.add('has-grip');
+            var grip = make('span', 'clip-grip');
+            grip.title = 'Drag to move. Or press Alt+Up or Alt+Down.';
+            grip.setAttribute('aria-hidden', 'true');
+            grip.appendChild(svg(GRIP_ICON));
+            grip.addEventListener('pointerdown', function (event) { startDrag(event, el); });
+            grip.addEventListener('click', function (event) { event.stopPropagation(); });
+            el.appendChild(grip);
+        }
 
         var lead;
         if (item.isImage) {
@@ -214,13 +276,11 @@
         el.appendChild(lead);
 
         var text = make('span', 'clip-text');
-        // A note with no title of its own shows just its content, not a made-up title.
-        // Secret and burn notes always show a title, because their content must not show here.
-        var untitled = item.kind === 'note' && !item.hasTitle && !item.secret && !item.burn;
-        if (!untitled) text.appendChild(make('span', 'clip-title', itemTitle(item)));
+        // A note with no title of its own is titled with its first 40 characters (worked out by the server).
+        // Secret and burn notes get a plain title, because their content must not show here.
+        text.appendChild(make('span', 'clip-title', itemTitle(item)));
         var sub = itemSub(item);
-        if (untitled && !sub) text.appendChild(make('span', 'clip-title', '(empty note)'));
-        else if (sub) text.appendChild(make('span', untitled ? 'clip-preview clip-body' : item.kind === 'note' ? 'clip-sub clip-preview' : 'clip-sub', sub));
+        if (sub) text.appendChild(make('span', item.kind === 'note' ? 'clip-sub clip-preview' : 'clip-sub', sub));
         var flags = clipFlags(item);
         if (flags.length) {
             var flagLine = make('span', 'clip-flags');
@@ -238,6 +298,22 @@
         time.title = new Date(item.createdAt).toLocaleString();
         var side = make('span', 'clip-side');
         side.appendChild(time);
+        // Quick buttons that show when the row is hovered (always on touch screens): pin and copy
+        var quick = make('span', 'clip-quick');
+        if (role() === 'full') {
+            var pinLabel = item.pinned ? 'Unpin' : 'Pin to the top';
+            var pin = make('button', 'clip-copy clip-pin ghost' + (item.pinned ? ' on' : ''));
+            pin.type = 'button';
+            pin.title = pinLabel;
+            pin.setAttribute('aria-label', pinLabel);
+            pin.setAttribute('aria-pressed', item.pinned ? 'true' : 'false');
+            pin.appendChild(svg(PIN_ICON));
+            pin.addEventListener('click', function (event) {
+                event.stopPropagation();
+                setPinned(item, !item.pinned);
+            });
+            quick.appendChild(pin);
+        }
         // A note whose text is on the page can be copied without opening it (a burn note's text is not here)
         if (item.kind === 'note' && !item.burn && item.text) {
             var copy = make('button', 'clip-copy ghost');
@@ -249,16 +325,136 @@
                 event.stopPropagation();
                 copyNote(item.text, copy);
             });
-            side.appendChild(copy);
+            quick.appendChild(copy);
         }
+        if (quick.children.length) side.appendChild(quick);
         el.appendChild(side);
 
         el.addEventListener('click', function () { openItem(item.id); });
         el.addEventListener('keydown', function (event) {
             if (event.target !== el) return;
             if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openItem(item.id); }
+            // Alt+Up / Alt+Down moves the clip one place, for those not using a mouse
+            if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown') && role() === 'full') {
+                event.preventDefault();
+                moveByKey(el, event.key === 'ArrowUp' ? -1 : 1);
+            }
         });
         return el;
+    }
+
+    var PIN_ICON = '<svg viewBox="0 0 24 24"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z"/></svg>';
+    var GRIP_ICON = '<svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>';
+
+    // ---- moving clips ----
+
+    // Clips may only move among those with the same pinned state, so a drag never seems to pin or unpin one
+    function sameGroup(a, b) {
+        var x = findItem(Number(a.dataset.id));
+        var y = findItem(Number(b.dataset.id));
+        return Boolean(x && y && x.pinned === y.pinned);
+    }
+
+    function rowIds() {
+        return Array.prototype.map.call($('items').children, function (child) { return child.dataset.id; }).join(',');
+    }
+
+    // Drag with a mouse, pen or finger from the handle. The row follows the pointer through the list; letting go
+    // saves the new order. Pointer events (not HTML drag and drop) so it works the same on phones.
+    function startDrag(event, el) {
+        if (event.button !== undefined && event.button !== 0) return;
+        event.preventDefault();
+        var list = $('items');
+        var before = rowIds();
+        var pointerId = event.pointerId;
+        var lastY = event.clientY;
+        el.classList.add('dragging');
+        list.classList.add('drag-active');
+
+        // Moves the row to wherever the pointer is, among the clips of its own group
+        function place(y) {
+            var siblings = Array.prototype.filter.call(list.children, function (child) { return child !== el && sameGroup(child, el); });
+            if (!siblings.length) return;
+            var next = null;
+            for (var i = 0; i < siblings.length; i++) {
+                var box = siblings[i].getBoundingClientRect();
+                if (y < box.top + box.height / 2) { next = siblings[i]; break; }
+            }
+            var anchor = next || siblings[siblings.length - 1].nextElementSibling;
+            if (anchor !== el && el.nextElementSibling !== anchor) list.insertBefore(el, anchor);
+        }
+
+        // Near the top or bottom edge the list scrolls by itself, so a clip can travel further than one screen
+        function autoScroll() {
+            var box = list.getBoundingClientRect();
+            var edge = 40;
+            var step = lastY < box.top + edge ? -12 : lastY > box.bottom - edge ? 12 : 0;
+            if (step && list.scrollHeight > list.clientHeight) { list.scrollTop += step; place(lastY); }
+        }
+        var scrollTimer = setInterval(autoScroll, 30);
+
+        function move(e) {
+            if (e.pointerId !== pointerId) return;
+            lastY = e.clientY;
+            place(lastY);
+        }
+
+        function end(e) {
+            if (e.pointerId !== pointerId) return;
+            document.removeEventListener('pointermove', move);
+            document.removeEventListener('pointerup', end);
+            document.removeEventListener('pointercancel', end);
+            clearInterval(scrollTimer);
+            el.classList.remove('dragging');
+            list.classList.remove('drag-active');
+            if (rowIds() !== before) saveOrder(el);
+        }
+
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', end);
+        document.addEventListener('pointercancel', end);
+    }
+
+    function moveByKey(el, direction) {
+        var target = direction < 0 ? el.previousElementSibling : el.nextElementSibling;
+        if (!target || !sameGroup(target, el)) return;
+        $('items').insertBefore(el, direction < 0 ? target : target.nextElementSibling);
+        el.focus();
+        saveOrder(el);
+    }
+
+    // Sends the order of the moved clip's group as it now stands on the page. The server only swaps places among
+    // these clips, so the ones a search left out stay where they were.
+    function saveOrder(el) {
+        var ids = Array.prototype.filter.call($('items').children, function (child) { return sameGroup(child, el); })
+            .map(function (child) { return Number(child.dataset.id); });
+        api(base + '/reorder', { method: 'POST', body: { ids: ids } }).then(function (res) {
+            if (res.ok) return applyOrders(res.body.orders);
+            if (res.status === 401) return locked();
+            toast((res.body && res.body.error) || 'Could not save the new order.', true);
+            // Put the list back the way the server has it
+            load(true);
+        }).catch(function () {
+            toast('Could not save the new order.', true);
+            sortItems();
+            renderItems();
+        });
+    }
+
+    // New places for some clips (from this page or another device): re-sort, then move the rows that are out of
+    // place without rebuilding them, so focus and loaded images stay
+    function applyOrders(orders) {
+        var byId = {};
+        orders.forEach(function (entry) { byId[entry.id] = entry.order; });
+        state.items.forEach(function (item) { if (byId[item.id] !== undefined) item.order = byId[item.id]; });
+        sortItems();
+        var wanted = state.items.map(function (item) { return String(item.id); }).join(',');
+        if (rowIds() === wanted) return;
+        var list = $('items');
+        state.items.forEach(function (item) {
+            var row = list.querySelector('.clip[data-id="' + item.id + '"]');
+            if (row) list.appendChild(row);
+        });
     }
 
     var COPY_ICON = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
@@ -403,7 +599,7 @@
             var target = event.currentTarget;
             Promise.resolve(copyText(value)).then(function (ok) {
                 toast(ok ? 'Copied' : 'Could not copy. Select the text and copy it by hand.', !ok);
-                if (ok) { target.textContent = 'Copied'; setTimeout(function () { target.textContent = label; }, 1500); }
+                if (ok) { setLabel(target, 'Copied'); setTimeout(function () { setLabel(target, label); }, 1500); }
             });
         });
     }
@@ -496,7 +692,7 @@
                 actions.appendChild(button('Show', 'ghost', function (event) {
                     shown = !shown;
                     paint();
-                    event.currentTarget.textContent = shown ? 'Hide' : 'Show';
+                    setLabel(event.currentTarget, shown ? 'Hide' : 'Show');
                 }));
             }
             if (language) {
@@ -505,7 +701,7 @@
                 actions.appendChild(button(plain ? verb + label : 'Plain text', 'ghost', function (event) {
                     plain = !plain;
                     state.plainIds[item.id] = plain;
-                    event.currentTarget.textContent = plain ? verb + label : 'Plain text';
+                    setLabel(event.currentTarget, plain ? verb + label : 'Plain text');
                     paint();
                 }));
             }
@@ -513,7 +709,8 @@
         } else {
             $('detailMeta').textContent = window.StashlyUpload.formatSize(item.fileSize) + ' · ' + when;
 
-            var download = make('a', 'button-link primary-link', 'Download');
+            var download = make('a', 'button-link primary-link');
+            setLabel(download, 'Download');
             download.href = item.url + '?download=1';
             download.setAttribute('download', item.fileName);
             actions.appendChild(download);
@@ -555,7 +752,8 @@
                     player.src = item.url;
                     body.insertBefore(player, card);
                 } else if (mediaType === 'application/pdf') {
-                    var open = make('a', 'button-link', 'Open');
+                    var open = make('a', 'button-link');
+                    setLabel(open, 'Open');
                     open.href = item.url + '?view=1';
                     open.target = '_blank';
                     open.rel = 'noopener';
@@ -599,13 +797,17 @@
         var r = role();
         sections.main.classList.toggle('role-view', r === 'view');
         sections.main.classList.toggle('role-drop', r === 'drop');
+        // Options has nothing for a drop-box link (it may be in the top bar, outside the section above)
+        $('optionsButton').classList.toggle('hidden', r === 'drop');
         var banner = $('roleBanner');
         banner.classList.toggle('hidden', r === 'full');
         banner.textContent = r === 'view'
             ? 'You opened a read-only link. You can read and copy, but not add or delete anything.'
             : r === 'drop' ? 'You opened a drop-box link. You can add notes and files here, but you cannot see what is in the stash.' : '';
         // Log out of a password-protected stash, or just leave an open one
-        $('logoutButton').textContent = state.stash.hasPassword ? 'Log out' : 'Exit';
+        var leaveWord = state.stash.hasPassword ? 'Log out' : 'Exit';
+        $('logoutButton').querySelector('.btn-label').textContent = leaveWord;
+        $('logoutButton').setAttribute('aria-label', leaveWord);
         updateSessionInfo();
         // Share links only make sense on a password-protected stash, and only for someone with full access
         $('shareButton').classList.toggle('hidden', !(r === 'full' && state.stash.hasPassword));
@@ -626,10 +828,32 @@
         }
     }
 
+    // A chip with its full words for wide screens and a short form (icon and number) for phones; the full words
+    // stay as the tooltip
+    var CLOCK_ICON = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>';
+    var PEOPLE_ICON = '<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+    function setChip(chip, long, short, icon) {
+        // The chip's own explanation (from the page) is kept after the words
+        if (chip.dataset.tip === undefined) chip.dataset.tip = chip.title || '';
+        chip.textContent = '';
+        chip.title = long + (chip.dataset.tip ? '. ' + chip.dataset.tip : '');
+        chip.appendChild(make('span', 'chip-long', long));
+        var compact = make('span', 'chip-short');
+        compact.appendChild(svg(icon));
+        compact.appendChild(document.createTextNode(short));
+        chip.appendChild(compact);
+    }
+
+    // "Deletes in 23 h 59 min" becomes "23h 59m"
+    function shortExpiry(text) {
+        return text.replace(/^Deletes in /, '').replace(/under 1 min/, '<1m').replace(/ d /, 'd ').replace(/ h( |$)/, 'h$1').replace(/ min$/, 'm');
+    }
+
     function updateExpiry() {
         if (!state.stash) return;
         var chip = $('expiryInfo');
-        chip.textContent = expiryText(state.stash.expiresAt);
+        var words = expiryText(state.stash.expiresAt);
+        setChip(chip, words, shortExpiry(words), CLOCK_ICON);
         var soon = state.stash.expiresAt && new Date(state.stash.expiresAt).getTime() - Date.now() < 60 * 60 * 1000;
         chip.classList.toggle('warn', Boolean(soon));
         if (state.stash.expiresAt && new Date(state.stash.expiresAt).getTime() <= Date.now()) load(true);
@@ -753,11 +977,11 @@
         markSelected();
     }
 
-    // A note was edited or an item pinned or unpinned, here or on another device
+    // The same order as the server: pinned first, then by place (higher on top)
     function sortItems() {
         state.items.sort(function (a, b) {
             if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-            if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
+            if (a.order !== b.order) return b.order - a.order;
             return b.id - a.id;
         });
     }
@@ -887,6 +1111,7 @@
             if (!known && origin !== tabId) onIncoming(item);
         });
         es.addEventListener('item-updated', function (event) { onItemUpdated(JSON.parse(event.data)); });
+        es.addEventListener('items-reordered', function (event) { applyOrders(JSON.parse(event.data).orders); });
         es.addEventListener('presence', function (event) { showPresence(JSON.parse(event.data).count); });
         es.addEventListener('item-deleted', function (event) { onItemDeleted(JSON.parse(event.data).id); });
         es.addEventListener('stash-extended', function (event) {
@@ -1273,7 +1498,7 @@
 
     function showPresence(count) {
         var chip = $('presenceChip');
-        chip.textContent = count + ' connected';
+        setChip(chip, count + ' connected', String(count), PEOPLE_ICON);
         chip.classList.remove('hidden');
     }
 
@@ -1522,6 +1747,39 @@
         applyFilters();
     });
     $('refreshButton').addEventListener('click', function () { load(); });
+
+    // On a phone, Options and Log out move up into the top bar (next to Admin and Theme), so the row under the
+    // stash name holds only the everyday buttons. On a wider screen they go back to the end of that row.
+    (function placeTopButtons() {
+        var phone = window.matchMedia('(max-width: 760px)');
+        var moved = [$('logoutButton'), $('optionsButton')];
+        function place() {
+            var target = phone.matches ? document.querySelector('.sidebar-footer') : document.querySelector('.header-actions');
+            if (phone.matches) moved.slice().reverse().forEach(function (el) { target.insertBefore(el, target.firstChild); });
+            else moved.forEach(function (el) { target.appendChild(el); });
+            moved.forEach(function (el) { el.classList.toggle('in-topbar', phone.matches); });
+        }
+        place();
+        if (phone.addEventListener) phone.addEventListener('change', place); else phone.addListener(place);
+    })();
+
+    // The eye button shows or hides the note lines under each title, for a shorter list or a screen others can
+    // see. The choice is kept on this device only.
+    var CONTENT_KEY = 'stashly.hideContent';
+    function setContentHidden(hidden, save) {
+        $('items').classList.toggle('hide-content', hidden);
+        var toggle = $('contentToggle');
+        toggle.setAttribute('aria-pressed', hidden ? 'false' : 'true');
+        toggle.classList.toggle('active', hidden);
+        toggle.title = hidden ? 'Show note content in the list' : 'Hide note content in the list';
+        if (save) { try { localStorage.setItem(CONTENT_KEY, hidden ? '1' : '0'); } catch (e) { /* storage may be blocked */ } }
+    }
+    $('contentToggle').addEventListener('click', function () {
+        var hidden = !$('items').classList.contains('hide-content');
+        setContentHidden(hidden, true);
+        toast(hidden ? 'Note content hidden in the list' : 'Note content shown in the list');
+    });
+    try { setContentHidden(localStorage.getItem(CONTENT_KEY) === '1', false); } catch (e) { setContentHidden(false, false); }
 
     // ---- uploads: picker, drop zone, drag and drop anywhere, paste ----
 

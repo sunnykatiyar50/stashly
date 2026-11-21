@@ -13,6 +13,8 @@ const ROLE_COOKIES = { view: slug => `stashlyv_${slug}`, drop: slug => `stashlyd
 // What a share link signs: its own label plus the hash of its token, so a new link voids cookies from the old one
 const roleSubject = (slug, kind) => `${slug}:${kind}`;
 const DAY = 24 * 60 * 60 * 1000;
+// The most clips one reorder may move (a stash holds at most a few thousand; a page shows them all)
+const MAX_REORDER = 5000;
 // The most items one listing can be asked for with `limit` (the extension asks for a few; without a limit, all come)
 const MAX_LIST_LIMIT = 200;
 
@@ -76,6 +78,8 @@ class StashController {
             burn,
             secret,
             pinned: Boolean(row.pinned),
+            // The item's place in the list (higher is nearer the top); the page sorts by it
+            order: row.sort_order,
             editedAt: row.edited_at || null,
             expiresAt: isFile ? null : row.expires_at || null,
             fileName: isFile ? row.file_name : null,
@@ -637,6 +641,20 @@ class StashController {
         const item = this.presentItem(stash.slug, updated);
         this.events.publish(stash.slug, 'item-updated', item);
         res.json(item);
+    };
+
+    // Puts clips in a new order. The body lists ids top to bottom; only those clips move, among their own places.
+    reorder = (req, res) => {
+        const stash = req.stash;
+        const ids = req.body && req.body.ids;
+        if (!Array.isArray(ids) || !ids.length || ids.length > MAX_REORDER || !ids.every(id => Number.isInteger(id) && id > 0)) {
+            return res.status(400).json({ error: 'Send the clip ids in their new order.' });
+        }
+        if (new Set(ids).size !== ids.length) return res.status(400).json({ error: 'A clip is listed twice.' });
+        const orders = this.model.reorderItems(stash.id, ids);
+        if (!orders) return res.status(404).json({ error: 'Some of those clips are gone. Refresh and try again.' });
+        this.events.publish(stash.slug, 'items-reordered', { orders });
+        res.json({ orders });
     };
 
     // How many unpinned items the stash keeps (null keeps everything). Lowering it trims straight away.
