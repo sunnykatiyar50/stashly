@@ -8,7 +8,12 @@
 //
 // Pushing the tag starts two GitHub Actions workflows:
 //   docker.yml   tests, then publishes ghcr.io/<owner>/stashly:<version> (and :X.Y, :X, :latest)
-//   release.yml  creates the GitHub Release with notes and a docker-compose.yml pinned to the version
+//   release.yml  creates the GitHub Release with notes and a docker-compose.yml pinned to the version, and the
+//                browser extension built for that version (scripts/build-extension.js)
+//
+// The extension's version is not kept in the repo (extension/manifest.json says 0.0.0); the build writes
+// package.json's version into it. The build is run here too, into dist/ (ignored by git), so a broken
+// extension stops the release before anything is tagged.
 //
 // Plain Node, so it behaves the same in PowerShell, Git Bash and Linux.
 
@@ -83,6 +88,16 @@ if (out('git', ['tag', '--list', tag])) {
 }
 
 console.log(tagOnly ? `Release: ${next} as it is (tag ${tag})` : `Release: ${current} -> ${next} (tag ${tag})`);
+
+// The same build the release workflow runs, so a problem shows up now rather than after the tag is pushed
+try {
+    for (const built of require('./build-extension').build({ version: next })) {
+        console.log(`Extension (${built.browser}): ${path.relative(root, built.zip)}`);
+    }
+} catch (err) {
+    restoreFiles();
+    fail(`The browser extension did not build: ${err.message}`);
+}
 if (dryRun) {
     restoreFiles();
     const lastTag = run('git', ['describe', '--tags', '--abbrev=0'], { quiet: true });

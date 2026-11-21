@@ -1,9 +1,9 @@
 {
     "manifest_version": 3,
     "name": "Stashly",
-    "version": "1.7.0",
-    "description": "Send text, links and files to a Stashly stash from any tab, and copy the newest note.",
-    "icons": { "128": "icons/icon-192.png" },
+    "version": "0.0.0",
+    "description": "Send text, links and files to a Stashly stash from any tab, and find and copy your notes.",
+    "icons": { "192": "icons/icon-192.png" },
     "action": {
         "default_title": "Stashly",
         "default_popup": "popup.html",

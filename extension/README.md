@@ -13,17 +13,86 @@ Stashly page. It has no build step: load this folder as it is.
 
 ## Load it
 
-**Chrome / Edge**: open `chrome://extensions` (or `edge://extensions`), turn on *Developer mode*, choose
-*Load unpacked* and pick this `extension` folder.
+Every GitHub Release has the extension built for that version. You can also build it yourself (see below).
 
-**Firefox** (128 or later): open `about:debugging#/runtime/this-firefox`, choose *Load Temporary Add-on…* and pick
-`extension/manifest.json`. A temporary add-on is removed when Firefox closes.
+| Browser | File | How |
+| --- | --- | --- |
+| Chrome, Edge (and other Chromium browsers) | `stashly-extension-<version>-chromium.zip` | Unzip it. Open `chrome://extensions` (or `edge://extensions`), turn on *Developer mode*, choose *Load unpacked* and pick the unzipped folder. It stays installed, but outside the Chrome Web Store and Edge Add-ons, unpacked is the only way: Chrome and Edge do not install a packed extension from a file (except through enterprise policy), and the browser may remind you that developer-mode extensions are on. |
+| Firefox, Zen (and other Firefox-based browsers) for a permanent install | `stashly-extension-<version>-firefox-signed.xpi` | Open the file in the browser (drag it into a window, or *Install Add-on From File…* in the cog menu of `about:addons`). This file is only in a release when signing is set up (see below). |
+| Firefox, Zen, for a quick try | `stashly-extension-<version>-firefox.zip` | Open `about:debugging#/runtime/this-firefox`, choose *Load Temporary Add-on…* and pick the zip. It is removed when the browser closes. |
+
+**Signed or not, in Firefox and Zen.** Release Firefox installs an add-on permanently only when Mozilla has signed
+it. It refuses the unsigned zip as a normal install, and its `xpinstall.signatures.required` setting changes nothing.
+Zen ships with that setting on, so it refuses the unsigned zip in the same way (tested in Zen 1.24.1b: "signature
+required"). Zen is built without the hard lock, though, so setting `xpinstall.signatures.required` to `false` in
+`about:config` lets it install the unsigned zip permanently (also tested). Firefox Developer Edition, Nightly, ESR and
+unbranded builds behave like Zen here. Turning signature checks off applies to every add-on, so the signed `.xpi` is
+the better choice.
+
+From a checkout, load the `extension` folder itself the same way (Chrome/Edge: *Load unpacked*; Firefox/Zen:
+*Load Temporary Add-on…* and pick `extension/manifest.json`). It shows version 0.0.0, because only the build writes
+the real version.
+
+Firefox needs version 128 or later.
 
 Then open the extension's options, enter your server (for example `https://stash.example.com` or
 `http://localhost:3000`) and save. The browser asks for access to that host only.
 
 To change the shortcut: `chrome://extensions/shortcuts` in Chrome or Edge; in Firefox, *Manage Extension Shortcuts*
 in the cog menu of `about:addons`.
+
+## Build and release
+
+```powershell
+npm run build:extension
+```
+
+`scripts/build-extension.js` needs only Node, with no other tools, and works the same on Windows and Linux. It reads
+the version from `package.json` and writes:
+
+| Path | What |
+| --- | --- |
+| `dist/stashly-extension-<version>-chromium.zip` | for Chrome and Edge. The manifest has no `background.scripts` and no `browser_specific_settings`, which Chromium does not use. |
+| `dist/stashly-extension-<version>-firefox.zip` | for Firefox and Zen. The manifest has no `background.service_worker`; Firefox runs the background script instead. |
+| `dist/chromium/`, `dist/firefox/` | the same files unpacked |
+
+`dist/` is ignored by git. The same input always gives the same zip, byte for byte.
+
+**The version.** `package.json` is the only place it is kept. `extension/manifest.json` says `0.0.0`, and the build
+writes the real version into each copy, so the two can never drift apart. A manifest version is digits only, so a
+pre-release such as `1.8.0-rc.1` is built as `1.8.0`. Chromium also gets `"version_name": "1.8.0-rc.1"`, which
+`chrome://extensions` shows. Firefox has no `version_name`. It would load `1.8.0-rc.1` locally, but
+addons.mozilla.org accepts only digits and dots, so the Firefox build uses `1.8.0` too, and pre-releases are not
+signed (see below).
+
+**On a release.** `npm run release` builds the extension before it tags, so a broken build stops the release. Pushing
+the tag runs `.github/workflows/release.yml`, which:
+1. checks the tag against `package.json`
+2. builds both zips
+3. checks that each built manifest carries the tag's version
+4. attaches both zips to the GitHub Release
+
+### Signing the Firefox build (optional)
+
+With two repository secrets, the release workflow also signs the Firefox build on addons.mozilla.org as an
+**unlisted** add-on. Unlisted means Mozilla signs it but does not list it on the store. The workflow then attaches
+`stashly-extension-<version>-firefox-signed.xpi`, which installs permanently in Firefox and Zen.
+
+1. Sign in to addons.mozilla.org with a Firefox account.
+2. Open *Tools → Manage API Keys* (https://addons.mozilla.org/developers/addon/api/key/) and generate credentials.
+3. In the GitHub repository, add two secrets under *Settings → Secrets and variables → Actions*:
+   - `AMO_JWT_ISSUER`: the *JWT issuer*, which looks like `user:12345:67`
+   - `AMO_JWT_SECRET`: the *JWT secret*
+
+Without both secrets the signing step is skipped and the release carries only the two zips. The step:
+- runs `web-ext sign --channel=unlisted` (web-ext 8.3.0, fetched with `npx` only for this step)
+- uses the add-on ID in the manifest, `stashly@stashly.extension`; the first signing registers that ID to your account
+- signs stable versions only. AMO allows each version number once, and a pre-release is built with its final number.
+- does not stop the release if it fails. The release is then published without the `.xpi`, with a warning in the run.
+
+Mozilla runs automatic checks before it signs, which usually takes a few minutes; `web-ext` waits for it. To check the
+build against the same rules locally, run `npx web-ext@8.3.0 lint --source-dir dist/firefox` (it currently reports
+no errors or warnings).
 
 ## Permissions
 
