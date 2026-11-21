@@ -158,6 +158,8 @@ test('every setting names the tab it is shown under', async () => {
     assert.equal(byKey.maxFileMb, 'Limits');
     assert.equal(byKey.maxStashes, 'Limits');
     assert.equal(byKey.minOpenNameLength, 'Security');
+    assert.equal(byKey.minPasswordLength, 'Security');
+    assert.equal(byKey.reserveOldNamesDays, 'Security');
     assert.equal(byKey.fileTypes, 'Files');
     assert.equal(byKey.allowNoExpiry, 'Stashes');
     assert.equal(byKey.requireAdminToCreate, 'Stashes');
