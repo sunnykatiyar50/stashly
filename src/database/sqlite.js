@@ -59,6 +59,13 @@ function connect(filePath = ':memory:') {
     // Pinned items stay at the top and are never trimmed by "keep the last N"; edited_at marks a note changed in place
     if (!itemColumns.includes('pinned')) db.exec('ALTER TABLE items ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
     if (!itemColumns.includes('edited_at')) db.exec('ALTER TABLE items ADD COLUMN edited_at TEXT');
+    // Where an item sits in its stash's list (higher is nearer the top). New items get the stash's highest number
+    // plus one; dragging a clip renumbers the moved ones. Older rows start in the order they were added.
+    if (!itemColumns.includes('sort_order')) {
+        db.exec('ALTER TABLE items ADD COLUMN sort_order REAL');
+        db.exec('UPDATE items SET sort_order = id');
+    }
+    db.exec('CREATE INDEX IF NOT EXISTS idx_items_order ON items (stash_id, pinned, sort_order)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_items_stash ON items (stash_id, created_at)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_items_expires ON items (expires_at)');
     db.exec(

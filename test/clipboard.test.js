@@ -142,13 +142,13 @@ test('a note can be edited in place: text and title change, its date and options
     assert.equal(list.body.items[0].text, 'new text\nline two');
 });
 
-test('clearing the title goes back to the first words of the text', async () => {
+test('clearing the title goes back to the first 40 characters of the text', async () => {
     const ctx = makeApp();
     const base = await stash(ctx);
     const added = await request(ctx.app).post(`${base}/notes`).send({ title: 'given', text: 'whatever' }).expect(201);
     const res = await request(ctx.app).put(`${base}/items/${added.body.id}`).send({ title: '', text: 'one two three four five six' }).expect(200);
     assert.equal(res.body.hasTitle, false);
-    assert.equal(res.body.title, 'one two three four five');
+    assert.equal(res.body.title, 'one two three four five six');
 });
 
 test('editing refuses empty or oversized text, a long title, files, burn notes and missing items', async () => {
