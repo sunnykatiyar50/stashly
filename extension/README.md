@@ -72,6 +72,32 @@ sent, and the extension sets `strict_min_version` 128. Two Firefox catches have 
   requesting the host without a port.
 - MV3 host permissions are not granted at install in Firefox. The options page asks for them when you save.
 
+### Firefox checks still to run
+
+Start a local server with `PORT=3917 node src/app.js`. Create a stash with a password and one without, then load the
+extension from `about:debugging`. Open the extension's console with *Inspect* next to the add-on: the background
+script's console, or the popup's.
+
+1. **Loads**: there are no errors in `about:debugging`. The popup shows "Set your Stashly server first".
+2. **Permission**: save `http://127.0.0.1:3917` in options. Firefox asks for access to `127.0.0.1` and the status
+   says *Saved*. In the console, `await browser.permissions.getAll()` lists `http://127.0.0.1/*`.
+3. **Cookie from a tab → background script (the key check)**: unlock the locked stash in a normal tab. Then, in the
+   background console, run
+   `(await fetch('http://127.0.0.1:3917/api/stashes/NAME/latest', {credentials: 'include'})).status`.
+   It must give 200 or 404 ("No notes yet"), not 401.
+4. **Cookie from a tab → popup**: the same `fetch` in the popup's console, or **Show newest note** in the popup.
+   It must not ask for the password.
+5. **Unlock from the extension**: clear the site's cookies (Storage tab in the tab's dev tools), then send a note from
+   the popup. The popup asks for the password; enter it, and the note is sent. Reload the stash page in a tab: it is
+   signed in too.
+6. **Open stash, no password**: send a note, **Send clipboard**, **Show newest note** with **Copy**, drag a file from
+   the desktop onto the popup, and **Open**.
+7. **Context menu and shortcut**: right-click a selection, a link and a page, and choose *Send to Stashly*. The
+   button shows **OK**. <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> opens the popup.
+
+If check 3 or 4 gets a 401 while the tab is signed in, Firefox is not sending the Strict cookie. Then the server
+change below is needed.
+
 **If Firefox turns out not to send the cookie**, here is the smallest server change. It is a proposal only; server
 auth is unchanged. Let the API routes also accept the token in an `Authorization: Bearer <token>` header. That token is
 either a share-link token (`view` or `drop`, checked with the same `linkTokenMatches` as `/redeem`), or a signed
