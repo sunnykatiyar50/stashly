@@ -608,3 +608,13 @@ body:not(.stash-open) .in-topbar { display: none; }
 .clip-quick { display: flex; gap: 2px; }
 .clip-pin.on { color: var(--blue); }
 .clip-pin.on svg { fill: currentColor; }
+
+/* Icons on the action buttons of an open clip */
+#detailActions svg, .detail-actions svg { width: 15px; height: 15px; }
+/* The top bar on a phone: Theme, Options, Log out, then Admin last */
+@media (max-width: 760px) {
+    .sidebar-footer [data-theme-toggle] { order: 1; }
+    .sidebar-footer #optionsButton { order: 2; }
+    .sidebar-footer #logoutButton { order: 3; }
+    .sidebar-footer a[href="/admin"] { order: 4; }
+}
