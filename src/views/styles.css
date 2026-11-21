@@ -417,7 +417,20 @@ audio.detail-media { max-height: none; }
 .row-actions { display: inline-flex; gap: 6px; }
 .table-card .empty-state { border: none; }
 
-.settings-card { max-width: 780px; }
+.settings-card { max-width: 940px; }
+/* Settings are grouped into tabs: down the side on wide screens, across the top on phones */
+.settings-layout { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 20px; align-items: start; }
+.settings-tabs { display: flex; flex-direction: column; gap: 2px; padding-right: 12px; border-right: 1px solid var(--border); align-self: stretch; }
+.settings-tab { justify-content: space-between; width: 100%; padding: 7px 10px; background: none; color: var(--text-soft); text-align: left; }
+.settings-tab:hover { background: var(--surface-alt); color: var(--text); }
+.settings-tab[aria-selected="true"] { background: var(--blue-soft); color: var(--blue); font-weight: 600; }
+.settings-tab-flag { display: none; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+.settings-tab.has-error .settings-tab-flag { display: inline-block; }
+.settings-tab.has-error:not([aria-selected="true"]) { color: var(--danger); }
+.settings-panel { min-width: 0; border-radius: 6px; }
+.settings-panel[hidden] { display: none; }
+.settings-panel:focus-visible { outline: 3px solid var(--blue-soft); outline-offset: 4px; }
+.settings-row:last-child { border-bottom: none; padding-bottom: 0; }
 .settings-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 24px; padding: 12px 0; border-bottom: 1px solid var(--border); }
 .settings-row:first-child { padding-top: 0; }
 .settings-text { display: flex; flex-direction: column; gap: 3px; }
@@ -444,6 +457,9 @@ audio.detail-media { max-height: none; }
     .toolbar input[type="search"] { width: 100%; }
     .field-row { grid-template-columns: 1fr; }
     .settings-row { grid-template-columns: 1fr; }
+    .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .settings-tabs { flex-direction: row; overflow-x: auto; padding: 0 0 8px; border-right: none; border-bottom: 1px solid var(--border); }
+    .settings-tab { width: auto; flex: none; gap: 6px; }
     /* One pane at a time: the list, or the open clip with a back button */
     .view-stash { overflow: visible; }
     .split { grid-template-columns: 1fr; min-height: 70vh; }
