@@ -161,7 +161,7 @@
 
     // ---- the list on the left ----
 
-    // A note shows its title (the first five words when it was not given one); a file shows its name
+    // A note shows its title (the first 40 characters when it was not given one); a file shows its name
     function itemTitle(item) {
         if (item.kind !== 'note') return item.fileName;
         return item.title || '(empty note)';
@@ -183,7 +183,7 @@
     }
 
     // The line under the title in the list: a few lines of the note, or the size of a file.
-    // A note without a title shows its whole content here (no separate title row).
+    // The note lines can be hidden with the eye button above the list.
     function itemSub(item) {
         if (item.kind !== 'note') return window.StashlyUpload.formatSize(item.fileSize);
         if (item.burn) return '';
@@ -198,6 +198,19 @@
         el.setAttribute('role', 'button');
         el.tabIndex = 0;
         el.dataset.id = item.id;
+
+        // A handle to drag the clip to another place (only with full access; pinned and unpinned clips each keep
+        // to their own group)
+        if (role() === 'full') {
+            el.classList.add('has-grip');
+            var grip = make('span', 'clip-grip');
+            grip.title = 'Drag to move. Or press Alt+Up or Alt+Down.';
+            grip.setAttribute('aria-hidden', 'true');
+            grip.appendChild(svg(GRIP_ICON));
+            grip.addEventListener('pointerdown', function (event) { startDrag(event, el); });
+            grip.addEventListener('click', function (event) { event.stopPropagation(); });
+            el.appendChild(grip);
+        }
 
         var lead;
         if (item.isImage) {
@@ -214,13 +227,11 @@
         el.appendChild(lead);
 
         var text = make('span', 'clip-text');
-        // A note with no title of its own shows just its content, not a made-up title.
-        // Secret and burn notes always show a title, because their content must not show here.
-        var untitled = item.kind === 'note' && !item.hasTitle && !item.secret && !item.burn;
-        if (!untitled) text.appendChild(make('span', 'clip-title', itemTitle(item)));
+        // A note with no title of its own is titled with its first 40 characters (worked out by the server).
+        // Secret and burn notes get a plain title, because their content must not show here.
+        text.appendChild(make('span', 'clip-title', itemTitle(item)));
         var sub = itemSub(item);
-        if (untitled && !sub) text.appendChild(make('span', 'clip-title', '(empty note)'));
-        else if (sub) text.appendChild(make('span', untitled ? 'clip-preview clip-body' : item.kind === 'note' ? 'clip-sub clip-preview' : 'clip-sub', sub));
+        if (sub) text.appendChild(make('span', item.kind === 'note' ? 'clip-sub clip-preview' : 'clip-sub', sub));
         var flags = clipFlags(item);
         if (flags.length) {
             var flagLine = make('span', 'clip-flags');
@@ -257,8 +268,126 @@
         el.addEventListener('keydown', function (event) {
             if (event.target !== el) return;
             if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openItem(item.id); }
+            // Alt+Up / Alt+Down moves the clip one place, for those not using a mouse
+            if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown') && role() === 'full') {
+                event.preventDefault();
+                moveByKey(el, event.key === 'ArrowUp' ? -1 : 1);
+            }
         });
         return el;
+    }
+
+    var GRIP_ICON = '<svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>';
+
+    // ---- moving clips ----
+
+    // Clips may only move among those with the same pinned state, so a drag never seems to pin or unpin one
+    function sameGroup(a, b) {
+        var x = findItem(Number(a.dataset.id));
+        var y = findItem(Number(b.dataset.id));
+        return Boolean(x && y && x.pinned === y.pinned);
+    }
+
+    function rowIds() {
+        return Array.prototype.map.call($('items').children, function (child) { return child.dataset.id; }).join(',');
+    }
+
+    // Drag with a mouse, pen or finger from the handle. The row follows the pointer through the list; letting go
+    // saves the new order. Pointer events (not HTML drag and drop) so it works the same on phones.
+    function startDrag(event, el) {
+        if (event.button !== undefined && event.button !== 0) return;
+        event.preventDefault();
+        var list = $('items');
+        var before = rowIds();
+        var pointerId = event.pointerId;
+        var lastY = event.clientY;
+        el.classList.add('dragging');
+        list.classList.add('drag-active');
+
+        // Moves the row to wherever the pointer is, among the clips of its own group
+        function place(y) {
+            var siblings = Array.prototype.filter.call(list.children, function (child) { return child !== el && sameGroup(child, el); });
+            if (!siblings.length) return;
+            var next = null;
+            for (var i = 0; i < siblings.length; i++) {
+                var box = siblings[i].getBoundingClientRect();
+                if (y < box.top + box.height / 2) { next = siblings[i]; break; }
+            }
+            var anchor = next || siblings[siblings.length - 1].nextElementSibling;
+            if (anchor !== el && el.nextElementSibling !== anchor) list.insertBefore(el, anchor);
+        }
+
+        // Near the top or bottom edge the list scrolls by itself, so a clip can travel further than one screen
+        function autoScroll() {
+            var box = list.getBoundingClientRect();
+            var edge = 40;
+            var step = lastY < box.top + edge ? -12 : lastY > box.bottom - edge ? 12 : 0;
+            if (step && list.scrollHeight > list.clientHeight) { list.scrollTop += step; place(lastY); }
+        }
+        var scrollTimer = setInterval(autoScroll, 30);
+
+        function move(e) {
+            if (e.pointerId !== pointerId) return;
+            lastY = e.clientY;
+            place(lastY);
+        }
+
+        function end(e) {
+            if (e.pointerId !== pointerId) return;
+            document.removeEventListener('pointermove', move);
+            document.removeEventListener('pointerup', end);
+            document.removeEventListener('pointercancel', end);
+            clearInterval(scrollTimer);
+            el.classList.remove('dragging');
+            list.classList.remove('drag-active');
+            if (rowIds() !== before) saveOrder(el);
+        }
+
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', end);
+        document.addEventListener('pointercancel', end);
+    }
+
+    function moveByKey(el, direction) {
+        var target = direction < 0 ? el.previousElementSibling : el.nextElementSibling;
+        if (!target || !sameGroup(target, el)) return;
+        $('items').insertBefore(el, direction < 0 ? target : target.nextElementSibling);
+        el.focus();
+        saveOrder(el);
+    }
+
+    // Sends the order of the moved clip's group as it now stands on the page. The server only swaps places among
+    // these clips, so the ones a search left out stay where they were.
+    function saveOrder(el) {
+        var ids = Array.prototype.filter.call($('items').children, function (child) { return sameGroup(child, el); })
+            .map(function (child) { return Number(child.dataset.id); });
+        api(base + '/reorder', { method: 'POST', body: { ids: ids } }).then(function (res) {
+            if (res.ok) return applyOrders(res.body.orders);
+            if (res.status === 401) return locked();
+            toast((res.body && res.body.error) || 'Could not save the new order.', true);
+            // Put the list back the way the server has it
+            load(true);
+        }).catch(function () {
+            toast('Could not save the new order.', true);
+            sortItems();
+            renderItems();
+        });
+    }
+
+    // New places for some clips (from this page or another device): re-sort, then move the rows that are out of
+    // place without rebuilding them, so focus and loaded images stay
+    function applyOrders(orders) {
+        var byId = {};
+        orders.forEach(function (entry) { byId[entry.id] = entry.order; });
+        state.items.forEach(function (item) { if (byId[item.id] !== undefined) item.order = byId[item.id]; });
+        sortItems();
+        var wanted = state.items.map(function (item) { return String(item.id); }).join(',');
+        if (rowIds() === wanted) return;
+        var list = $('items');
+        state.items.forEach(function (item) {
+            var row = list.querySelector('.clip[data-id="' + item.id + '"]');
+            if (row) list.appendChild(row);
+        });
     }
 
     var COPY_ICON = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
@@ -753,11 +882,11 @@
         markSelected();
     }
 
-    // A note was edited or an item pinned or unpinned, here or on another device
+    // The same order as the server: pinned first, then by place (higher on top)
     function sortItems() {
         state.items.sort(function (a, b) {
             if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-            if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
+            if (a.order !== b.order) return b.order - a.order;
             return b.id - a.id;
         });
     }
@@ -887,6 +1016,7 @@
             if (!known && origin !== tabId) onIncoming(item);
         });
         es.addEventListener('item-updated', function (event) { onItemUpdated(JSON.parse(event.data)); });
+        es.addEventListener('items-reordered', function (event) { applyOrders(JSON.parse(event.data).orders); });
         es.addEventListener('presence', function (event) { showPresence(JSON.parse(event.data).count); });
         es.addEventListener('item-deleted', function (event) { onItemDeleted(JSON.parse(event.data).id); });
         es.addEventListener('stash-extended', function (event) {
@@ -1522,6 +1652,24 @@
         applyFilters();
     });
     $('refreshButton').addEventListener('click', function () { load(); });
+
+    // The eye button shows or hides the note lines under each title, for a shorter list or a screen others can
+    // see. The choice is kept on this device only.
+    var CONTENT_KEY = 'stashly.hideContent';
+    function setContentHidden(hidden, save) {
+        $('items').classList.toggle('hide-content', hidden);
+        var toggle = $('contentToggle');
+        toggle.setAttribute('aria-pressed', hidden ? 'false' : 'true');
+        toggle.classList.toggle('active', hidden);
+        toggle.title = hidden ? 'Show note content in the list' : 'Hide note content in the list';
+        if (save) { try { localStorage.setItem(CONTENT_KEY, hidden ? '1' : '0'); } catch (e) { /* storage may be blocked */ } }
+    }
+    $('contentToggle').addEventListener('click', function () {
+        var hidden = !$('items').classList.contains('hide-content');
+        setContentHidden(hidden, true);
+        toast(hidden ? 'Note content hidden in the list' : 'Note content shown in the list');
+    });
+    try { setContentHidden(localStorage.getItem(CONTENT_KEY) === '1', false); } catch (e) { setContentHidden(false, false); }
 
     // ---- uploads: picker, drop zone, drag and drop anywhere, paste ----
 

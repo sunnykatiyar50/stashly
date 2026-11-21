@@ -67,6 +67,8 @@ function createStashRoutes({ controller, config }) {
     router.delete('/:slug/items/:id', ...full, c.deleteItem);
     router.put('/:slug/items/:id', ...full, c.editNote);
     router.post('/:slug/items/:id/pin', ...full, c.setPinned);
+    // Dragging clips into a new order; a read-only or drop-box link cannot rearrange
+    router.post('/:slug/reorder', ...full, c.reorder);
     router.put('/:slug/keep-last', ...full, c.setKeepLast);
     router.post('/:slug/extend', ...full, c.extend);
     // The wrong-password limit applies here too: a stranger at an unlocked browser cannot guess the current password
