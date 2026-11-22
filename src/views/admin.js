@@ -46,6 +46,20 @@
         Array.prototype.forEach.call(document.querySelectorAll('.admin-only'), function (el) {
             el.classList.toggle('hidden', !value);
         });
+        if (value) showAccountState();
+    }
+
+    // The sidebar link to the user account page says "My stashes" when an account is already signed in, "Sign in" otherwise
+    function showAccountState() {
+        api('/api/me').then(function (res) {
+            if (res.ok && res.body && res.body.user) {
+                $('accountLinkLabel').textContent = 'My stashes';
+                $('accountLink').title = 'My stashes, signed in as ' + res.body.user.username;
+            } else {
+                $('accountLinkLabel').textContent = 'Sign in';
+                $('accountLink').title = 'Sign in to follow your stashes';
+            }
+        }).catch(function () { /* keeps the label it had */ });
     }
 
     function formatSize(bytes) {

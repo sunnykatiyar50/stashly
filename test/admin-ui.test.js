@@ -26,3 +26,10 @@ test('the admin page keeps Create user and Backup behind buttons', () => {
     assert.match(tag(html, 'createUserToggle'), /aria-expanded="false"/);
     assert.match(tag(html, 'backupToggle'), /aria-expanded="false"/);
 });
+
+test('the admin sidebar has a Sign in link to the account page, shown once the admin is signed in', () => {
+    const html = view('admin.html');
+    assert.match(tag(html, 'accountLink'), /href="\/account"/);
+    assert.match(tag(html, 'accountLink'), /class="[^"]*\badmin-only\b/);
+    assert.match(tag(html, 'accountLink'), /class="[^"]*\bhidden\b/);
+});
