@@ -1,3 +1,5 @@
+const path = require('path');
+
 const MB = 1024 * 1024;
 const HOUR = 60 * 60 * 1000;
 
@@ -26,6 +28,9 @@ function loadConfig(env = process.env, overrides = {}) {
         port: num(env.PORT, 3000),
         host: env.HOST || '0.0.0.0',
         sqlitePath: env.SQLITE_PATH || './stashly.sqlite',
+        // Uploaded files, one plain file each. Next to the database unless FILES_DIR says otherwise, so a volume
+        // mounted on the database's folder keeps both. Back up the database and this folder together.
+        filesDir: env.FILES_DIR || path.join(path.dirname(path.resolve(env.SQLITE_PATH || './stashly.sqlite')), 'files'),
         sessionSecret: env.SESSION_SECRET || '',
         trustProxy: env.TRUST_PROXY || '',
         maxNoteBytes: num(env.MAX_NOTE_KB, 100) * 1024,

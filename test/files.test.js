@@ -163,7 +163,7 @@ test('deleting a file item removes its content', async () => {
     const up = await upload(ctx, base, 'a.png', PNG).expect(201);
     await request(ctx.app).delete(`${base}/items/${up.body.id}`).expect(200);
     await request(ctx.app).get(up.body.url).expect(404);
-    assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM files').get().n, 0);
+    assert.equal(ctx.fileStore.count(), 0);
 });
 
 test('a file is only reachable through its own stash', async () => {

@@ -6,6 +6,7 @@ const { dateRange } = require('../utils/time');
 const { parseTitle, deriveTitle } = require('../utils/title');
 const { listZip } = require('../utils/zip');
 const { UnlockLockout } = require('../utils/lockout');
+const { pipeline } = require('stream');
 
 // Three cookies per stash: full access (the password), or one of the two share links. The names cannot collide,
 // because the prefixes differ before the stash name starts.
@@ -717,10 +718,37 @@ class StashController {
         res.json({ keepLast: keep, removed: removed.length });
     };
 
+    // Receives the upload's body into the file store as it arrives (never held in memory), and leaves it on req.upload.
+    // Runs after the checks that can refuse an upload without reading it (role, content kind, Content-Length).
+    receiveFile = async (req, res, next) => {
+        try {
+            req.upload = await this.model.files.receive(req, this.config.maxFileBytes);
+        } catch (err) {
+            if (err.code === 'TOO_LARGE') {
+                // The rest of the body is not read: close the connection once this answer is sent
+                res.set('Connection', 'close');
+                return res.status(413).json({ error: `A file can be at most ${Math.round(this.config.maxFileBytes / 1048576)} MB.` });
+            }
+            // The client went away part way: there is nobody to answer, but make sure nothing is left hanging
+            if (!res.headersSent && !res.destroyed) return res.status(400).json({ error: 'The upload was interrupted.' });
+            return;
+        }
+        next();
+    };
+
     addFile = (req, res) => {
+        const upload = req.upload;
+        try {
+            this.storeUpload(req, res, upload);
+        } finally {
+            // Does nothing once the upload has been moved into the file store
+            this.model.files.discard(upload.tmp);
+        }
+    };
+
+    storeUpload(req, res, { tmp, size, head }) {
         const stash = req.stash;
-        const content = req.body;
-        if (!Buffer.isBuffer(content) || !content.length) return res.status(400).json({ error: 'The file is empty.' });
+        if (!size) return res.status(400).json({ error: 'The file is empty.' });
 
         let rawName = req.get('x-file-name') || '';
         try {
@@ -731,7 +759,8 @@ class StashController {
         const fileName = cleanFileName(rawName);
         if (!fileName) return res.status(400).json({ error: 'The file needs a name (X-File-Name header).' });
 
-        const detected = detectFile(fileName, content, this.config.fileTypes);
+        // File types are recognised from the first bytes, which is all that was kept in memory
+        const detected = detectFile(fileName, head, this.config.fileTypes);
         if (detected.error) return res.status(415).json({ error: detected.error });
 
         // An optional title, in the X-Title header (URI-encoded, like the name)
@@ -754,19 +783,19 @@ class StashController {
         if (usage.files >= c.maxFilesPerStash) {
             return res.status(413).json({ error: `A stash can hold ${c.maxFilesPerStash} files. Delete one first.` });
         }
-        if (usage.bytes + content.length > c.maxStashBytes) {
+        if (usage.bytes + size > c.maxStashBytes) {
             return res.status(413).json({ error: `This stash would pass its ${Math.round(c.maxStashBytes / 1048576)} MB limit.` });
         }
-        if (this.model.totalBytes() + content.length > c.maxTotalBytes) {
+        if (this.model.totalBytes() + size > c.maxTotalBytes) {
             return res.status(507).json({ error: 'The server is out of file space. Try again later.' });
         }
 
-        const row = this.model.addFile(stash.id, { fileName, fileType: detected.mime, content, title: title.value }, this.now());
+        const row = this.model.addFile(stash.id, { fileName, fileType: detected.mime, tmp, size, title: title.value }, this.now());
         const item = this.presentItem(stash.slug, row);
         this.events.publish(stash.slug, 'item-added', this.withOrigin(item, req));
         this.trim(stash);
         res.status(201).json(item);
-    };
+    }
 
     // Reads one file of this stash, or null
     fileRow(req) {
@@ -777,9 +806,9 @@ class StashController {
 
     getFile = (req, res) => {
         const row = this.fileRow(req);
-        if (!row) return res.status(404).json({ error: 'File not found.' });
-        const content = this.model.getFileContent(row.id);
-        if (!content) return res.status(404).json({ error: 'File not found.' });
+        // The size on disk is what is served; a row whose file has gone missing is the same as no file
+        const length = row ? this.model.files.size(row.id) : null;
+        if (length === null) return res.status(404).json({ error: 'File not found.' });
 
         const type = row.file_type;
         const download = req.query.download === '1';
@@ -798,29 +827,32 @@ class StashController {
         });
 
         // Audio and video players ask for byte ranges so they can seek
-        const range = parseRange(req.headers.range, content.length);
+        const range = parseRange(req.headers.range, length);
         if (range === 'invalid') {
-            res.set('Content-Range', `bytes */${content.length}`);
+            res.set('Content-Range', `bytes */${length}`);
             return res.status(416).end();
         }
         if (range) {
             res.status(206).set({
-                'Content-Range': `bytes ${range.start}-${range.end}/${content.length}`,
+                'Content-Range': `bytes ${range.start}-${range.end}/${length}`,
                 'Content-Length': String(range.end - range.start + 1),
             });
-            return res.end(content.subarray(range.start, range.end + 1));
+        } else {
+            res.set('Content-Length', String(length));
         }
-        res.set('Content-Length', String(content.length));
-        res.send(content);
+        // Streamed from disk: a big file never sits in memory, and the server stays free for other requests
+        pipeline(this.model.files.stream(row.id, range || null), res, () => {
+            // A client that goes away part way ends the stream; nothing more to do
+        });
     };
 
     // The names inside a zip file, for the preview. Nothing is unpacked.
-    listArchive = (req, res) => {
+    listArchive = async (req, res) => {
         const row = this.fileRow(req);
         if (!row) return res.status(404).json({ error: 'File not found.' });
         if (row.file_type !== 'application/zip') return res.status(400).json({ error: 'Only zip files can be listed.' });
-        const content = this.model.getFileContent(row.id);
-        if (!content) return res.status(404).json({ error: 'File not found.' });
+        if (!this.model.files.exists(row.id)) return res.status(404).json({ error: 'File not found.' });
+        const content = await this.model.files.readAll(row.id);
         const listing = listZip(content);
         if (listing.error) return res.status(422).json({ error: listing.error });
         res.json(listing);

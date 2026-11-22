@@ -75,11 +75,33 @@ const MIGRATIONS = [
         // script still using the old name cannot end up sending to a stranger's new stash of the same name.
         db.exec('CREATE TABLE IF NOT EXISTS retired_slugs (slug TEXT PRIMARY KEY, retired_at TEXT NOT NULL)');
     },
+
+    // 2: uploaded files move out of the database into one plain file each in the files folder (see utils/fileStore.js),
+    // so downloads stream from disk and the database stays small. Existing files are copied across in batches and
+    // the old table is dropped. If the server stops part way, nothing is committed and the next start redoes it.
+    (db, context) => {
+        const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'files'").get();
+        if (!hasTable) return;
+        const total = db.prepare('SELECT COUNT(*) AS n FROM files').get().n;
+        if (total) {
+            if (!context.fileStore) throw new Error('Cannot move the stored files out of the database: no files folder was given.');
+            const next = db.prepare('SELECT item_id, content FROM files WHERE item_id > ? ORDER BY item_id LIMIT 10');
+            let last = 0;
+            for (;;) {
+                const rows = next.all(last);
+                if (!rows.length) break;
+                for (const row of rows) context.fileStore.write(row.item_id, row.content);
+                last = rows[rows.length - 1].item_id;
+            }
+            context.movedFiles = total;
+        }
+        db.exec('DROP TABLE files');
+    },
 ];
 
 const SCHEMA_VERSION = MIGRATIONS.length;
 
-function migrate(db) {
+function migrate(db, context = {}) {
     const current = db.prepare('PRAGMA user_version').get().user_version;
     if (current > SCHEMA_VERSION) {
         // Opened by an older release after a newer one changed the schema: stop rather than risk the data
@@ -88,7 +110,7 @@ function migrate(db) {
     for (let version = current; version < SCHEMA_VERSION; version++) {
         db.exec('BEGIN');
         try {
-            MIGRATIONS[version](db);
+            MIGRATIONS[version](db, context);
             // PRAGMA cannot take a bound value; the number comes from this file
             db.exec(`PRAGMA user_version = ${version + 1}`);
             db.exec('COMMIT');
@@ -101,7 +123,8 @@ function migrate(db) {
 
 // Uses Node's built-in SQLite driver (same as Message-Sandbox), so there is no native module to compile.
 // Timestamps are ISO-8601 text, which sorts and compares correctly as strings.
-function connect(filePath = ':memory:') {
+// options.fileStore: where uploaded files live (needed only to move files out of an older database)
+function connect(filePath = ':memory:', { fileStore = null } = {}) {
     const db = new DatabaseSync(filePath);
     // Incremental vacuum only takes effect on a database that is new; it lets the cleanup job give space back
     db.exec('PRAGMA auto_vacuum = INCREMENTAL');
@@ -110,12 +133,15 @@ function connect(filePath = ':memory:') {
     // Deleted notes and files are overwritten with zeros instead of lingering in free pages, so a burned or expired
     // secret cannot be read back from the database file
     db.exec('PRAGMA secure_delete = ON');
+    const context = { fileStore, movedFiles: 0 };
     try {
-        migrate(db);
+        migrate(db, context);
     } catch (err) {
         db.close();
         throw err;
     }
+    // The old table's pages are free now: give them back to the file system
+    if (context.movedFiles) db.exec('VACUUM');
     return db;
 }
 
