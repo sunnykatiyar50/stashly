@@ -18,6 +18,16 @@ const DAY = 24 * 60 * 60 * 1000;
 const MAX_REORDER = 5000;
 // The most items one listing can be asked for with `limit` (the extension asks for a few; without a limit, all come)
 const MAX_LIST_LIMIT = 200;
+// A listing asked for with `preview` carries only this many characters of each note (the rest comes from
+// GET .../items/:id), so a stash full of large notes does not make every page load huge
+const PREVIEW_CHARS = 2000;
+
+// The first PREVIEW_CHARS characters of a note, without cutting a character in half
+function previewOf(text) {
+    if (text.length <= PREVIEW_CHARS) return text;
+    const code = text.charCodeAt(PREVIEW_CHARS - 1);
+    return text.slice(0, code >= 0xd800 && code <= 0xdbff ? PREVIEW_CHARS - 1 : PREVIEW_CHARS);
+}
 
 // The optional `limit` of a listing: undefined for none, a whole number from 1 to MAX_LIST_LIMIT, or an error
 function parseLimit(value) {
@@ -73,11 +83,14 @@ class StashController {
 
     // A burn-after-reading note never leaves the server in a list or live event: its text only comes out of /reveal.
     // A note with no title of its own would show its first words as a title, so secret and burn notes get a plain one.
-    presentItem(slug, row) {
+    // preview: cut a long note's text for a listing (text is then only the start, and truncated is true)
+    presentItem(slug, row, { preview = false } = {}) {
         const isFile = row.kind === 'file';
         const burn = !isFile && Boolean(row.burn);
         const secret = !isFile && Boolean(row.secret);
         const generic = burn ? 'Burn-after-reading note' : secret ? 'Secret note' : null;
+        const full = isFile || burn ? null : row.text;
+        const cut = preview && full !== null && full.length > PREVIEW_CHARS;
         return {
             id: row.id,
             kind: row.kind,
@@ -85,7 +98,9 @@ class StashController {
             // Files: the given title, or the file's name.
             title: isFile ? row.title || row.file_name : row.title || generic || deriveTitle(row.text),
             hasTitle: Boolean(row.title),
-            text: isFile || burn ? null : row.text,
+            text: cut ? previewOf(full) : full,
+            // Only in a preview listing: the text above is just the start of a longer note
+            ...(cut ? { truncated: true, textLength: full.length } : {}),
             burn,
             secret,
             pinned: Boolean(row.pinned),
@@ -511,6 +526,7 @@ class StashController {
         if (range.error) return res.status(400).json({ error: range.error });
         const search = typeof input.search === 'string' ? input.search.trim().slice(0, 200) : '';
         // Optional: only the first `limit` items (pinned, then newest), with `total` still counting every match
+        const preview = input.preview === true || input.preview === '1' || input.preview === 'true';
         const limit = parseLimit(input.limit);
         if (limit.error) return res.status(400).json({ error: limit.error, field: 'limit' });
 
@@ -535,8 +551,16 @@ class StashController {
             usage: dropOnly ? { items: 0, files: 0, bytes: 0 } : this.model.usage(stash.id),
             limits: this.limits(),
             total,
-            items: rows.map(row => this.presentItem(stash.slug, row)),
+            items: rows.map(row => this.presentItem(stash.slug, row, { preview })),
         });
+    };
+
+    // One item in full: the way to get the whole text of a note that a preview listing cut short
+    getItem = (req, res) => {
+        const id = Number(req.params.id);
+        const row = Number.isInteger(id) ? this.model.getLiveItem(req.stash.id, id, this.now()) : null;
+        if (!row) return res.status(404).json({ error: 'Item not found.' });
+        res.json(this.presentItem(req.stash.slug, row));
     };
 
     // The per-note options: from the JSON body of the page, or from headers when the body is plain text (curl)

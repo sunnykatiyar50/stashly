@@ -353,7 +353,7 @@
             copy.appendChild(svg(COPY_ICON));
             copy.addEventListener('click', function (event) {
                 event.stopPropagation();
-                copyNote(item.text, copy);
+                copyItem(item, copy);
             });
             quick.appendChild(copy);
         }
@@ -494,6 +494,28 @@
     var COPY_ICON = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
     var CHECK_ICON = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
 
+    // The whole text of a note. A listing carries only the start of a long note (item.truncated), so this fetches the
+    // rest once and keeps it on the item. Rejects when it cannot be had.
+    function loadFull(item) {
+        if (!item.truncated) return Promise.resolve(item.text || '');
+        return api(base + '/items/' + item.id).then(function (res) {
+            if (res.status === 401) { locked(); throw new Error('locked'); }
+            if (!res.ok || !res.body || typeof res.body.text !== 'string') throw new Error('load');
+            item.text = res.body.text;
+            delete item.truncated;
+            delete item.textLength;
+            return item.text;
+        });
+    }
+
+    // Copies a note's text (fetching the rest of a long note first); the row button shows a tick for a moment
+    function copyItem(item, trigger) {
+        return loadFull(item).then(function (text) { return copyNote(text, trigger); }, function () {
+            toast('Could not load that note.', true);
+            return false;
+        });
+    }
+
     // Copies a note's text; the row button shows a tick for a moment
     function copyNote(text, trigger) {
         return Promise.resolve(copyText(text)).then(function (ok) {
@@ -511,7 +533,7 @@
     function copyLatest() {
         for (var i = 0; i < state.items.length; i++) {
             var item = state.items[i];
-            if (item.kind === 'note' && !item.burn && item.text) return copyNote(item.text, null);
+            if (item.kind === 'note' && !item.burn && item.text) return copyItem(item, null);
         }
         toast(state.items.some(function (item) { return item.burn; }) ? 'Only burn-after-reading notes here. Reveal one to copy it.' : 'No note to copy yet.', true);
         return Promise.resolve(false);
@@ -702,6 +724,17 @@
             // Revealing deletes the note, so a read-only link cannot do it
             if (role() === 'full') actions.appendChild(button('Reveal and delete', 'primary', function (event) { revealBurn(item, event.currentTarget); }));
             else warning.appendChild(make('strong', null, 'Only someone with full access can reveal it.'));
+        } else if (item.kind === 'note' && item.truncated) {
+            // Only the start of a long note is here: fetch the rest, then draw it again
+            $('detailMeta').textContent = ['Note', item.textLength + ' characters', when].join(' · ');
+            body.appendChild(make('p', 'muted', 'Loading the whole note…'));
+            loadFull(item).then(function () {
+                var current = findItem(item.id) || item;
+                if (state.selectedId === item.id && state.editingId !== item.id && state.revealedId !== item.id) renderDetail(current);
+            }, function () {
+                body.textContent = '';
+                body.appendChild(make('p', 'muted', 'Could not load this note. Try again.'));
+            });
         } else if (item.kind === 'note') {
             var language = detectFormat(item.text);
             $('detailMeta').textContent = ['Note', item.secret ? 'Secret' : '', item.expiresAt ? expiryText(item.expiresAt) : '', (item.text || '').length + ' characters', when, item.editedAt ? 'edited ' + relativeTime(item.editedAt) : ''].filter(Boolean).join(' · ');
@@ -927,7 +960,8 @@
     function load(quiet) {
         var f = state.filters;
         // Sent in the body, not the address, so search words never end up in a proxy's access log
-        var query = { tz: String(new Date().getTimezoneOffset()) };
+        // preview: long notes come as their first part only; the rest is fetched when a note is opened or copied
+        var query = { tz: String(new Date().getTimezoneOffset()), preview: true };
         if (f.search) query.search = f.search;
         if (f.startDate) query.startDate = f.startDate;
         if (f.endDate) query.endDate = f.endDate;

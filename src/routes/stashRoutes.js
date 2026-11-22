@@ -78,6 +78,7 @@ function createStashRoutes({ controller, config }) {
     router.post('/:slug/latest', readLimiter, ...read, c.latest);
     router.post('/:slug/notes', postLimiter, ...write, c.acceptsNotes, textBody, c.addNote);
     router.post('/:slug/files', uploadLimiter, ...write, c.acceptsFiles, checkUploadSize, rawBody, c.addFile);
+    router.get('/:slug/items/:id', readLimiter, ...read, c.getItem);
     router.get('/:slug/files/:id', readLimiter, ...read, c.getFile);
     router.get('/:slug/files/:id/contents', readLimiter, ...read, c.listArchive);
     // Revealing deletes the note, so it is not something a read-only link may do

@@ -166,6 +166,9 @@ Whatever the mode, files are downloaded as attachments (images show inline), and
 | GET | `/api/stashes/suggest` | a fresh random name |
 | GET | `/api/stashes/:slug` | the stash and its items (`search`, `startDate`, `endDate`, `tz`, and `limit` for only the first 1-200; `total` still counts every match) |
 | POST | `/api/stashes/:slug/query` | the same, with those fields in the body so search words stay out of addresses |
+| GET | `/api/stashes/:slug/items/:id` | one item in full (a note's whole text) |
+
+Add `preview` (`true` in the body, or `?preview=1`) to a listing and notes longer than 2000 characters come back cut to their first 2000, with `truncated: true` and `textLength`; fetch the rest from `items/:id`. The web page does this so a stash of large notes loads quickly. Without `preview`, text is always complete.
 | POST | `/api/stashes/:slug/unlock` | `{password}` sets the cookie |
 | POST | `/api/stashes/:slug/notes` | `{title?, text}` (or a plain-text body, which gets an automatic title) |
 | POST | `/api/stashes/:slug/files` | raw body, `X-File-Name` header, optional `X-Title` header (both URI-encoded) |
