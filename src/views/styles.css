@@ -722,3 +722,23 @@ body:not(.stash-open) .in-topbar { display: none; }
 .clip-quick { align-items: center; }
 .clip-quick .clip-flags { margin: 0 2px 0 0; flex-wrap: nowrap; }
 .clip-side .clip-time { align-self: flex-end; }
+
+/* ===== Open clip: buttons on the first row, the title across the full width under them ===== */
+#detail .pane-head { align-items: center; row-gap: 12px; }
+#detail .detail-actions { order: 1; margin-left: auto; justify-content: flex-end; }
+#detail .pane-title { order: 2; flex: 1 1 100%; }
+#detail .pane-title h2 { font-size: 18px; }
+@media (max-width: 760px) {
+    /* Phones: the open clip's buttons are icons only, so they fit on one row with the back button */
+    #detail .detail-actions { gap: 6px; flex-wrap: nowrap; }
+    #detail .detail-actions .has-icon { padding: 7px 9px; }
+    #detail .detail-actions .has-icon .btn-text { display: none; }
+    #detail .detail-actions svg { width: 17px; height: 17px; }
+}
+@media (max-width: 760px) {
+    /* Phones, with a clip open: only the clip's own buttons show. The stash's buttons and chips come back with "Clips". */
+    .view-stash.detail-open .header-actions,
+    .view-stash.detail-open #expiryInfo,
+    .view-stash.detail-open #presenceChip,
+    .view-stash.detail-open #rangeChip { display: none !important; }
+}

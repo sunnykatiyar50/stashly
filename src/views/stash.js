@@ -151,6 +151,17 @@
         return index > -1 ? name.slice(index + 1, index + 5) : 'file';
     }
 
+    // A short file type for the details line: the extension in capitals ("CSV", "PDF"), or the kind from the
+    // file type when the name has none ("Text file", "Image")
+    function fileKind(item) {
+        var name = item.fileName || '';
+        var dot = name.lastIndexOf('.');
+        var ext = dot > 0 ? name.slice(dot + 1) : '';
+        if (ext && ext.length <= 8 && /^[a-z0-9]+$/i.test(ext)) return ext.toUpperCase();
+        var main = String(item.fileType || '').split('/')[0];
+        return { text: 'Text file', image: 'Image', audio: 'Audio', video: 'Video' }[main] || 'File';
+    }
+
     function findItem(id) {
         for (var i = 0; i < state.items.length; i++) if (state.items[i].id === id) return state.items[i];
         return null;
@@ -204,7 +215,13 @@
     function setLabel(el, label) {
         el.textContent = '';
         var icon = iconFor(label);
-        if (icon) el.appendChild(svg(icon));
+        el.classList.toggle('has-icon', Boolean(icon));
+        if (icon) {
+            el.appendChild(svg(icon));
+            // On a phone only the icon shows, so the name is kept for hover and screen readers
+            el.title = label;
+            el.setAttribute('aria-label', label);
+        }
         el.appendChild(make('span', 'btn-text', label));
     }
 
@@ -723,7 +740,7 @@
             }
             if (role() === 'full') actions.appendChild(button('Edit', 'ghost', function () { editNote(item); }));
         } else {
-            $('detailMeta').textContent = window.StashlyUpload.formatSize(item.fileSize) + ' · ' + when;
+            $('detailMeta').textContent = [fileKind(item), window.StashlyUpload.formatSize(item.fileSize), when].filter(Boolean).join(' · ');
 
             var download = make('a', 'button-link primary-link');
             setLabel(download, 'Download');
