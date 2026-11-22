@@ -33,3 +33,17 @@ test('the admin sidebar has a Sign in link to the account page, shown once the a
     assert.match(tag(html, 'accountLink'), /class="[^"]*\badmin-only\b/);
     assert.match(tag(html, 'accountLink'), /class="[^"]*\bhidden\b/);
 });
+
+test('following a stash lives on the New stash page, and My stashes only lists them', () => {
+    const home = view('index.html');
+    // The follow form is on the home page, hidden until home.js sees a signed-in account
+    assert.match(tag(home, 'followForm'), /class="[^"]*\bhidden\b/);
+    assert.match(tag(home, 'createFollowNote'), /class="[^"]*\bhidden\b/);
+    assert.match(view('home.js'), /\/api\/me\/stashes/);
+
+    // The account page has no follow form any more, and no Admin link for people who are not admins
+    const account = view('account.html');
+    assert.doesNotMatch(account, /id="followForm"/);
+    assert.match(tag(account, 'adminNavLink'), /class="[^"]*\bhidden\b/);
+    assert.doesNotMatch(view('account.js'), /getElementById\('followForm'\)|\$\('followForm'\)/);
+});
