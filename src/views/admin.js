@@ -349,6 +349,15 @@
         selectGroup(tabs[next].dataset.group, true);
     }
 
+    // Icons for the settings tabs, by group name
+    var GROUP_ICONS = {
+        Limits: '<svg viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>',
+        Security: '<svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+        Files: '<svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/></svg>',
+        Stashes: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>',
+        other: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg>'
+    };
+
     function renderSettings() {
         var host = $('settingsFields');
         host.textContent = '';
@@ -375,7 +384,14 @@
             tab.dataset.group = group.name;
             tab.setAttribute('role', 'tab');
             tab.setAttribute('aria-controls', group.id + '-panel');
+            // An icon for the group (static markup from this file, never from the server)
+            var icon = document.createElement('span');
+            icon.className = 'settings-tab-icon';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.innerHTML = GROUP_ICONS[group.name] || GROUP_ICONS.other;
+            tab.appendChild(icon);
             var name = document.createElement('span');
+            name.className = 'settings-tab-name';
             name.textContent = group.name;
             var flag = document.createElement('span');
             flag.className = 'settings-tab-flag';
