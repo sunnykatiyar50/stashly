@@ -316,7 +316,7 @@ function noteRow(slug, item, role) {
         relativeTime(item.createdAt),
     ].filter(Boolean);
     if (item.burn && role !== 'full') meta.push('only full access can reveal it');
-    main.append(el('div', 'note-title', isFile ? item.fileName : item.title), el('div', 'note-meta', meta.join(' · ')));
+    main.append(el('div', 'note-title', isFile ? item.title || item.fileName : item.title), el('div', 'note-meta', meta.join(' · ')));
     row.append(main);
     // A file is listed by name only; a secret note is copied without being shown, as on the stash page
     if (!isFile && !item.burn) row.append(copyButton(item.text));
