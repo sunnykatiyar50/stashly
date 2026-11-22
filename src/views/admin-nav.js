@@ -10,6 +10,16 @@
     if (!nav) return;
 
     var section = null;
+    var HINT_KEY = 'sl_admin_nav';
+
+    // Whether this browser was an admin last time. Only used to draw the section without waiting; the server's answer
+    // below confirms it or takes it away, and the links lead to pages that check for themselves.
+    function remembered() {
+        try { return localStorage.getItem(HINT_KEY) === '1'; } catch (e) { return false; }
+    }
+    function remember(value) {
+        try { localStorage.setItem(HINT_KEY, value ? '1' : '0'); } catch (e) { /* not remembered */ }
+    }
 
     var LINKS = [
         { href: '/admin#/stashes', label: 'Stashes', icon: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/>' },
@@ -49,6 +59,7 @@
             .then(function (res) { return res.json().catch(function () { return null; }); })
             .then(function (body) {
                 var admin = Boolean(body && body.enabled && body.signedIn);
+                remember(admin);
                 if (admin && !section) {
                     section = build();
                     nav.appendChild(section);
@@ -61,5 +72,9 @@
     }
 
     window.StashlyAdminNav = { refresh: refresh };
+    if (remembered()) {
+        section = build();
+        nav.appendChild(section);
+    }
     refresh();
 })();

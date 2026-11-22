@@ -82,9 +82,26 @@
 
     // "Sign in" when nobody is signed in to an account, "My stashes" in the main menu when someone is (the link only
     // exists when the server has accounts)
+    var SIGNED_IN_KEY = 'sl_signed_in';
+    function rememberedSignedIn() {
+        try { return localStorage.getItem(SIGNED_IN_KEY) === '1'; } catch (e) { return false; }
+    }
+    function rememberSignedIn(value) {
+        try { localStorage.setItem(SIGNED_IN_KEY, value ? '1' : '0'); } catch (e) { /* not remembered */ }
+    }
+    // Someone who was signed in last time sees "My stashes" in the menu straight away (the check below confirms it),
+    // instead of the menu changing after the page has drawn
+    if (rememberedSignedIn()) $('accountNavLink').classList.remove('hidden');
+
     function showAccountLink() {
-        $('accountLink').classList.remove('hidden');
+        if (!rememberedSignedIn()) $('accountLink').classList.remove('hidden');
         api('/api/me').then(function (res) {
+            var user = res.ok && res.body && res.body.user;
+            rememberSignedIn(Boolean(user));
+            if (!user) {
+                $('accountNavLink').classList.add('hidden');
+                $('accountLink').classList.remove('hidden');
+            }
             if (res.ok && res.body && res.body.user) {
                 // Signed in: "My stashes" joins the main menu (the same place it has on the My stashes page) and the
                 // footer's "Sign in" goes away
@@ -96,7 +113,8 @@
     }
 
     function loadConfig() {
-        return api('/api/config').then(function (res) {
+        // shell.js has already asked for the config; reuse that answer instead of asking again
+        return (window.StashlyConfig ? window.StashlyConfig() : api('/api/config')).then(function (res) {
             if (!res.ok) return;
             if (!res.body.canCreate) lockCreateForm(res.body.createRule);
             if (res.body.accountsEnabled) showAccountLink();

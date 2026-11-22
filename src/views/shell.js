@@ -3,6 +3,23 @@
     'use strict';
 
     var KEY = 'sl_sidebar_collapsed';
+    var VERSION_KEY = 'sl_version';
+
+    // One request for the server's public config, shared with the page script that needs it (home.js), started as soon
+    // as this script runs instead of after the page has drawn. Resolves to { ok, status, body }.
+    var configRequest = null;
+    function getConfig() {
+        if (!configRequest) {
+            configRequest = fetch('/api/config', { credentials: 'same-origin' }).then(function (res) {
+                return res.json().catch(function () { return null; }).then(function (body) {
+                    return { ok: res.ok, status: res.status, body: body };
+                });
+            });
+        }
+        return configRequest;
+    }
+    window.StashlyConfig = getConfig;
+    if (typeof fetch === 'function') getConfig().catch(function () { /* each user of it handles failure */ });
 
     function read() {
         try {
@@ -23,20 +40,27 @@
     }
 
     // Which release is running, as a small label at the bottom of the menu (the server says so in /api/config)
+    // The last version seen is drawn at once, so the label does not pop in after the page; the server's answer
+    // replaces it (a new release shows up on the next load).
     function showVersion() {
         var footer = document.querySelector('.sidebar-footer');
         if (!footer || typeof fetch !== 'function') return;
-        fetch('/api/config', { credentials: 'same-origin' })
-            .then(function (res) { return res.ok ? res.json() : null; })
-            .then(function (config) {
-                if (!config || !config.version) return;
-                var label = document.createElement('div');
-                label.className = 'app-version label';
-                label.textContent = 'v' + config.version;
-                label.title = 'Stashly ' + config.version;
-                footer.appendChild(label);
-            })
-            .catch(function () { /* no version label this time */ });
+        var label = document.createElement('div');
+        label.className = 'app-version label';
+        function paint(version) {
+            label.textContent = 'v' + version;
+            label.title = 'Stashly ' + version;
+            if (!label.parentNode) footer.appendChild(label);
+        }
+        try {
+            var remembered = localStorage.getItem(VERSION_KEY);
+            if (remembered) paint(remembered);
+        } catch (e) { /* nothing remembered */ }
+        getConfig().then(function (res) {
+            if (!res.ok || !res.body || !res.body.version) return;
+            paint(res.body.version);
+            try { localStorage.setItem(VERSION_KEY, res.body.version); } catch (e) { /* not remembered */ }
+        }).catch(function () { /* no version label this time */ });
     }
 
     document.addEventListener('DOMContentLoaded', function () {
