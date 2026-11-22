@@ -23,4 +23,18 @@ async function verifyPassword(password, hash, salt) {
     return key.length === expected.length && crypto.timingSafeEqual(key, expected);
 }
 
-module.exports = { hashPassword, verifyPassword, MIN_PASSWORD, MAX_PASSWORD };
+// The same checks without waiting, for the one place that has to run at startup before the server takes requests (the
+// admin account made from ADMIN_PASSWORD). Everything that answers a request uses the async versions above.
+function hashPasswordSync(password) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    return { hash: crypto.scryptSync(password, salt, KEY_LENGTH).toString('hex'), salt };
+}
+
+function verifyPasswordSync(password, hash, salt) {
+    if (typeof password !== 'string' || !hash || !salt) return false;
+    const key = crypto.scryptSync(password, salt, KEY_LENGTH);
+    const expected = Buffer.from(hash, 'hex');
+    return key.length === expected.length && crypto.timingSafeEqual(key, expected);
+}
+
+module.exports = { hashPassword, verifyPassword, hashPasswordSync, verifyPasswordSync, MIN_PASSWORD, MAX_PASSWORD };

@@ -195,6 +195,16 @@ const MIGRATIONS = [
         );
         db.exec('CREATE INDEX IF NOT EXISTS idx_user_stashes_stash ON user_stashes (stash_id)');
     },
+
+    // 7: one sign-in for everyone. The admin account named by ADMIN_USERNAME is a real user row whose password is
+    // ADMIN_PASSWORD; `managed` marks it (and only it), so the admin area and the account page refuse to edit it
+    // (the server's environment is the one place it is changed). Every existing user is not managed.
+    db => {
+        // (skipped when the column is already there, so running the migration again does no harm)
+        if (!db.prepare('PRAGMA table_info(users)').all().some(column => column.name === 'managed')) {
+            db.exec('ALTER TABLE users ADD COLUMN managed INTEGER NOT NULL DEFAULT 0');
+        }
+    },
 ];
 
 const SCHEMA_VERSION = MIGRATIONS.length;

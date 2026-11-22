@@ -56,7 +56,7 @@ class UserModel {
     list() {
         return this.db
             .prepare(
-                `SELECT u.id, u.username, u.display_name, u.role, u.disabled, u.created_at, u.created_by, u.last_login_at,
+                `SELECT u.id, u.username, u.display_name, u.role, u.disabled, u.managed, u.created_at, u.created_by, u.last_login_at,
                         (SELECT COUNT(*) FROM user_stashes us WHERE us.user_id = u.id) AS stash_count
                  FROM users u ORDER BY u.username`
             )
@@ -64,14 +64,14 @@ class UserModel {
     }
 
     // Throws an error with code DUPLICATE when the username is taken
-    create({ username, displayName = null, hash, salt, role, createdBy = null, now = new Date() }) {
+    create({ username, displayName = null, hash, salt, role, createdBy = null, managed = false, now = new Date() }) {
         try {
             const result = this.db
                 .prepare(
-                    `INSERT INTO users (username, display_name, password_hash, password_salt, role, created_at, created_by)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)`
+                    `INSERT INTO users (username, display_name, password_hash, password_salt, role, managed, created_at, created_by)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
                 )
-                .run(username, displayName, hash, salt, role, now.toISOString(), createdBy);
+                .run(username, displayName, hash, salt, role, managed ? 1 : 0, now.toISOString(), createdBy);
             return this.findById(Number(result.lastInsertRowid));
         } catch (err) {
             if (/UNIQUE/i.test(String(err.message))) {
@@ -117,6 +117,30 @@ class UserModel {
 
     touchLogin(id, now = new Date()) {
         this.db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(now.toISOString(), id);
+    }
+
+    // Puts the managed admin account back to what the environment says: an admin, not disabled, and (when `hashed` is
+    // given) with that password. Raising the session version signs out whoever was signed in with the old state.
+    resetManaged(id, hashed) {
+        if (hashed) {
+            this.db
+                .prepare("UPDATE users SET password_hash = ?, password_salt = ?, role = 'admin', disabled = 0, session_version = session_version + 1 WHERE id = ?")
+                .run(hashed.hash, hashed.salt, id);
+        } else {
+            this.db.prepare("UPDATE users SET role = 'admin', disabled = 0, session_version = session_version + 1 WHERE id = ?").run(id);
+        }
+        return this.findById(id);
+    }
+
+    // The account no longer belongs to the environment (ADMIN_USERNAME was changed): an ordinary user again, disabled
+    // and signed out, for the admin to delete or keep
+    releaseManaged(id) {
+        this.db.prepare('UPDATE users SET managed = 0, disabled = 1, session_version = session_version + 1 WHERE id = ?').run(id);
+        return this.findById(id);
+    }
+
+    managedUsers() {
+        return this.db.prepare('SELECT * FROM users WHERE managed = 1').all();
     }
 
     // The follow rows go with the user (foreign key); the stashes themselves are not touched

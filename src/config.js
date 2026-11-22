@@ -1,4 +1,5 @@
 const path = require('path');
+const { USERNAME_PATTERN } = require('./models/userModel');
 
 const MB = 1024 * 1024;
 const HOUR = 60 * 60 * 1000;
@@ -16,6 +17,7 @@ const flag = value => String(value).toLowerCase() === 'true';
 function checkConfig(config) {
     if (!['off', 'json'].includes(config.logFormat)) throw new Error('LOG_FORMAT must be "off" or "json".');
     if (!['off', 'stdout'].includes(config.auditLog)) throw new Error('AUDIT_LOG must be "off" or "stdout".');
+    if (!USERNAME_PATTERN.test(config.adminUsername)) throw new Error('ADMIN_USERNAME must be 3 to 40 letters, numbers, dots, dashes or underscores.');
 }
 
 function loadConfig(env = process.env, overrides = {}) {
@@ -61,6 +63,9 @@ function loadConfig(env = process.env, overrides = {}) {
         fileTypes: ['safe', 'no-programs', 'any'].includes(env.FILE_TYPES) ? env.FILE_TYPES : 'safe',
         // The admin area is only on when a password is set
         adminPassword,
+        // The name of the admin account that ADMIN_PASSWORD belongs to. It signs in on the same page as everyone else;
+        // its role (admin) is what opens the admin area. Stored lowercase, like every username.
+        adminUsername: String(env.ADMIN_USERNAME === undefined || env.ADMIN_USERNAME === '' ? 'admin' : env.ADMIN_USERNAME).trim().toLowerCase(),
         requireAdminToCreate: Boolean(adminPassword) && flag(env.REQUIRE_ADMIN_TO_CREATE),
         // Accounts exist only when the admin area is on (ADMIN_PASSWORD set). With this on, only a signed-in user (any
         // role) or the admin may create stashes; visitors can still open any stash they have the link to.

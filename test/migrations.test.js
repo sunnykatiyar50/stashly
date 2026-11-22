@@ -72,7 +72,7 @@ test('a schema 2 database gets the trash table (and then thumbnails) and keeps i
 
         const db = connect(file);
         assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
-        assert.equal(SCHEMA_VERSION, 6);
+        assert.equal(SCHEMA_VERSION, 7);
         assert.deepEqual(columns(db, 'trash'), [
             'id', 'stash_id', 'kind', 'title', 'text', 'file_name', 'file_type', 'file_size', 'created_at',
             'expires_at', 'burn', 'secret', 'pinned', 'edited_at', 'sort_order', 'deleted_at', 'has_thumb',
@@ -172,11 +172,11 @@ test('a schema 5 database gets the users and follow tables at version 6, keeps i
         first.close();
 
         const db = connect(file);
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 6);
-        assert.equal(SCHEMA_VERSION, 6);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 7);
+        assert.equal(SCHEMA_VERSION, 7);
         assert.deepEqual(columns(db, 'users'), [
             'id', 'username', 'display_name', 'password_hash', 'password_salt', 'role', 'disabled', 'session_version',
-            'created_at', 'created_by', 'last_login_at',
+            'created_at', 'created_by', 'last_login_at', 'managed',
         ]);
         assert.deepEqual(columns(db, 'user_stashes'), [
             'user_id', 'stash_id', 'added_at', 'last_seen_at', 'grant_role', 'grant_salt', 'grant_version', 'grant_view_hash',
@@ -205,7 +205,32 @@ test('a schema 5 database gets the users and follow tables at version 6, keeps i
 
         // Opening it again changes nothing
         const again = connect(file);
-        assert.equal(again.prepare('PRAGMA user_version').get().user_version, 6);
+        assert.equal(again.prepare('PRAGMA user_version').get().user_version, 7);
+        assert.equal(again.prepare('SELECT COUNT(*) AS n FROM users').get().n, 1);
+        again.close();
+    } finally {
+        cleanup();
+    }
+});
+
+test('a schema 6 database gets users.managed at version 7: existing users are not managed, and opening it again changes nothing', () => {
+    const { file, cleanup } = tempDb();
+    try {
+        // A database exactly as the previous release left it: schema 6, users without the managed column
+        const first = connect(file);
+        first.exec('ALTER TABLE users DROP COLUMN managed');
+        first.exec("INSERT INTO users (username, password_hash, password_salt, role, created_at) VALUES ('sam', 'h', 's', 'admin', '2026-01-01T00:00:00Z')");
+        first.exec('PRAGMA user_version = 6');
+        first.close();
+
+        const db = connect(file);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 7);
+        assert.ok(columns(db, 'users').includes('managed'));
+        assert.equal(db.prepare("SELECT managed FROM users WHERE username = 'sam'").get().managed, 0);
+        db.close();
+
+        const again = connect(file);
+        assert.equal(again.prepare('PRAGMA user_version').get().user_version, 7);
         assert.equal(again.prepare('SELECT COUNT(*) AS n FROM users').get().n, 1);
         again.close();
     } finally {

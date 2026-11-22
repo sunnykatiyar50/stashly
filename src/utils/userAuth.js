@@ -46,7 +46,8 @@ class UserAuth {
 
     // What the rest of the app sees as req.user: never the password hash or salt
     present(user) {
-        return { id: user.id, username: user.username, displayName: user.display_name || null, role: user.role };
+        // managed: the admin account of the server's environment, whose password is changed there, not here
+        return { id: user.id, username: user.username, displayName: user.display_name || null, role: user.role, managed: Boolean(user.managed) };
     }
 
     // Middleware, mounted before the routes

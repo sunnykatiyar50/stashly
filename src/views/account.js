@@ -1,4 +1,4 @@
-// The account page: sign in, follow stashes, and watch them all in one place
+// The account page: the one sign-in for everyone (users and the server's admin), where followed stashes are watched in one place
 (function () {
     'use strict';
 
@@ -77,6 +77,16 @@
 
     // ---- sign in and out ----
 
+    // Where to go after signing in: only the admin area, and only when the address says exactly next=/admin. Anything else
+    // (another path, a full address, "//evil.example", a look-alike such as /admin/x) is ignored, so the page can never
+    // be used to send someone to another site.
+    function nextTarget(search) {
+        var match = /[?&]next=([^&#]*)/.exec(search || '');
+        var value = '';
+        try { value = match ? decodeURIComponent(match[1]) : ''; } catch (err) { value = ''; }
+        return value === '/admin' ? '/admin' : '';
+    }
+
     $('loginForm').addEventListener('submit', function (event) {
         event.preventDefault();
         var error = $('loginError');
@@ -89,7 +99,7 @@
             $('loginButton').disabled = false;
             if (res.ok) {
                 $('loginPassword').value = '';
-                start();
+                start(true);
             } else {
                 error.textContent = (res.body && res.body.error) || 'Could not sign in.';
                 $('loginPassword').select();
@@ -300,12 +310,16 @@
 
     // ---- start ----
 
-    function start() {
+    // justSignedIn: this call follows the sign-in form, so a next=/admin in the address is followed (an admin only; a
+    // plain user stays here, and the admin page tells them it is not for them)
+    function start(justSignedIn) {
         api('/api/me').then(function (res) {
             if (!res.ok) return toast('Could not reach the server.', true);
             if (!res.body.enabled) return show('disabled');
             if (!res.body.user) { me = null; show('login'); $('loginUsername').focus(); return null; }
             me = res.body.user;
+            if (justSignedIn && me.role === 'admin' && nextTarget(location.search)) { location.href = nextTarget(location.search); return null; }
+            $('passwordButton').classList.toggle('hidden', Boolean(me.managed));
             $('whoInfo').textContent = me.displayName ? me.displayName + ' (' + me.username + ')' : me.username;
             $('roleChip').textContent = me.role === 'admin' ? 'Admin' : 'User';
             $('adminLink').classList.toggle('hidden', me.role !== 'admin');

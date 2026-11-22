@@ -98,16 +98,17 @@ test('the admin makes users: the answer never carries the password, and the list
 
     const list = await ctx.root.get('/api/admin/users').expect(200);
     assertNoSecrets(list.body);
-    assert.deepEqual(list.body.users.map(u => u.username), ['kim_admin', 'plain-one', 'sam.lee']);
-    assert.deepEqual(Object.keys(list.body.users[0]).sort(), ['createdAt', 'disabled', 'displayName', 'id', 'lastLoginAt', 'role', 'stashCount', 'username']);
-    assert.equal(list.body.users[0].stashCount, 0);
+    // ("admin" is the account the server's environment makes from ADMIN_USERNAME; it is listed with the others)
+    assert.deepEqual(list.body.users.map(u => u.username), ['admin', 'kim_admin', 'plain-one', 'sam.lee']);
+    assert.deepEqual(Object.keys(list.body.users[1]).sort(), ['createdAt', 'disabled', 'displayName', 'id', 'lastLoginAt', 'managed', 'role', 'stashCount', 'username']);
+    assert.equal(list.body.users[1].stashCount, 0);
 
     // The row in the database holds a hash, not the password, and who made the account
     const row = ctx.db.prepare("SELECT * FROM users WHERE username = 'sam.lee'").get();
     assert.notEqual(row.password_hash, PASSWORD);
     assert.match(row.password_hash, /^[0-9a-f]{128}$/);
     assert.equal(row.created_by, 'admin');
-    assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 3);
+    assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 4);
 });
 
 test('usernames and passwords are checked, and a username is unique whatever its case', async () => {
@@ -130,7 +131,7 @@ test('usernames and passwords are checked, and a username is unique whatever its
     assert.equal((await make({ username: 'role-bad', role: 'superuser' }).expect(400)).body.field, 'role');
     assert.equal((await make({ username: 'name-long', displayName: 'n'.repeat(61) }).expect(400)).body.field, 'displayName');
     assert.equal((await make({ username: 'name-ctl', displayName: 'bad\nname' }).expect(400)).body.field, 'displayName');
-    assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 3);
+    assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 4);
 
     // The password rule follows the live setting
     await ctx.root.put('/api/admin/settings').send({ values: { minPasswordLength: 16 } }).expect(200);
@@ -166,7 +167,8 @@ test('the admin can change a role, disable and enable, rename, reset a password,
 
     await ctx.root.post(`/api/admin/users/${sam.id}/sign-out`).expect(200);
     await ctx.root.delete(`/api/admin/users/${sam.id}`).expect(200);
-    assert.equal((await ctx.root.get('/api/admin/users')).body.users.length, 0);
+    // (only the environment's admin account is left)
+    assert.deepEqual((await ctx.root.get('/api/admin/users')).body.users.map(u => u.username), ['admin']);
     await request(ctx.app).post('/api/auth/login').send({ username: 'sam', password: 'a brand new password' }).expect(401);
 });
 
@@ -185,7 +187,7 @@ test('every user-management endpoint needs an admin: nobody, and users, are refu
     }
     // Nothing happened: still one user, still a user
     const list = (await ctx.root.get('/api/admin/users')).body.users;
-    assert.deepEqual(list.map(u => [u.username, u.role]), [['sam', 'user']]);
+    assert.deepEqual(list.map(u => [u.username, u.role]), [['admin', 'admin'], ['sam', 'user']]);
 });
 
 test('a user cannot use the admin area: the data endpoints, settings and backup are all refused, the status says not signed in', async () => {
@@ -214,7 +216,7 @@ test('a user with the admin role can use the admin area like the ADMIN_PASSWORD 
     assert.equal((await ctx.root.get('/api/admin/status')).body.via, 'password');
     const overview = await boss.get('/api/admin/overview').expect(200);
     assert.equal(overview.body.totals.stashes, 1);
-    assert.equal(overview.body.userCount, 1);
+    assert.equal(overview.body.userCount, 2); // boss and the environment's admin account
     await boss.get('/api/admin/settings').expect(200);
     await boss.put('/api/admin/settings').send({ values: { maxFileMb: 7 } }).expect(200);
     await boss.post('/api/admin/stashes/some-stash/extend').expect(200);
@@ -256,7 +258,7 @@ test('an admin account cannot demote, disable or delete itself; the ADMIN_PASSWO
     await ctx.root.patch(self).send({ role: 'user' }).expect(200);
     await ctx.root.patch(self).send({ disabled: true }).expect(200);
     await ctx.root.delete(self).expect(200);
-    assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 0);
+    assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 1); // the environment's admin account stays
 });
 
 // ---- signing in ----
@@ -269,7 +271,7 @@ test('the right username and password sign in: a cookie with the right flags, an
     const res = await agent.post('/api/auth/login').send({ username: '  SAM ', password: PASSWORD }).expect(200);
     assertNoSecrets(res.body);
     assert.equal(res.body.user.username, 'sam');
-    assert.deepEqual(Object.keys(res.body.user).sort(), ['displayName', 'id', 'role', 'username']);
+    assert.deepEqual(Object.keys(res.body.user).sort(), ['displayName', 'id', 'managed', 'role', 'username']);
     const cookie = res.headers['set-cookie'].find(c => c.startsWith('stashly_user='));
     assert.match(cookie, /HttpOnly/i);
     assert.match(cookie, /SameSite=Strict/i);
@@ -279,9 +281,9 @@ test('the right username and password sign in: a cookie with the right flags, an
     assert.doesNotMatch(cookie, new RegExp(PASSWORD));
 
     const me = await agent.get('/api/me').expect(200);
-    assert.deepEqual(me.body, { enabled: true, user: { id: res.body.user.id, username: 'sam', displayName: 'Sam Lee', role: 'user' } });
+    assert.deepEqual(me.body, { enabled: true, user: { id: res.body.user.id, username: 'sam', displayName: 'Sam Lee', role: 'user', managed: false } });
     // last login is recorded and shown to the admin
-    const row = (await ctx.root.get('/api/admin/users')).body.users[0];
+    const row = (await ctx.root.get('/api/admin/users')).body.users.find(u => u.username === 'sam');
     assert.equal(row.lastLoginAt, ctx.clock.time.toISOString());
 
     await agent.post('/api/auth/logout').expect(200);
@@ -408,8 +410,8 @@ test('a forged, mangled or expired session cookie is ignored: the visitor is ano
     // A real cookie of one user does not work for another id
     const login = await request(ctx.app).post('/api/auth/login').send({ username: 'sam', password: PASSWORD }).expect(200);
     const value = decodeURIComponent(login.headers['set-cookie'][0].split(';')[0].split('=')[1]);
-    const swapped = value.replace(/^\d+/, '2');
-    await addUser(ctx, 'lee');
+    const lee = await addUser(ctx, 'lee');
+    const swapped = value.replace(/^\d+/, String(lee.id));
     assert.equal((await request(ctx.app).get('/api/me').set('Cookie', `stashly_user=${swapped}`)).body.user, null);
     assert.equal((await request(ctx.app).get('/api/me').set('Cookie', `stashly_user=${value}`)).body.user.username, 'sam');
 });
@@ -719,7 +721,7 @@ test('metrics count sign-ins by result and users by role', async () => {
     assert.match(text, /^stashly_user_logins_total\{result="failure"\} 2$/m);
     assert.match(text, /^stashly_user_logins_total\{result="success"\} 1$/m);
     assert.match(text, /^stashly_users\{role="user"\} 2$/m);
-    assert.match(text, /^stashly_users\{role="admin"\} 1$/m);
+    assert.match(text, /^stashly_users\{role="admin"\} 2$/m); // boss and the environment's admin account
     assert.doesNotMatch(text, /sam|boss|lee/);
 });
 
