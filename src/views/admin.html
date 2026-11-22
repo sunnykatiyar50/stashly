@@ -40,6 +40,11 @@
             </a>
         </nav>
         <div class="sidebar-footer">
+            <!-- An admin can also sign in as a user (to follow stashes). "Sign in" until someone is signed in to an account, then "My stashes". -->
+            <a href="/account" id="accountLink" class="nav-link admin-only hidden" title="Sign in to follow your stashes">
+                <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span class="label" id="accountLinkLabel">Sign in</span>
+            </a>
             <button type="button" id="themeButton" class="nav-link" data-theme-toggle>
                 <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
                 <span class="label" data-theme-label>Theme: System</span>
@@ -84,6 +89,9 @@
                     <h1>Stashes</h1>
                     <span id="stashInfo" class="muted"></span>
                 </div>
+                <div class="header-actions">
+                    <button id="backupToggle" type="button" class="ghost" aria-expanded="false" aria-controls="backupCard">Backup</button>
+                </div>
             </header>
 
             <div class="stats">
@@ -117,7 +125,7 @@
             </div>
             <p class="muted">You can delete or extend a stash from here, but you can't read what is in it.</p>
 
-            <div class="card form-card backup-card">
+            <div id="backupCard" class="card form-card backup-card hidden">
                 <h2>Backup</h2>
                 <p class="muted">Downloads one zip with the whole database and every uploaded file, taken while the server keeps running. To restore, stop the server and unzip it into the data folder.</p>
                 <p class="muted"><strong>Keep it private:</strong> the backup holds every note and file in readable form, the stash password hashes and the session secret.</p>
@@ -133,6 +141,7 @@
                     <span id="userInfo" class="muted"></span>
                 </div>
                 <div class="header-actions">
+                    <button id="createUserToggle" type="button" class="primary" aria-expanded="false" aria-controls="userForm">Create user</button>
                     <button id="refreshUsersButton" type="button" class="ghost icon-only" title="Refresh" aria-label="Refresh users">
                         <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                     </button>
@@ -150,7 +159,7 @@
             </div>
             <p class="muted">Users sign in on the account page and follow stashes to watch them in one place. A user cannot open a password-protected stash they have not followed with its password, and the admin cannot read what is in a stash from here.</p>
 
-            <form id="userForm" class="card form-card users-card users-form" novalidate aria-labelledby="userFormTitle">
+            <form id="userForm" class="card form-card users-card users-form hidden" novalidate aria-labelledby="userFormTitle">
                 <h2 id="userFormTitle">Add a user</h2>
                 <div class="field-row">
                     <div class="field">
@@ -183,6 +192,7 @@
                 </div>
                 <div class="form-actions">
                     <button type="submit" id="createUserButton" class="primary">Add user</button>
+                    <button type="button" id="cancelUserButton" class="ghost">Cancel</button>
                     <p id="userFormStatus" class="form-status" role="status"></p>
                 </div>
             </form>
