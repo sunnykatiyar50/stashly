@@ -118,7 +118,7 @@ export STASHLY_PASSWORD=...                # for password-protected stashes (or 
 stashly new NAME --ttl 7d --password P     # create a stash (ttl: 1h, 8h, 1d, 7d, 30d; --password is optional)
 stashly send NAME "text to share"          # a note; with no text, or "-", the text is read from stdin
 echo "from a pipe" | stashly send NAME --title "Pipe"
-stashly send NAME --file report.pdf        # upload a file (optional --title)
+stashly send NAME --file report.pdf        # upload a file (optional --title; over 8 MB it goes up in pieces, see Resumable uploads)
 stashly get NAME                           # the newest note, to stdout
 stashly list NAME                          # id, kind, size, date, title
 stashly pull NAME ID --out copy.pdf        # download a file item (default: its own name; "-" for stdout)
@@ -126,6 +126,31 @@ stashly export NAME --out all.zip          # the whole stash as a zip (default N
 ```
 
 It exits with 0 when it worked, and 1 on any error with one line on stderr that carries the server's own message (for example `stashly: This stash is locked. Enter the password.`). `get` leaves a burn-after-reading note alone (the server answers 409), and `pull` and `export` never overwrite an existing file. Prefer `STASHLY_PASSWORD` to `--password`, which other users of the computer can see in the process list.
+
+### Resumable uploads
+
+A file bigger than 8 MB is sent in 4 MB pieces, so a flaky connection costs one piece instead of the whole file, the page can show real progress, and an upload carries on after the browser is closed or the server restarts. The page and `stashly send --file` do this by themselves; the protocol is small and works from curl too:
+
+```bash
+# 1. start: the server checks the name, type, size and quotas now, before any byte is sent
+curl -s -X POST http://HOST:3000/api/stashes/NAME/uploads -H "Content-Type: application/json" \
+     -d '{"name":"big.zip","size":12345678,"title":"Optional title"}'
+#    -> 201 {"id":"<secret>","offset":0,"size":12345678,"chunkSize":4194304}
+# 2. send the pieces, each at the offset the server expects (here with split: 4 MB each, in order)
+curl -s -X PATCH http://HOST:3000/api/stashes/NAME/uploads/ID -H "Upload-Offset: 0" \
+     -H "Content-Type: application/octet-stream" --data-binary @piece-0
+# after a failure, ask where it stands and carry on from that offset
+curl -sI http://HOST:3000/api/stashes/NAME/uploads/ID | grep -i upload-offset
+# 3. finish: only when every byte is there
+curl -s -X POST http://HOST:3000/api/stashes/NAME/uploads/ID/complete
+```
+
+- The id is a random secret that belongs to that stash (and to full access or the drop-box link that started it). Password-protected stashes need the unlock cookie as for any request.
+- **A piece changes nothing unless it arrives whole**: it is received into its own file and only then appended, so a connection that dies half way leaves the upload at the last whole piece. The server always says where it is (`Upload-Offset`, or `409` with `offset`), and the bytes in the partial file are the truth about it. Two pieces of one upload at once are refused (`409`).
+- The type is judged from the first bytes **when the upload completes** (a refused extension is already refused at the start); a refusal (`415`) deletes the upload. Quotas are checked at the start and again at the end; running into one at the end (`413`, `507`) keeps the upload so it can be completed once there is room.
+- Unfinished uploads count neither as items nor against the stash's space until they complete, but the sizes they declared count against the server's space (`MAX_TOTAL_MB`), so open uploads cannot fill the disk. `MAX_OPEN_UPLOADS` limits them per stash.
+- An upload with no new piece for `UPLOAD_IDLE_HOURS` (24) is removed. Deleting, expiring or **renaming** a stash removes its unfinished uploads. Restarting the server keeps them: the partial files live in the `tmp/` folder of the files folder and the details in the database (their bytes are **not** in the backup or the export; a restored backup drops the uploads whose bytes are missing at the first start).
+- The page remembers an unfinished upload in the tab (`sessionStorage`, by file name, size and date): after a reload, choose the same file again and it resumes. `stashly send --file` retries a failing piece 3 times and cancels the upload if it still fails (it does not resume by itself).
 
 ## Limits (all configurable)
 
@@ -141,6 +166,10 @@ Set these as environment variables (or in `.env`, see [.env.example](.env.exampl
 | `MAX_TOTAL_MB` | 2048 | Total file size on the whole server |
 | `MAX_STASHES` | 1000 | Stashes on the whole server |
 | `MAX_THUMB_KB` | 200 | Largest image thumbnail the page may send (the page makes them about 256 px wide, usually a few KB) |
+| `MAX_CHUNK_MB` | 4 | Largest piece of a resumable upload one request may carry (at least 64 KB; more than this is never buffered or written per request) |
+| `MAX_OPEN_UPLOADS` / `MAX_OPEN_UPLOADS_SERVER` | 5 / 50 | Unfinished resumable uploads one stash and the whole server may hold (`429` above that) |
+| `UPLOAD_IDLE_HOURS` | 24 | An unfinished resumable upload that gets no new piece for this long is removed by the cleanup job |
+| `RATE_CHUNK` | 6000 | Pieces of resumable uploads per address per minute (starting an upload uses `RATE_UPLOAD`) |
 | `UNDO_SECONDS` | 120 | How long a person's delete of a note or file can be undone (0 to 3600; 0 = off, deletes are immediate). Items waiting in the trash are not counted by the limits above, but a trashed file still takes disk space until it is purged |
 
 ### Passwords, lockout and cookies
@@ -230,6 +259,11 @@ Add `preview` (`true` in the body, or `?preview=1`) to a listing and notes longe
 | POST | `/api/stashes/:slug/files` | raw body, `X-File-Name` header, optional `X-Title` header (both URI-encoded) |
 | PUT | `/api/stashes/:slug/items/:id` | a note: `{title?, text}`; a file: `{title}` (empty goes back to the file name). Optional `baseEditedAt` (the item's `editedAt` you started from, `null` if never edited): if the item was edited since, nothing changes and the answer is `409 { error, conflict: true, item }` with the current item in full. Leave it out to skip the check (last write wins) |
 | PUT | `/api/stashes/:slug/content` | `{content: "all" \| "notes" \| "files"}` what the stash takes (full access only) |
+| POST | `/api/stashes/:slug/uploads` | start a resumable upload: `{name, size, title?}`. Runs every check a single upload does that needs no bytes (role, stash content kind, size, quotas, name, blocked extension) and answers `201 {id, offset: 0, size, chunkSize}` with a `Location`. See **Resumable uploads** |
+| GET, HEAD | `/api/stashes/:slug/uploads/:id` | where the upload stands: `{id, offset, size, chunkSize}` (HEAD: the `Upload-Offset` header only) |
+| PATCH | `/api/stashes/:slug/uploads/:id` | send one piece: header `Upload-Offset` (must equal the current offset, else `409` with the right one), the raw bytes as the body (at most `chunkSize`: `413`). Answers `200 {offset, ...}` |
+| POST | `/api/stashes/:slug/uploads/:id/complete` | finish (only when `offset == size`, else `409`): checks the content type and the limits again and answers `201` with the item, exactly like a single upload |
+| DELETE | `/api/stashes/:slug/uploads/:id` | cancel an unfinished upload and remove what it received (`204`) |
 | GET | `/api/stashes/:slug/files/:id` | the file (`?download=1` to force a download) |
 | GET | `/api/stashes/:slug/files/:id/thumb` | an image's thumbnail (full and read-only access; `404` when it has none). Served inline with `nosniff`, a sandboxing CSP and `no-store`; an item's `thumbUrl` is this address, or `null` |
 | PUT | `/api/stashes/:slug/files/:id/thumb` | attach or replace an image's thumbnail: the body is the raw JPEG, PNG or WebP bytes (any Content-Type; at most `MAX_THUMB_KB`: `413`; not an image of those types: `415`; the item is not an image: `400`). Full access any time; a drop-box link only while the image has none and is under 5 minutes old (`403` otherwise). Answers the item, and other pages are sent `item-updated` |

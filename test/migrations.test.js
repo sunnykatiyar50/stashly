@@ -72,7 +72,7 @@ test('a schema 2 database gets the trash table (and then thumbnails) and keeps i
 
         const db = connect(file);
         assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
-        assert.equal(SCHEMA_VERSION, 4);
+        assert.equal(SCHEMA_VERSION, 5);
         assert.deepEqual(columns(db, 'trash'), [
             'id', 'stash_id', 'kind', 'title', 'text', 'file_name', 'file_type', 'file_size', 'created_at',
             'expires_at', 'burn', 'secret', 'pinned', 'edited_at', 'sort_order', 'deleted_at', 'has_thumb',
@@ -95,7 +95,7 @@ test('a schema 2 database gets the trash table (and then thumbnails) and keeps i
     }
 });
 
-test('a schema 3 database gets has_thumb at version 4, keeps its rows and trash, and starts with no thumbnails', () => {
+test('a schema 3 database gets has_thumb (version 4) and then the uploads table, keeps its rows and trash, and starts with no thumbnails', () => {
     const { file, cleanup } = tempDb();
     try {
         // A database exactly as the previous release left it: schema 3, without the thumbnail flag
@@ -111,7 +111,7 @@ test('a schema 3 database gets has_thumb at version 4, keeps its rows and trash,
         first.close();
 
         const db = connect(file);
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 4);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
         assert.ok(columns(db, 'items').includes('has_thumb'));
         assert.ok(columns(db, 'trash').includes('has_thumb'));
         assert.deepEqual(db.prepare('SELECT id, has_thumb FROM items ORDER BY id').all().map(r => ({ ...r })), [{ id: 1, has_thumb: 0 }, { id: 2, has_thumb: 0 }]);
@@ -121,6 +121,38 @@ test('a schema 3 database gets has_thumb at version 4, keeps its rows and trash,
         // Opening it again changes nothing
         const again = connect(file);
         assert.equal(again.prepare('SELECT COUNT(*) AS n FROM items').get().n, 2);
+        again.close();
+    } finally {
+        cleanup();
+    }
+});
+
+test('a schema 4 database gets the uploads table at version 5, keeps its data, and the table is wired to its stash', () => {
+    const { file, cleanup } = tempDb();
+    try {
+        // A database exactly as the previous release left it: schema 4, without the uploads table
+        const first = connect(file);
+        first.exec('DROP TABLE uploads');
+        first.exec("INSERT INTO stashes (slug, created_at) VALUES ('four', '2026-01-01T00:00:00Z')");
+        first.exec("INSERT INTO items (stash_id, kind, text, created_at, sort_order) VALUES (1, 'note', 'kept', '2026-01-01T00:00:02Z', 1)");
+        first.exec('PRAGMA user_version = 4');
+        first.close();
+
+        const db = connect(file);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 5);
+        assert.deepEqual(columns(db, 'uploads'), ['id', 'stash_id', 'role', 'name', 'title', 'size', 'received', 'created_at', 'last_activity']);
+        assert.equal(db.prepare('SELECT COUNT(*) AS n FROM uploads').get().n, 0);
+        assert.equal(db.prepare('SELECT text FROM items').get().text, 'kept');
+
+        // Deleting the stash removes its unfinished uploads with it
+        db.exec("INSERT INTO uploads (id, stash_id, role, name, size, created_at, last_activity) VALUES ('u1', 1, 'full', 'a.bin', 10, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')");
+        db.exec('DELETE FROM stashes WHERE id = 1');
+        assert.equal(db.prepare('SELECT COUNT(*) AS n FROM uploads').get().n, 0);
+        db.close();
+
+        // Opening it again changes nothing
+        const again = connect(file);
+        assert.equal(again.prepare('PRAGMA user_version').get().user_version, 5);
         again.close();
     } finally {
         cleanup();

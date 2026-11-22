@@ -97,6 +97,86 @@ class FileStore {
         });
     }
 
+    // ---- partial files of resumable uploads ----
+    // An unfinished resumable upload keeps its bytes so far in tmp/, under a name worked out from the upload's id (a
+    // hash, so the secret id never appears on disk and any characters in it cannot matter). Pieces are received
+    // into their own tmp file first (receive) and only appended here once whole (appendPart), so a piece cut off
+    // half way never touches the partial file. The size of the partial file is the truth about how far the upload got.
+
+    partName(uploadId) {
+        return `part-${crypto.createHash('sha256').update(String(uploadId)).digest('hex').slice(0, 32)}`;
+    }
+
+    partPath(uploadId) {
+        return path.join(this.tmpDir, this.partName(uploadId));
+    }
+
+    createPart(uploadId) {
+        this.ensure();
+        fs.writeFileSync(this.partPath(uploadId), '', { mode: 0o600, flag: 'wx' });
+    }
+
+    // How many bytes the partial file holds, or null when it is missing
+    partSize(uploadId) {
+        try {
+            const stat = fs.statSync(this.partPath(uploadId));
+            return stat.isFile() ? stat.size : null;
+        } catch {
+            return null;
+        }
+    }
+
+    // The first bytes of the partial file, for file type detection
+    readPartHead(uploadId) {
+        const fd = fs.openSync(this.partPath(uploadId), 'r');
+        try {
+            const buffer = Buffer.alloc(HEAD_BYTES);
+            const read = fs.readSync(fd, buffer, 0, HEAD_BYTES, 0);
+            return buffer.subarray(0, read);
+        } finally {
+            fs.closeSync(fd);
+        }
+    }
+
+    // Copies a whole received piece (a tmp file) onto the end of the partial file, as one streamed copy, writing at
+    // exactly `offset`. If the copy fails (disk full...) the partial file is cut back to `offset`, so it never keeps
+    // half a piece. Resolves with the new size.
+    appendPart(uploadId, pieceTmp, offset) {
+        const target = this.partPath(uploadId);
+        return new Promise((resolve, reject) => {
+            const input = fs.createReadStream(pieceTmp);
+            const output = fs.createWriteStream(target, { flags: 'r+', start: offset });
+            let written = 0;
+            let failed = null;
+            input.on('data', chunk => { written += chunk.length; });
+            const fail = err => {
+                if (failed) return;
+                failed = err;
+                input.destroy();
+                output.destroy();
+            };
+            input.on('error', fail);
+            output.on('error', fail);
+            output.on('close', () => {
+                if (failed) {
+                    try {
+                        fs.truncateSync(target, offset);
+                    } catch {
+                        // the file is gone: nothing to cut back
+                    }
+                    return reject(failed);
+                }
+                resolve(offset + written);
+            });
+            input.pipe(output);
+        });
+    }
+
+    // Deletes the partial file of an upload (overwritten with zeros first, like any removed file)
+    removePart(uploadId) {
+        this.wipe(this.partPath(uploadId));
+    }
+
     // Gives a received upload its final name (it is the item's file from now on)
     adopt(tmp, id) {
         fs.renameSync(tmp, this.pathOf(id));
@@ -203,8 +283,10 @@ class FileStore {
 
     // Removes every file whose item no longer exists, and any leftover upload. `liveIds` is the set of item ids that
     // should have a file, and `thumbIds` the ids that should have a thumbnail (by default every item with a file: a
-    // thumbnail is an orphan when its item is gone). Returns how many files were removed.
-    sweep(liveIds, thumbIds = liveIds) {
+    // thumbnail is an orphan when its item is gone). `keepTmp` names the files in tmp/ that must survive: the partial
+    // files of unfinished resumable uploads (see partName); without it every tmp/ file goes, as before.
+    // Returns how many files were removed.
+    sweep(liveIds, thumbIds = liveIds, keepTmp = new Set()) {
         if (!fs.existsSync(this.dir)) return 0;
         let removed = 0;
         for (const name of fs.readdirSync(this.dir)) {
@@ -218,6 +300,7 @@ class FileStore {
         }
         if (fs.existsSync(this.tmpDir)) {
             for (const name of fs.readdirSync(this.tmpDir)) {
+                if (keepTmp.has(name)) continue;
                 fs.rmSync(path.join(this.tmpDir, name), { force: true });
                 removed++;
             }

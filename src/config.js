@@ -49,6 +49,13 @@ function loadConfig(env = process.env, overrides = {}) {
         maxItemsPerStash: num(env.MAX_ITEMS_PER_STASH, 1000),
         maxFilesPerStash: num(env.MAX_FILES_PER_STASH, 500),
         maxStashes: num(env.MAX_STASHES, 1000),
+        // Resumable uploads: the biggest piece one request may carry (never more than this is buffered or written per
+        // request), how many unfinished uploads one stash and the whole server may hold, and how long an upload that
+        // gets no new piece is kept before the cleanup job removes it
+        maxChunkBytes: Math.max(64 * 1024, Math.floor(num(env.MAX_CHUNK_MB, 4) * MB)),
+        maxOpenUploads: Math.max(1, Math.floor(num(env.MAX_OPEN_UPLOADS, 5))),
+        maxOpenUploadsServer: Math.max(1, Math.floor(num(env.MAX_OPEN_UPLOADS_SERVER, 50))),
+        uploadIdleHours: num(env.UPLOAD_IDLE_HOURS, 24) || 24,
         allowNoExpiry,
         // Which files can be uploaded: 'safe', 'no-programs' or 'any' (see utils/fileType.js)
         fileTypes: ['safe', 'no-programs', 'any'].includes(env.FILE_TYPES) ? env.FILE_TYPES : 'safe',
@@ -72,6 +79,8 @@ function loadConfig(env = process.env, overrides = {}) {
         rateCreate: num(env.RATE_CREATE, 20),
         ratePost: num(env.RATE_POST, 120),
         rateUpload: num(env.RATE_UPLOAD, 40),
+        // Pieces of resumable uploads (many per file, so far more generous than starting an upload)
+        rateChunk: num(env.RATE_CHUNK, 6000),
         rateUnlock: num(env.RATE_UNLOCK, 10),
         // Reading is limited too (per IP, per minute). Requests for a stash that does not exist are counted
         // separately and tighter, so names cannot be guessed quickly.

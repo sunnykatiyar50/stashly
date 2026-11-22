@@ -60,6 +60,78 @@ class StashModel {
         return this.getItem(stashId, id);
     }
 
+    // ---- unfinished resumable uploads ----
+    // A row says an upload was started; its bytes so far are the partial file in the file store (see FileStore.partName),
+    // which is the truth about how far it got. Rows and partial files are always removed together (dropUploads).
+
+    createUpload({ id, stashId, role, name, title = null, size }, now = new Date()) {
+        const stamp = now.toISOString();
+        this.db
+            .prepare('INSERT INTO uploads (id, stash_id, role, name, title, size, received, created_at, last_activity) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)')
+            .run(id, stashId, role, name, title, size, stamp, stamp);
+        this.files.createPart(id);
+        return this.getUpload(stashId, id);
+    }
+
+    // Only an upload of this stash (an id from another stash is no upload at all)
+    getUpload(stashId, id) {
+        return this.db.prepare('SELECT * FROM uploads WHERE stash_id = ? AND id = ?').get(stashId, id) || null;
+    }
+
+    // Records progress (and that the upload is still in use, so it is not expired)
+    setUploadProgress(id, received, now = new Date()) {
+        this.db.prepare('UPDATE uploads SET received = ?, last_activity = ? WHERE id = ?').run(received, now.toISOString(), id);
+    }
+
+    uploadsOfStash(stashId) {
+        return this.db.prepare('SELECT id FROM uploads WHERE stash_id = ?').all(stashId).map(row => row.id);
+    }
+
+    countUploads(stashId = null) {
+        return stashId === null
+            ? this.db.prepare('SELECT COUNT(*) AS n FROM uploads').get().n
+            : this.db.prepare('SELECT COUNT(*) AS n FROM uploads WHERE stash_id = ?').get(stashId).n;
+    }
+
+    // The sizes the open uploads declared: space they may still take, which new uploads must leave room for
+    reservedBytes() {
+        return this.db.prepare('SELECT COALESCE(SUM(size), 0) AS bytes FROM uploads').get().bytes;
+    }
+
+    // Uploads with no new piece since `before`
+    idleUploads(before) {
+        return this.db.prepare('SELECT id FROM uploads WHERE last_activity < ?').all(before.toISOString()).map(row => row.id);
+    }
+
+    // Removes unfinished uploads: the rows, then the partial files. A crash in between leaves a stray file that the
+    // startup sweep removes, never a row pointing at nothing.
+    dropUploads(ids) {
+        if (!ids.length) return 0;
+        const remove = this.db.prepare('DELETE FROM uploads WHERE id = ?');
+        for (const id of ids) remove.run(id);
+        if (this.files) for (const id of ids) this.files.removePart(id);
+        return ids.length;
+    }
+
+    // At startup: an upload whose partial file is gone cannot be resumed, so it is dropped; the others get their
+    // recorded progress set to what the file really holds. Returns how many were dropped.
+    reconcileUploads() {
+        const rows = this.db.prepare('SELECT id, size, received FROM uploads').all();
+        const gone = [];
+        for (const row of rows) {
+            const size = this.files.partSize(row.id);
+            if (size === null || size > row.size) gone.push(row.id);
+            else if (size !== row.received) this.db.prepare('UPDATE uploads SET received = ? WHERE id = ?').run(size, row.id);
+        }
+        this.dropUploads(gone);
+        return gone.length;
+    }
+
+    // The tmp/ names of the partial files that must survive the startup sweep
+    livePartNames() {
+        return new Set(this.db.prepare('SELECT id FROM uploads').all().map(row => this.files.partName(row.id)));
+    }
+
     // ---- stashes ----
 
     createStash({ slug, passwordHash = null, passwordSalt = null, ttlMs = null, now = new Date() }) {
@@ -87,6 +159,8 @@ class StashModel {
     // cancelled, because they point at the old name.
     renameStash(id, slug, now = new Date()) {
         const before = this.getStashById(id);
+        // An unfinished upload belongs to the address it was started under, so renaming ends it
+        this.dropUploads(this.uploadsOfStash(id));
         try {
             this.db.prepare('UPDATE stashes SET slug = ?, view_token_hash = NULL, drop_token_hash = NULL WHERE id = ?').run(slug, id);
             if (before) this.retireSlug(before.slug, now);
@@ -147,6 +221,7 @@ class StashModel {
         const stash = this.getStashById(id);
         if (!stash) return false;
         const fileIds = this.fileIdsOfStash(id);
+        this.dropUploads(this.uploadsOfStash(id));
         this.db.prepare('DELETE FROM stashes WHERE id = ?').run(id);
         this.dropFiles(fileIds);
         this.retireSlug(stash.slug, now);
@@ -163,6 +238,7 @@ class StashModel {
         const remove = this.db.prepare('DELETE FROM stashes WHERE id = ?');
         for (const row of rows) {
             const fileIds = this.fileIdsOfStash(row.id);
+            this.dropUploads(this.uploadsOfStash(row.id));
             remove.run(row.id);
             this.dropFiles(fileIds);
             this.retireSlug(row.slug, now);
@@ -242,7 +318,7 @@ class StashModel {
 
     // `tmp` is the received upload (see FileStore.receive) and `size` its length. The row is made first, then the
     // upload is moved to the file store under the row's id; if anything fails, neither is left behind.
-    addFile(stashId, { fileName, fileType, tmp, size, title = null }, now = new Date()) {
+    addFile(stashId, { fileName, fileType, tmp, size, title = null, uploadId = null }, now = new Date()) {
         this.db.exec('BEGIN');
         let id = null;
         try {
@@ -254,6 +330,8 @@ class StashModel {
                 .run(stashId, fileName, fileType, size, now.toISOString(), this.nextOrder(stashId), title);
             id = Number(result.lastInsertRowid);
             this.files.adopt(tmp, id);
+            // A finished resumable upload stops being one in the same step that makes it an item
+            if (uploadId) this.db.prepare('DELETE FROM uploads WHERE id = ?').run(uploadId);
             this.db.exec('COMMIT');
             return this.getItem(stashId, id);
         } catch (err) {

@@ -111,6 +111,8 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
     app.use('/api', (req, res, next) => {
         // (a thumbnail is raw image bytes too)
         if (/\/files(\/\d+\/thumb)?$/.test(req.path)) return next();
+        // ...and so is a piece of a resumable upload, whatever Content-Type it claims
+        if (req.method === 'PATCH' && /\/uploads\/[^/]+$/.test(req.path)) return next();
         express.json({ limit: `${Math.ceil((config.maxNoteBytes * 2) / 1024) + 4}kb` })(req, res, next);
     });
 

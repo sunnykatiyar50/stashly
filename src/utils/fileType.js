@@ -104,6 +104,14 @@ function cleanFileName(raw) {
     return name;
 }
 
+// The part of detectFile that needs no content: a refused extension is known before any byte arrives (a resumable
+// upload is refused when it is created). Returns an error message, or null when the name does not rule it out.
+function extensionProblem(fileName, mode = 'safe') {
+    const ext = path.extname(fileName).toLowerCase();
+    if (BLOCKED.has(ext) && (MODES.includes(mode) ? mode : 'safe') !== 'any') return `${ext} files aren't allowed.`;
+    return null;
+}
+
 // Returns { mime, image } when the file is allowed, otherwise { error }
 function detectFile(fileName, buffer, mode = 'safe') {
     if (!MODES.includes(mode)) mode = 'safe';
@@ -140,4 +148,4 @@ function detectThumb(buffer) {
     return null;
 }
 
-module.exports = { detectFile, detectThumb, cleanFileName, MODES };
+module.exports = { detectFile, detectThumb, cleanFileName, extensionProblem, MODES };

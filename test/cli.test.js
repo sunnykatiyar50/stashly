@@ -242,3 +242,92 @@ test('the package exposes the command and the script is under 300 lines', () => 
     assert.ok(source.startsWith('#!/usr/bin/env node'));
     assert.ok(source.split('\n').length < 300);
 });
+
+// ---- big files go up as a resumable upload ----
+
+// Recognisable bytes behind a PNG header, so a misplaced piece cannot go unnoticed
+const bigPng = size => Buffer.concat([PNG, Buffer.from(Array.from({ length: size - PNG.length }, (_, i) => (i * 31 + (i >> 8) * 7 + (i >> 16)) & 255))]);
+
+test('send --file uploads a file over 8 MB in pieces, byte for byte, and prints progress only on a terminal', async () => {
+    const t = await setup({ maxFileBytes: 30 * 1048576 });
+    try {
+        await t.run(['new', 'big-stash']);
+        const original = bigPng(9 * 1048576 + 12345);
+        const source = path.join(t.dir, 'big picture.png');
+        fs.writeFileSync(source, original);
+
+        const sent = await t.run(['send', 'big-stash', '--file', source, '--title', 'Big one']);
+        assert.equal(sent.code, 0, sent.stderr);
+        assert.ok(sent.stdout.startsWith(`Sent file big picture.png (id `) && sent.stdout.includes(`, ${original.length} bytes)`), sent.stdout);
+        // Not a terminal here, so nothing is written to stderr
+        assert.equal(sent.stderr, '');
+
+        const item = t.model.listItems(1)[0];
+        assert.equal(item.title, 'Big one');
+        assert.equal(item.file_type, 'image/png');
+        assert.ok(fs.readFileSync(t.fileStore.pathOf(item.id)).equals(original));
+        // It went through the resumable protocol: nothing is left behind in tmp or in the table
+        assert.equal(t.model.countUploads(), 0);
+        assert.deepEqual(fs.readdirSync(t.fileStore.tmpDir), []);
+    } finally {
+        t.done();
+    }
+});
+
+test('a piece that fails with a server error is tried again, and the file still arrives intact', async () => {
+    const t = await setup({ maxFileBytes: 30 * 1048576 });
+    // A go-between that answers the first two PATCH requests with a 503 and passes everything else on
+    const http = require('node:http');
+    let patches = 0;
+    const proxy = http.createServer((req, res) => {
+        if (req.method === 'PATCH' && ++patches <= 2) {
+            req.resume();
+            req.on('end', () => { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end('{"error":"busy"}'); });
+            return;
+        }
+        const upstream = http.request({ port: t.url.split(':').pop(), host: '127.0.0.1', path: req.url, method: req.method, headers: req.headers }, answer => {
+            res.writeHead(answer.statusCode, answer.headers);
+            answer.pipe(res);
+        });
+        req.pipe(upstream);
+    });
+    await new Promise(resolve => proxy.listen(0, resolve));
+    try {
+        await t.run(['new', 'flaky-stash']);
+        const original = bigPng(9 * 1048576);
+        const source = path.join(t.dir, 'flaky.png');
+        fs.writeFileSync(source, original);
+        const via = `http://127.0.0.1:${proxy.address().port}`;
+        const sent = await t.run(['--url', via, 'send', 'flaky-stash', '--file', source], { env: { STASHLY_RETRY_DELAY_MS: '10' } });
+        assert.equal(sent.code, 0, sent.stderr);
+        assert.ok(patches > 2);
+        const item = t.model.listItems(1)[0];
+        assert.ok(fs.readFileSync(t.fileStore.pathOf(item.id)).equals(original));
+
+        // A piece that keeps failing ends the upload with the server's message, and the upload is cancelled
+        patches = -1000;
+        const broken = await t.run(['--url', via, 'send', 'flaky-stash', '--file', source], { env: { STASHLY_RETRY_DELAY_MS: '1' } });
+        assert.equal(broken.code, 1);
+        assert.match(broken.stderr, /busy/);
+        assert.equal(t.model.countUploads(), 0);
+    } finally {
+        proxy.closeAllConnections();
+        proxy.close();
+        t.done();
+    }
+});
+
+test('a refusal at the start of a big upload is reported at once (the file is too big for the server)', async () => {
+    const t = await setup({ maxFileBytes: 9 * 1048576 });
+    try {
+        await t.run(['new', 'limit-stash']);
+        const source = path.join(t.dir, 'toobig.png');
+        fs.writeFileSync(source, bigPng(10 * 1048576));
+        const sent = await t.run(['send', 'limit-stash', '--file', source]);
+        assert.equal(sent.code, 1);
+        assert.match(sent.stderr, /at most 9 MB/);
+        assert.equal(t.model.countUploads(), 0);
+    } finally {
+        t.done();
+    }
+});

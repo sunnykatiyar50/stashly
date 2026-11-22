@@ -134,6 +134,28 @@ const MIGRATIONS = [
         addColumn(db, 'items', 'has_thumb', 'INTEGER NOT NULL DEFAULT 0');
         addColumn(db, 'trash', 'has_thumb', 'INTEGER NOT NULL DEFAULT 0');
     },
+
+    // 5: resumable (chunked) uploads. A row is an upload that has been started and not finished; its bytes so far sit in
+    // a partial file in the files folder's tmp/ (see utils/fileStore.js), which is the source of truth for how far it
+    // got (`received` is only a copy of that, for listing). The id is the random secret the uploader holds. Deleting the
+    // stash deletes its unfinished uploads with it (the model removes their partial files first).
+    db => {
+        db.exec(
+            `CREATE TABLE IF NOT EXISTS uploads (
+                id TEXT PRIMARY KEY,
+                stash_id INTEGER NOT NULL REFERENCES stashes(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                name TEXT NOT NULL,
+                title TEXT,
+                size INTEGER NOT NULL,
+                received INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                last_activity TEXT NOT NULL
+            )`
+        );
+        db.exec('CREATE INDEX IF NOT EXISTS idx_uploads_stash ON uploads (stash_id)');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_uploads_activity ON uploads (last_activity)');
+    },
 ];
 
 const SCHEMA_VERSION = MIGRATIONS.length;

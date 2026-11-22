@@ -23,6 +23,8 @@ function createStashRoutes({ controller, config }) {
     const createLimiter = limiter(60 * 1000, config.rateCreate, 'Too many stashes created, slow down.');
     const postLimiter = limiter(60 * 1000, config.ratePost, 'Too many notes, slow down.');
     const uploadLimiter = limiter(60 * 1000, config.rateUpload, 'Too many uploads, slow down.');
+    // The pieces of a resumable upload: one file is many requests, so this allows far more than uploadLimiter
+    const chunkLimiter = limiter(60 * 1000, config.rateChunk, 'Too many pieces, slow down.');
     // Only failed attempts count, so a person who types the right password is never blocked
     const unlockLimiter = rateLimit({
         windowMs: 15 * 60 * 1000,
@@ -82,6 +84,13 @@ function createStashRoutes({ controller, config }) {
     router.post('/:slug/latest', readLimiter, ...read, c.latest);
     router.post('/:slug/notes', postLimiter, ...write, c.acceptsNotes, textBody, c.addNote);
     router.post('/:slug/files', uploadLimiter, ...write, c.acceptsFiles, checkUploadSize, c.receiveFile, c.addFile);
+    // Resumable uploads: start (every check that needs no bytes), ask where it stands (GET, and HEAD for the offset
+    // alone), send a piece at the offset the server expects, finish, or cancel. See the README.
+    router.post('/:slug/uploads', uploadLimiter, ...write, c.acceptsFiles, c.createUpload);
+    router.get('/:slug/uploads/:id', readLimiter, ...write, c.uploadOf, c.getUpload);
+    router.patch('/:slug/uploads/:id', chunkLimiter, ...write, c.acceptsFiles, c.uploadOf, c.checkChunkSize, c.patchUpload);
+    router.post('/:slug/uploads/:id/complete', postLimiter, ...write, c.acceptsFiles, c.uploadOf, c.completeUpload);
+    router.delete('/:slug/uploads/:id', postLimiter, ...write, c.uploadOf, c.abortUpload);
     router.get('/:slug/items/:id', readLimiter, ...read, c.getItem);
     router.get('/:slug/files/:id', readLimiter, ...read, c.getFile);
     router.get('/:slug/files/:id/contents', readLimiter, ...read, c.listArchive);

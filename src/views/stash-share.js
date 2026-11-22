@@ -214,6 +214,7 @@
     var uploader = window.StashlyUpload.create({
         container: $('uploads'),
         url: base + '/files',
+        uploadsUrl: base + '/uploads',
         maxBytes: 0,
         tabId: tabId,
         onDone: uploaded,
@@ -239,6 +240,7 @@
         uploader = window.StashlyUpload.create({
             container: $('uploads'),
             url: base + '/files',
+            uploadsUrl: base + '/uploads',
             maxBytes: maxBytes,
             tabId: tabId,
             onDone: uploaded,

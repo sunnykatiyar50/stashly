@@ -1,7 +1,8 @@
 const { generateSlug, parseSlug } = require('../utils/slug');
 const { hashPassword, verifyPassword, MAX_PASSWORD } = require('../utils/password');
 const { signToken, verifyToken, parseCookies, generateLinkToken, hashLinkToken, linkTokenMatches } = require('../utils/token');
-const { detectFile, detectThumb, cleanFileName } = require('../utils/fileType');
+const { detectFile, detectThumb, cleanFileName, extensionProblem } = require('../utils/fileType');
+const crypto = require('crypto');
 const { dateRange } = require('../utils/time');
 const { parseTitle, deriveTitle } = require('../utils/title');
 const { listZip } = require('../utils/zip');
@@ -19,7 +20,8 @@ const cookieName = slug => `stashly_${slug}`;
 const ROLE_COOKIES = { view: slug => `stashlyv_${slug}`, drop: slug => `stashlyd_${slug}` };
 // What a share link signs: its own label plus the hash of its token, so a new link voids cookies from the old one
 const roleSubject = (slug, kind) => `${slug}:${kind}`;
-const DAY = 24 * 60 * 60 * 1000;
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
 // The most clips one reorder may move (a stash holds at most a few thousand; a page shows them all)
 const MAX_REORDER = 5000;
 // The most items one listing can be asked for with `limit` (the extension asks for a few; without a limit, all come)
@@ -835,6 +837,30 @@ class StashController {
         return null;
     }
 
+    // The rules about what a file is called and may be, shared by the single-request upload and the start of a resumable
+    // one so they cannot drift apart. With `head` (the first bytes) the type is detected from the content; without it
+    // (a resumable upload that has not sent anything yet) only the extension can be judged, and the content is checked
+    // when the upload completes. Returns { fileName, mime, title } or { status, error, field? }.
+    fileMeta({ rawName, rawTitle, head = null, nameError }) {
+        const fileName = cleanFileName(rawName);
+        if (!fileName) return { status: 400, error: nameError };
+
+        let mime = null;
+        if (head) {
+            // File types are recognised from the first bytes, which is all that was kept in memory
+            const detected = detectFile(fileName, head, this.config.fileTypes);
+            if (detected.error) return { status: 415, error: detected.error };
+            mime = detected.mime;
+        } else {
+            const refused = extensionProblem(fileName, this.config.fileTypes);
+            if (refused) return { status: 415, error: refused };
+        }
+
+        const title = parseTitle(rawTitle);
+        if (title.error) return { status: 400, error: title.error, field: 'title' };
+        return { fileName, mime, title: title.value };
+    }
+
     storeUpload(req, res, { tmp, size, head }) {
         const stash = req.stash;
         if (!size) return res.status(400).json({ error: 'The file is empty.' });
@@ -845,13 +871,6 @@ class StashController {
         } catch {
             // keep the raw header value
         }
-        const fileName = cleanFileName(rawName);
-        if (!fileName) return res.status(400).json({ error: 'The file needs a name (X-File-Name header).' });
-
-        // File types are recognised from the first bytes, which is all that was kept in memory
-        const detected = detectFile(fileName, head, this.config.fileTypes);
-        if (detected.error) return res.status(415).json({ error: detected.error });
-
         // An optional title, in the X-Title header (URI-encoded, like the name)
         let rawTitle = req.get('x-title');
         if (rawTitle !== undefined) {
@@ -861,13 +880,20 @@ class StashController {
                 // keep the raw header value
             }
         }
-        const title = parseTitle(rawTitle);
-        if (title.error) return res.status(400).json({ error: title.error, field: 'title' });
+        const meta = this.fileMeta({ rawName, rawTitle, head, nameError: 'The file needs a name (X-File-Name header).' });
+        if (meta.error) return res.status(meta.status).json({ error: meta.error, ...(meta.field ? { field: meta.field } : {}) });
 
         const problem = this.limitProblem(stash, { file: true, size });
         if (problem) return res.status(problem.status).json({ error: problem.error });
 
-        const row = this.model.addFile(stash.id, { fileName, fileType: detected.mime, tmp, size, title: title.value }, this.now());
+        this.commitFile(req, res, { fileName: meta.fileName, mime: meta.mime, title: meta.title, tmp, size });
+    }
+
+    // Makes the finished upload an item and does everything that follows a new file: the counters, the live event, "keep
+    // the last N". The same for a single request and a completed resumable upload (uploadId: the upload that ends here).
+    commitFile(req, res, { fileName, mime, title, tmp, size, uploadId = null }) {
+        const stash = req.stash;
+        const row = this.model.addFile(stash.id, { fileName, fileType: mime, tmp, size, title, uploadId }, this.now());
         this.metrics.inc('stashly_uploads_total');
         this.metrics.inc('stashly_uploaded_bytes_total', [], size);
         const item = this.presentItem(stash.slug, row);
@@ -875,6 +901,200 @@ class StashController {
         this.trim(stash);
         res.status(201).json(item);
     }
+
+    // ---- resumable (chunked) uploads ----
+    // A big file survives a bad connection: it is started with POST .../uploads (all the checks that need no bytes run
+    // then), sent in pieces with PATCH (each at the offset the server expects), and made an item with .../complete.
+    // The bytes wait in a partial file in the file store's tmp/; the database row only records who started it.
+
+    // The upload ids that have a piece (or the end) being handled right now: a second request for the same upload is
+    // refused (409) instead of interleaving with it
+    uploadLocks = new Set();
+
+    // Finds the upload in the URL for this stash. An id of another stash is as good as unknown, and a drop-box visitor
+    // only reaches uploads started with a drop-box link (so a link cannot poke at uploads of full access).
+    uploadOf = (req, res, next) => {
+        const id = String(req.params.id || '');
+        const row = /^[A-Za-z0-9_-]{16,64}$/.test(id) ? this.model.getUpload(req.stash.id, id) : null;
+        if (!row || (req.role === 'drop' && row.role !== 'drop')) return res.status(404).json({ error: 'That upload does not exist (any more).' });
+        req.openUpload = row;
+        next();
+    };
+
+    // How far an upload really got: the partial file is the truth (the database only copies it). While a piece is being
+    // written the last whole piece counts, never the middle of one. Null when the file is gone (the upload is dropped).
+    uploadOffset(row) {
+        if (this.uploadLocks.has(row.id)) return row.received;
+        const size = this.model.files.partSize(row.id);
+        if (size === null || size > row.size) {
+            this.model.dropUploads([row.id]);
+            return null;
+        }
+        if (size !== row.received) this.model.setUploadProgress(row.id, size, new Date(row.last_activity));
+        return size;
+    }
+
+    describeUpload(row, offset) {
+        return { id: row.id, offset, size: row.size, chunkSize: this.config.maxChunkBytes };
+    }
+
+    createUpload = (req, res) => {
+        const stash = req.stash;
+        const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+        if (typeof body.name !== 'string') return res.status(400).json({ error: 'Send the file name as "name".', field: 'name' });
+        const size = body.size;
+        if (typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0) {
+            return res.status(400).json({ error: 'Send the file size in bytes as "size".', field: 'size' });
+        }
+        if (!size) return res.status(400).json({ error: 'The file is empty.', field: 'size' });
+        if (body.title !== undefined && body.title !== null && typeof body.title !== 'string') {
+            return res.status(400).json({ error: 'The title must be text.', field: 'title' });
+        }
+
+        const meta = this.fileMeta({ rawName: body.name, rawTitle: body.title, nameError: 'The file needs a name.' });
+        if (meta.error) return res.status(meta.status).json({ error: meta.error, ...(meta.field ? { field: meta.field } : {}) });
+        if (size > this.config.maxFileBytes) {
+            return res.status(413).json({ error: `A file can be at most ${Math.round(this.config.maxFileBytes / 1048576)} MB.`, field: 'size' });
+        }
+        // The same limits as a single upload (items, files, stash space, server space), checked against the declared size
+        const problem = this.limitProblem(stash, { file: true, size });
+        if (problem) return res.status(problem.status).json({ error: problem.error });
+        // Many open uploads must not be able to fill the disk together: what they declared counts against the server's space
+        if (this.model.totalBytes() + this.model.reservedBytes() + size > this.config.maxTotalBytes) {
+            return res.status(507).json({ error: 'The server is out of file space. Try again later.' });
+        }
+        if (this.model.countUploads(stash.id) >= this.config.maxOpenUploads) {
+            return res.status(429).json({ error: `This stash already has ${this.config.maxOpenUploads} unfinished uploads. Finish or cancel one first.` });
+        }
+        if (this.model.countUploads() >= this.config.maxOpenUploadsServer) {
+            return res.status(429).json({ error: 'The server has too many unfinished uploads right now. Try again later.' });
+        }
+
+        const id = crypto.randomBytes(24).toString('base64url');
+        const row = this.model.createUpload({ id, stashId: stash.id, role: req.role, name: meta.fileName, title: meta.title, size }, this.now());
+        res.status(201)
+            .set('Location', `/api/stashes/${stash.slug}/uploads/${id}`)
+            .set('Upload-Offset', '0')
+            .json(this.describeUpload(row, 0));
+    };
+
+    // Where the upload stands: the point a client resumes from (also the Upload-Offset header, which HEAD sends alone)
+    getUpload = (req, res) => {
+        const row = req.openUpload;
+        const offset = this.uploadOffset(row);
+        if (offset === null) return res.status(404).json({ error: 'That upload does not exist (any more).' });
+        res.set({ 'Upload-Offset': String(offset), 'Upload-Length': String(row.size) });
+        res.json(this.describeUpload(row, offset));
+    };
+
+    // Refuses a piece from its Content-Length before any of the body is read
+    checkChunkSize = (req, res, next) => {
+        const length = Number(req.headers['content-length']);
+        if (Number.isFinite(length) && length > this.config.maxChunkBytes) {
+            res.set('Connection', 'close');
+            return res.status(413).json({ error: `A piece can be at most ${Math.round(this.config.maxChunkBytes / 1024)} KB.` });
+        }
+        next();
+    };
+
+    // One piece. It is received into its own tmp file (never more than one piece is held, and never in memory) and is
+    // appended to the partial file only when it arrived whole, so a piece cut off half way changes nothing: the offset
+    // stays at the last whole piece and the client sends that piece again.
+    patchUpload = async (req, res) => {
+        const row = req.openUpload;
+        if (this.uploadLocks.has(row.id)) {
+            return res.status(409).json({ error: 'Another piece of this upload is still being received.', busy: true, offset: row.received });
+        }
+        this.uploadLocks.add(row.id);
+        let piece = null;
+        try {
+            const offset = this.uploadOffset(row);
+            if (offset === null) return res.status(404).json({ error: 'That upload does not exist (any more).' });
+            const given = req.get('upload-offset');
+            if (given === undefined || !/^\d{1,16}$/.test(given)) {
+                return res.status(400).json({ error: 'Send the Upload-Offset header: the offset this piece starts at.', offset });
+            }
+            if (Number(given) !== offset) {
+                return res.status(409).set('Upload-Offset', String(offset)).json({ error: 'That is not where this upload stands. Continue at the offset given.', offset });
+            }
+            const room = row.size - offset;
+            const limit = Math.min(this.config.maxChunkBytes, room);
+            const length = Number(req.headers['content-length']);
+            if (room <= 0 || (Number.isFinite(length) && length > room)) {
+                res.set('Connection', 'close');
+                return res.status(413).json({ error: 'This piece goes past the size the upload declared.', offset });
+            }
+            if (Number.isFinite(length) && length === 0) return res.status(400).json({ error: 'The piece is empty.', offset });
+
+            try {
+                piece = await this.model.files.receive(req, limit);
+            } catch (err) {
+                if (err.code === 'TOO_LARGE') {
+                    res.set('Connection', 'close');
+                    const error = room < this.config.maxChunkBytes ? 'This piece goes past the size the upload declared.' : `A piece can be at most ${Math.round(this.config.maxChunkBytes / 1024)} KB.`;
+                    return res.status(413).json({ error, offset });
+                }
+                // The client went away part way: nothing was kept, and there is nobody to answer
+                if (!res.headersSent && !res.destroyed) return res.status(400).json({ error: 'The piece was interrupted. Ask for the offset and send it again.', offset });
+                return;
+            }
+            if (!piece.size) return res.status(400).json({ error: 'The piece is empty.', offset });
+
+            let size;
+            try {
+                size = await this.model.files.appendPart(row.id, piece.tmp, offset);
+            } catch {
+                return res.status(500).json({ error: 'Could not store the piece. Try again.', offset });
+            }
+            this.model.setUploadProgress(row.id, size, this.now());
+            res.set('Upload-Offset', String(size)).json(this.describeUpload(row, size));
+        } finally {
+            if (piece) this.model.files.discard(piece.tmp);
+            this.uploadLocks.delete(row.id);
+        }
+    };
+
+    // The end: only when every byte is there. The type is judged from the first bytes, the limits are checked once more
+    // (the stash may have filled up since), and then it becomes an item exactly like a single-request upload.
+    completeUpload = (req, res) => {
+        const stash = req.stash;
+        const row = req.openUpload;
+        if (this.uploadLocks.has(row.id)) {
+            return res.status(409).json({ error: 'A piece of this upload is still being received.', busy: true, offset: row.received });
+        }
+        this.uploadLocks.add(row.id);
+        try {
+            const offset = this.uploadOffset(row);
+            if (offset === null) return res.status(404).json({ error: 'That upload does not exist (any more).' });
+            if (offset !== row.size) {
+                return res.status(409).set('Upload-Offset', String(offset)).json({ error: 'The upload is not complete yet.', offset, size: row.size });
+            }
+            const meta = this.fileMeta({ rawName: row.name, rawTitle: row.title, head: this.model.files.readPartHead(row.id), nameError: 'The file needs a name.' });
+            if (meta.error) {
+                // The bytes will never be acceptable: nothing to keep
+                this.model.dropUploads([row.id]);
+                return res.status(meta.status).json({ error: meta.error });
+            }
+            // Over a limit now: the upload is kept, so it can be completed once there is room
+            const problem = this.limitProblem(stash, { file: true, size: row.size });
+            if (problem) return res.status(problem.status).json({ error: problem.error });
+            this.commitFile(req, res, {
+                fileName: meta.fileName, mime: meta.mime, title: meta.title, tmp: this.model.files.partPath(row.id), size: row.size, uploadId: row.id,
+            });
+        } finally {
+            this.uploadLocks.delete(row.id);
+        }
+    };
+
+    // Cancels an upload and removes what it received
+    abortUpload = (req, res) => {
+        const row = req.openUpload;
+        if (this.uploadLocks.has(row.id)) {
+            return res.status(409).json({ error: 'A piece of this upload is still being received. Try again in a moment.', busy: true });
+        }
+        this.model.dropUploads([row.id]);
+        res.status(204).end();
+    };
 
     // Reads one file of this stash, or null
     fileRow(req) {
@@ -1171,6 +1391,9 @@ class StashController {
         for (const item of this.model.purgeExpiredItems(this.now())) this.events.publish(item.slug, 'item-deleted', { id: item.id });
         // Deleted items whose undo time is up are removed for good (with undo turned off, everything waiting goes)
         this.model.purgeTrash(new Date(this.now().getTime() - this.config.undoSeconds * 1000));
+        // Resumable uploads that got no new piece for UPLOAD_IDLE_HOURS are given up (one with a piece arriving is left)
+        const idle = this.model.idleUploads(new Date(this.now().getTime() - this.config.uploadIdleHours * HOUR));
+        this.model.dropUploads(idle.filter(id => !this.uploadLocks.has(id)));
         // Names reserved long enough are free again
         if (this.config.reserveOldNamesDays) this.model.purgeRetired(new Date(this.now().getTime() - this.config.reserveOldNamesDays * DAY));
         // Forget wrong-password counts whose window has passed

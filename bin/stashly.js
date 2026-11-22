@@ -20,8 +20,21 @@ const HELP = `Usage: stashly [--url URL] [--password PASSWORD] <command> ...
 Settings: STASHLY_URL (default http://localhost:3000) and STASHLY_PASSWORD, or --url and --password.
 Exit status is 0 when it worked and 1 on any error, with the reason on stderr.`;
 
-class CliError extends Error {}
-const fail = message => { throw new CliError(message); };
+// A file bigger than this goes up as a resumable upload, in pieces (see the README), so one dropped connection costs a
+// piece and not the whole file
+const BIG_FILE = 8 * 1024 * 1024;
+const CHUNK = 4 * 1024 * 1024;
+const CHUNK_RETRIES = 3;
+
+// retryable: the request may work if sent again (the connection failed, or the server is busy or failing)
+class CliError extends Error {
+    constructor(message, extra = {}) {
+        super(message);
+        Object.assign(this, extra);
+    }
+}
+const fail = (message, extra) => { throw new CliError(message, extra); };
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // --name value pairs and plain words, in any order. A lone "-" is a word (it means stdin or stdout).
 function parseArgs(argv) {
@@ -59,7 +72,7 @@ class Client {
             // Never follow a redirect: the cookie must only go to the server that was asked for
             res = await fetch(this.base + urlPath, { method, headers: sent, body, duplex, redirect: 'error' });
         } catch (err) {
-            fail(`Cannot reach ${this.base}: ${(err.cause && err.cause.message) || err.message}`);
+            fail(`Cannot reach ${this.base}: ${(err.cause && err.cause.message) || err.message}`, { retryable: true });
         }
         for (const line of res.headers.getSetCookie()) {
             const [pair] = line.split(';');
@@ -69,8 +82,9 @@ class Client {
         if (!res.ok) {
             const text = await res.text();
             let message = text.trim();
-            try { message = JSON.parse(text).error || message; } catch { /* plain text answer */ }
-            fail(message || `The server answered ${res.status}.`);
+            let body = null;
+            try { body = JSON.parse(text); message = body.error || message; } catch { /* plain text answer */ }
+            fail(message || `The server answered ${res.status}.`, { status: res.status, body, retryable: res.status === 429 || res.status >= 500 });
         }
         return res;
     }
@@ -113,6 +127,63 @@ function suggestedName(res, fallback) {
     return path.basename(name.replace(/\\/g, '/')) || fallback;
 }
 
+// Uploads a big file in pieces read from disk (never more than one piece in memory). A piece that fails for a reason
+// that may pass (connection, busy server) is tried again up to CHUNK_RETRIES times, after asking the server where the
+// upload stands. Progress goes to stderr, and only when stderr is a terminal. Returns the new item.
+async function sendInPieces(client, base, file, size, title, retryDelayMs) {
+    const started = await (await client.request('POST', `${base}/uploads`, { json: { name: path.basename(file), size, ...(title ? { title } : {}) } })).json();
+    const url = `${base}/uploads/${started.id}`;
+    const piece = Math.min(CHUNK, started.chunkSize || CHUNK);
+    const show = text => { if (process.stderr.isTTY) process.stderr.write(`\r${text}`); };
+    const handle = await fs.promises.open(file, 'r');
+    try {
+        let offset = started.offset || 0;
+        let failures = 0;
+        while (offset < size) {
+            show(`Uploading ${path.basename(file)} ${Math.floor((offset / size) * 100)}%`);
+            const length = Math.min(piece, size - offset);
+            const bytes = Buffer.alloc(length);
+            const { bytesRead } = await handle.read(bytes, 0, length, offset);
+            if (bytesRead !== length) fail(`${file} changed while it was being sent.`);
+            try {
+                const res = await client.request('PATCH', url, { headers: { 'Upload-Offset': String(offset), 'Content-Type': 'application/octet-stream' }, body: bytes });
+                offset = (await res.json()).offset;
+                failures = 0;
+            } catch (err) {
+                // Not where the server is (a piece got through but its answer was lost): go on from where it says
+                if (err.status === 409 && err.body && Number.isInteger(err.body.offset) && !err.body.busy) {
+                    offset = err.body.offset;
+                    continue;
+                }
+                if (!err.retryable && err.status !== 409) throw err;
+                if (++failures > CHUNK_RETRIES) throw err;
+                await sleep(retryDelayMs * 2 ** (failures - 1));
+                try {
+                    offset = (await (await client.request('GET', url)).json()).offset;
+                } catch {
+                    // still unreachable: the next try sends the same piece and fails or works as it will
+                }
+            }
+        }
+        show(`Uploading ${path.basename(file)} 100%`);
+        for (let tries = 0; ; tries++) {
+            try {
+                return await (await client.request('POST', `${url}/complete`)).json();
+            } catch (err) {
+                if (!err.retryable || tries >= CHUNK_RETRIES) throw err;
+                await sleep(retryDelayMs * 2 ** tries);
+            }
+        }
+    } catch (err) {
+        // Nothing here resumes it later, so do not leave it holding space on the server
+        await client.request('DELETE', url).catch(() => {});
+        throw err;
+    } finally {
+        await handle.close();
+        if (process.stderr.isTTY) process.stderr.write('\n');
+    }
+}
+
 const COMMANDS = {
     async send(client, { flags, words }) {
         need(words, 1, 'send NAME "text" | send NAME --file PATH');
@@ -123,6 +194,10 @@ const COMMANDS = {
             const stat = fs.statSync(flags.file, { throwIfNoEntry: false });
             if (!stat || !stat.isFile()) fail(`${flags.file} is not a file.`);
             const size = stat.size;
+            if (size > BIG_FILE) {
+                const item = await sendInPieces(client, base, flags.file, size, flags.title, Number(process.env.STASHLY_RETRY_DELAY_MS) || 500);
+                return `Sent file ${item.fileName} (id ${item.id}, ${item.fileSize} bytes)`;
+            }
             const headers = { 'X-File-Name': encodeURIComponent(path.basename(flags.file)), 'Content-Type': 'application/octet-stream', 'Content-Length': String(size) };
             if (flags.title) headers['X-Title'] = encodeURIComponent(flags.title);
             // Read from disk as it is sent, so a large file is never held in memory

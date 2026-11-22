@@ -9,8 +9,11 @@ const config = loadConfig();
 const fileStore = new FileStore(config.filesDir);
 const db = connect(config.sqlitePath, { fileStore });
 const model = new StashModel(db, fileStore);
-// Files left behind by a crash (no matching item, or an upload that never finished) are removed
-const stray = fileStore.sweep(model.liveFileIds(), model.liveThumbIds());
+// Unfinished resumable uploads survive a restart (that is the point), unless their partial file is gone
+model.reconcileUploads();
+// Files left behind by a crash (no matching item, or an upload that never finished) are removed; the partial files
+// of the resumable uploads that are still open are kept
+const stray = fileStore.sweep(model.liveFileIds(), model.liveThumbIds(), model.livePartNames());
 if (stray) console.log(`Removed ${stray} stray file(s) from ${config.filesDir}.`);
 const events = new StashEvents();
 const secret = config.sessionSecret || getOrCreateSecret(db);
