@@ -16,7 +16,8 @@ const removeTemp = temp => fs.promises.rm(temp, { force: true, maxRetries: 5, re
 
 class AdminController {
     // audit and metrics: see StashController (they do nothing unless the app passes real ones)
-    constructor({ model, events, config, adminAuth, settings, now = () => new Date(), resetFailures = () => {}, audit = noopAudit, metrics = noopMetrics }) {
+    constructor({ model, events, config, adminAuth, settings, users = null, now = () => new Date(), resetFailures = () => {}, audit = noopAudit, metrics = noopMetrics }) {
+        this.users = users;
         this.audit = audit;
         this.metrics = metrics;
         this.resetFailures = resetFailures;
@@ -29,7 +30,9 @@ class AdminController {
     }
 
     status = (req, res) => {
-        res.json({ enabled: this.adminAuth.enabled, signedIn: this.adminAuth.isAdmin(req) });
+        const signedIn = this.adminAuth.isAdmin(req);
+        // via: how the admin is signed in (the page signs out of the account too when that is what it is)
+        res.json({ enabled: this.adminAuth.enabled, signedIn, ...(signedIn ? { via: this.adminAuth.isRoot(req) ? 'password' : 'account' } : {}) });
     };
 
     login = (req, res) => {
@@ -71,6 +74,7 @@ class AdminController {
             totals: this.model.totals(),
             maxTotalBytes: this.config.maxTotalBytes,
             maxStashes: this.config.maxStashes,
+            userCount: this.users ? this.users.count() : 0,
             stashes: this.model.listStashes({ search }).map(row => this.presentStash(row)),
         });
     };

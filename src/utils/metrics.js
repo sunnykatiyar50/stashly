@@ -22,6 +22,12 @@ const DEFINITIONS = {
         labels: ['result'],
         initial: [['success'], ['failure']],
     },
+    stashly_user_logins_total: {
+        type: 'counter',
+        help: 'User account sign-in attempts that reached the server, by result.',
+        labels: ['result'],
+        initial: [['success'], ['failure']],
+    },
 };
 
 const escapeLabel = value => String(value).replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/"/g, '\\"');

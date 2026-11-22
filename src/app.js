@@ -34,12 +34,14 @@ try {
     console.error(`Stashly cannot start: ${err.message}`);
     process.exit(1);
 }
-const { app, controller } = created;
+const { app, controller, userController } = created;
 
 // Remove stashes whose time is up (they are also removed the moment someone opens them)
 const timer = setInterval(() => {
     try {
         const removed = controller.cleanup();
+        // Forget sign-in counts whose window has passed
+        userController.cleanup();
         if (removed.length) console.log(`Removed ${removed.length} expired stash(es).`);
     } catch (err) {
         console.error('Cleanup failed:', err);

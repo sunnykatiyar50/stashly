@@ -30,6 +30,10 @@
                 <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
                 <span class="label">Stashes</span>
             </a>
+            <a href="#/users" class="nav-link admin-only hidden" data-view="users" title="Users">
+                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span class="label">Users</span>
+            </a>
             <a href="#/settings" class="nav-link admin-only hidden" data-view="settings" title="Settings">
                 <svg viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
                 <span class="label">Settings</span>
@@ -69,6 +73,7 @@
                     <small class="field-error" id="loginError" role="alert"></small>
                 </div>
                 <button type="submit" id="loginButton" class="primary">Sign in</button>
+                <small class="field-hint">A user with the admin role signs in on the <a href="/account">account page</a> instead, then comes back here.</small>
             </form>
         </section>
 
@@ -83,6 +88,7 @@
 
             <div class="stats">
                 <div class="stat card"><span class="stat-label">Stashes</span><span class="stat-value" id="statStashes"></span><span class="stat-sub" id="statStashesSub"></span></div>
+                <div class="stat card"><span class="stat-label">Users</span><span class="stat-value" id="statUsers"></span><span class="stat-sub"><a href="#/users">Manage users</a></span></div>
                 <div class="stat card"><span class="stat-label">Items</span><span class="stat-value" id="statItems"></span><span class="stat-sub" id="statItemsSub"></span></div>
                 <div class="stat card">
                     <span class="stat-label">File space</span><span class="stat-value" id="statBytes"></span>
@@ -119,6 +125,69 @@
             </div>
         </section>
 
+        <!-- ===== Users ===== -->
+        <section id="viewUsers" class="view hidden">
+            <header class="view-header">
+                <div class="view-title">
+                    <h1>Users</h1>
+                    <span id="userInfo" class="muted"></span>
+                </div>
+                <div class="header-actions">
+                    <button id="refreshUsersButton" type="button" class="ghost icon-only" title="Refresh" aria-label="Refresh users">
+                        <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    </button>
+                </div>
+            </header>
+
+            <div class="card table-card">
+                <table class="table users-table">
+                    <thead>
+                        <tr><th>Username</th><th>Role</th><th>Status</th><th>Last sign-in</th><th>Stashes</th><th></th></tr>
+                    </thead>
+                    <tbody id="userBody"></tbody>
+                </table>
+                <p id="userEmpty" class="empty-state hidden">No users yet. Add one below.</p>
+            </div>
+            <p class="muted">Users sign in on the account page and follow stashes to watch them in one place. A user cannot open a password-protected stash they have not followed with its password, and the admin cannot read what is in a stash from here.</p>
+
+            <form id="userForm" class="card form-card users-card users-form" novalidate aria-labelledby="userFormTitle">
+                <h2 id="userFormTitle">Add a user</h2>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="newUsername">Username</label>
+                        <input type="text" id="newUsername" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40" />
+                        <small class="field-hint">3 to 40 letters, numbers, dots, dashes or underscores.</small>
+                        <small class="field-error" id="newUsernameError" role="alert"></small>
+                    </div>
+                    <div class="field">
+                        <label for="newDisplayName">Display name <span class="optional">optional</span></label>
+                        <input type="text" id="newDisplayName" autocomplete="off" maxlength="60" />
+                        <small class="field-error" id="newDisplayNameError" role="alert"></small>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="newUserPassword">Initial password</label>
+                        <input type="password" id="newUserPassword" autocomplete="new-password" maxlength="200" />
+                        <small class="field-hint">Tell the user. They can change it on the account page.</small>
+                        <small class="field-error" id="newUserPasswordError" role="alert"></small>
+                    </div>
+                    <div class="field">
+                        <label for="newUserRole">Role</label>
+                        <select id="newUserRole">
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                        <small class="field-hint">An admin can use this admin area and manage users.</small>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" id="createUserButton" class="primary">Add user</button>
+                    <p id="userFormStatus" class="form-status" role="status"></p>
+                </div>
+            </form>
+        </section>
+
         <!-- ===== Settings ===== -->
         <section id="viewSettings" class="view hidden">
             <header class="view-header">
@@ -150,6 +219,21 @@
             <div class="qr-actions">
                 <button type="button" id="passwordCancel" class="ghost">Cancel</button>
                 <button type="submit" id="passwordSave" class="primary">Set password</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="userPasswordDialog" class="qr-dialog share-dialog" aria-labelledby="userPasswordTitle">
+        <form id="userPasswordForm" class="qr-body share-body" novalidate>
+            <h2 id="userPasswordTitle">Reset password</h2>
+            <p class="muted">Sets a new password and signs the user out everywhere. Tell them the new password.</p>
+            <div class="field">
+                <label for="userPasswordInput">New password</label>
+                <input type="password" id="userPasswordInput" autocomplete="new-password" maxlength="200" />
+                <small class="field-error" id="userPasswordError" role="alert"></small>
+            </div>
+            <div class="qr-actions">
+                <button type="button" id="userPasswordCancel" class="ghost">Cancel</button>
+                <button type="submit" id="userPasswordSave" class="primary">Reset password</button>
             </div>
         </form>
     </dialog>

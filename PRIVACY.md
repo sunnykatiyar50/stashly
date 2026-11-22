@@ -1,6 +1,6 @@
 # Privacy policy
 
-Last updated: 22 November 2026
+Last updated: 23 November 2026
 
 This policy covers the **Stashly browser extension** (Chrome, Edge and Firefox) and the **Stashly server** in this
 repository.
@@ -54,11 +54,31 @@ what is stored there. As built, the server:
 - stores the notes and files you add, until you delete them, the note's own expiry passes, the stash expires, or the
   admin deletes the stash
 - stores stash passwords only as salted hashes, never in plain text
-- uses cookies only to keep you signed in to a password-protected stash and to the admin page; there are no tracking
-  or advertising cookies
+- uses cookies only to keep you signed in to a password-protected stash, to the admin page and, if the server has
+  accounts, to your account; there are no tracking or advertising cookies
 - keeps visitors' IP addresses only in memory, briefly, to limit repeated requests and wrong passwords; it does not
   write them to a log
 - makes no connections of its own to outside services, and sends no data to the author of Stashly
+
+### Accounts (optional)
+
+Accounts exist only when the person running the server turns on the admin area, and only the admin can create them.
+Nobody needs one to use a stash. When a server has accounts, it stores for each one:
+
+- a username and, if the admin gave one, a display name
+- a salted hash of the password (never the password itself)
+- the role (admin or user), whether the account is disabled, who created it and when
+- the time of the last sign-in, and a counter that ends all its sessions when the password, role or status changes
+- the list of stashes the user follows, with when each was added and when the user last opened it (used for "new"
+  counts), and the access the user proved when following (full or read-only) as a snapshot of the stash's current
+  password and link, never the password or the link itself
+
+Nothing else is added: no email address, no phone number, no profile, no history of what you open, and no tracking.
+The account cookie only identifies you to this server. The stash name and password you give to follow a stash are
+checked once and not kept. Deleting an account removes all of this, and the stashes it followed are not touched. The
+server's logs, if the operator turns them on, name a user only by number and never carry a username, a password or a
+stash name. The admin can see usernames, roles, sign-in times and how many stashes each user follows, but not which
+stashes, and cannot read what is in a stash from the admin pages.
 
 Burn-after-reading notes are deleted on the server as soon as they are revealed. Deleted notes are overwritten in the
 database file. When you delete a note or file yourself, the server keeps it for a short time (2 minutes by default, set

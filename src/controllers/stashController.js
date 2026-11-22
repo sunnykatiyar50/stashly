@@ -13,6 +13,7 @@ const { ZipWriter } = require('../utils/zipWriter');
 const { planExport } = require('../utils/stashExport');
 const { noopAudit } = require('../utils/auditLog');
 const { noopMetrics } = require('../utils/metrics');
+const { grantRole } = require('../models/userModel');
 
 // Three cookies per stash: full access (the password), or one of the two share links. The names cannot collide,
 // because the prefixes differ before the stash name starts.
@@ -85,7 +86,11 @@ const contentOf = stash => (CONTENT_KINDS.includes(stash.content) ? stash.conten
 class StashController {
     // audit(event, { req, stash, actor, detail }) writes the audit log and metrics counts what is worth counting; both
     // do nothing unless the app passes real ones (see utils/auditLog.js and utils/metrics.js)
-    constructor({ model, events, config, secret, now = () => new Date(), isAdmin = () => false, audit = noopAudit, metrics = noopMetrics }) {
+    // users (the follow list) and userAuth (who is signed in) are only given when accounts exist; without them nothing
+    // about accounts is consulted
+    constructor({ model, events, config, secret, now = () => new Date(), isAdmin = () => false, audit = noopAudit, metrics = noopMetrics, users = null, userAuth = null }) {
+        this.users = users;
+        this.userAuth = userAuth;
         this.audit = audit;
         this.metrics = metrics;
         this.isAdmin = isAdmin;
@@ -158,37 +163,66 @@ class StashController {
 
     // Finds the stash named in the URL. A stash whose time is up is deleted on the spot.
     loadStash = (req, res, next) => {
-        const stash = this.model.findBySlug(String(req.params.slug || '').toLowerCase());
-        if (stash && stash.expires_at && stash.expires_at <= this.now().toISOString()) {
-            this.model.deleteStash(stash.id, this.now());
-            this.events.closeAll(stash.slug, 'stash-gone', { reason: 'expired' });
-            this.audit('stash.deleted', { stash, actor: 'system', detail: { reason: 'expired' } });
-            return res.status(404).json({ error: 'This stash has expired or does not exist.' });
-        }
+        const stash = this.liveStash(req.params.slug);
         if (!stash) return res.status(404).json({ error: 'This stash has expired or does not exist.' });
         req.stash = stash;
         next();
     };
 
-    // What this visitor may do in this stash: 'full' (no password, or unlocked), 'view' (a read-only link),
-    // 'drop' (a drop-box link: can add, cannot read) or null (locked out).
-    roleOf(req, stash) {
-        return this.access(req, stash).role;
+    // The stash with this name, or null when there is none. A stash whose time is up is deleted on the spot.
+    liveStash(slug) {
+        const stash = this.model.findBySlug(String(slug || '').toLowerCase());
+        if (stash && stash.expires_at && stash.expires_at <= this.now().toISOString()) {
+            this.model.deleteStash(stash.id, this.now());
+            this.events.closeAll(stash.slug, 'stash-gone', { reason: 'expired' });
+            this.audit('stash.deleted', { stash, actor: 'system', detail: { reason: 'expired' } });
+            return null;
+        }
+        return stash || null;
     }
 
-    // The role, plus the valid sign-in token it came from ({ expiresAt, signedInAt }; none for a stash with no password)
-    access(req, stash) {
+    // What this visitor may do in this stash: 'full' (no password, or unlocked), 'view' (a read-only link),
+    // 'drop' (a drop-box link: can add, cannot read) or null (locked out).
+    roleOf(req, stash, user = req.user) {
+        return this.access(req, stash, user).role;
+    }
+
+    // The role, plus the valid sign-in token it came from ({ expiresAt, signedInAt }; none for a stash with no password,
+    // or when the access comes from the signed-in user's follow list).
+    // `user` is the signed-in user (req.user unless the caller has looked them up again, as a live stream does on each
+    // heartbeat). A follow only counts while its snapshot still matches the stash (see grantRole), so it ends with a
+    // password change, "sign out other devices" or a replaced read-only link, exactly as a cookie does. A cookie that
+    // gives more than the follow wins.
+    access(req, stash, user = req.user) {
         if (!stash.password_hash) return { role: 'full', token: null };
         const cookies = parseCookies(req.headers.cookie);
         const now = this.now().getTime();
         const full = verifyToken(this.secret, stash.slug, this.saltFor(stash, 'full'), cookies[cookieName(stash.slug)], now);
         if (full) return { role: 'full', token: full };
+        const granted = this.grantFor(user, stash);
+        if (granted === 'full') return { role: 'full', token: null };
         for (const kind of ['view', 'drop']) {
             if (!stash[`${kind}_token_hash`]) continue;
             const token = verifyToken(this.secret, roleSubject(stash.slug, kind), this.saltFor(stash, kind), cookies[ROLE_COOKIES[kind](stash.slug)], now);
             if (token) return { role: kind, token };
         }
+        if (granted) return { role: granted, token: null };
         return { role: null, token: null };
+    }
+
+    // What the user's follow of this stash lets them do right now ('full', 'view' or null)
+    grantFor(user, stash) {
+        if (!user || !this.users) return null;
+        return grantRole(this.users.getFollow(user.id, stash.id), stash);
+    }
+
+    // The person who changed a stash's password or signed out the other devices stays in (their cookie is renewed). If
+    // they follow the stash, their follow is renewed the same way; everyone else's follow stops working.
+    renewOwnFollow(req, stash) {
+        if (!req.user || !this.users) return;
+        const follow = this.users.getFollow(req.user.id, stash.id);
+        if (!follow || follow.grant_role !== 'full') return;
+        this.users.follow(req.user.id, stash.id, { role: 'full', salt: stash.password_salt, version: stash.session_version || 0, viewHash: null }, this.now());
     }
 
     // What a sign-in cookie is tied to: the password's salt (or the share link's hash), and the stash's session
@@ -227,14 +261,21 @@ class StashController {
             defaultSession: this.config.defaultSession,
             itemTtlOptions: this.config.itemTtlOptions.map(({ key, label }) => ({ key, label })),
             fileTypes: this.config.fileTypes,
-            // false when only the admin may create stashes and the visitor is not signed in as admin
+            // false when creating is limited (to admins, or to signed-in users) and the visitor does not qualify
             canCreate: this.canCreate(req),
+            // Who may create: 'open' (anyone, the default), 'login' (signed-in users and admins) or 'admin'
+            createRule: this.config.requireAdminToCreate ? 'admin' : this.config.requireLoginToCreate ? 'login' : 'open',
             adminEnabled: Boolean(this.config.adminPassword),
+            accountsEnabled: Boolean(this.config.adminPassword),
         });
     };
 
+    // Anyone, unless the admin limited it: to admins (the ADMIN_PASSWORD admin or a user with the admin role), or to
+    // anyone signed in. Visitors without an account keep opening and using stashes either way.
     canCreate(req) {
-        return !this.config.requireAdminToCreate || this.isAdmin(req);
+        if (this.config.requireAdminToCreate) return this.isAdmin(req);
+        if (this.config.requireLoginToCreate) return this.isAdmin(req) || Boolean(req.user);
+        return true;
     }
 
     // A name another stash gave up recently (deleted, expired or renamed away) is kept from new stashes for a while:
@@ -253,7 +294,9 @@ class StashController {
 
     create = async (req, res) => {
         if (!this.canCreate(req)) {
-            return res.status(403).json({ error: 'Only the admin can create stashes on this server. Sign in at /admin first.' });
+            return this.config.requireAdminToCreate
+                ? res.status(403).json({ error: 'Only the admin can create stashes on this server. Sign in at /admin first.' })
+                : res.status(403).json({ error: 'You need to sign in to create stashes on this server. Sign in at /account first.' });
         }
         const body = req.body || {};
         const parsed = parseSlug(body.slug);
@@ -301,6 +344,11 @@ class StashController {
             // The creator is let in without retyping the password
             if (stash.password_hash) this.setAccessCookie(req, res, stash);
             this.audit('stash.created', { req, stash, detail: { password: Boolean(password), ttl: ttl.key } });
+            // A signed-in user follows what they create: it shows up on their page without typing the password again
+            if (req.user && this.users) {
+                this.users.follow(req.user.id, stash.id, { role: 'full', salt: stash.password_salt, version: stash.session_version || 0, viewHash: null }, this.now());
+                this.audit('user.followed', { req, stash, actor: 'user', detail: { user: req.user.id, role: 'full', via: 'create' } });
+            }
             res.status(201).json({
                 slug: stash.slug,
                 url: `/s/${stash.slug}`,
@@ -506,6 +554,7 @@ class StashController {
         const updated = this.model.setPassword(stash.id, hashed.hash, hashed.salt);
         this.lockout.clear(stash.slug);
         const ends = this.setAccessCookie(req, res, updated, 'full', remaining, this.signedInAt(req));
+        this.renewOwnFollow(req, updated);
         this.audit('stash.password_changed', { req, stash });
         this.events.closeAll(stash.slug, 'access-changed', { origin: this.withOrigin({}, req).origin });
         res.json({ ok: true, sessionEndsAt: new Date(ends).toISOString() });
@@ -520,6 +569,7 @@ class StashController {
         const remaining = this.remainingSession(req, stash);
         const updated = this.model.bumpSessionVersion(stash.id);
         const ends = this.setAccessCookie(req, res, updated, 'full', remaining, this.signedInAt(req));
+        this.renewOwnFollow(req, updated);
         this.audit('stash.sessions_signed_out', { req, stash });
         this.events.closeAll(stash.slug, 'access-changed', { origin: this.withOrigin({}, req).origin });
         res.json({ ok: true, sessionEndsAt: new Date(ends).toISOString() });
@@ -1371,7 +1421,9 @@ class StashController {
             const stash = this.model.findBySlug(slug);
             if (!stash) return 'stash-gone';
             if (stash.expires_at && stash.expires_at <= this.now().toISOString()) return 'stash-gone';
-            return ['full', 'view'].includes(this.roleOf(req, stash)) ? null : 'access-changed';
+            // The signed-in user is looked up again, so a user who was disabled or signed out stops receiving
+            const user = this.userAuth ? this.userAuth.resolve(req) : null;
+            return ['full', 'view'].includes(this.roleOf(req, stash, user)) ? null : 'access-changed';
         };
         this.events.subscribe(slug, req, res, {
             verify,

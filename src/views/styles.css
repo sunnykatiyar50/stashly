@@ -1,4 +1,4 @@
-/* Stashly shares its look with Message-Sandbox: same tokens, sidebar shell, buttons, cards and toolbar. */
+/* Shared look: tokens, sidebar shell, buttons, cards and toolbar. */
 
 /* ===== Tokens ===== */
 :root {
@@ -213,7 +213,7 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
 .card h3 { font-size: 15px; margin-bottom: 4px; }
 
-/* "Jan 5 - Jan 7 x" chip and the Live badge, as in Message-Sandbox */
+/* "Jan 5 - Jan 7 x" chip and the Live badge */
 .filter-chip { align-self: center; gap: 4px; padding: 2px 6px 2px 10px; border-radius: 12px; background: var(--blue-soft); color: var(--blue); font-size: 12.5px; font-weight: 600; }
 .filter-chip svg { width: 14px; height: 14px; }
 .filter-chip:hover { background: var(--blue-soft-hover); }
@@ -463,6 +463,27 @@ audio.detail-media { max-height: none; }
 .settings-control input[type="number"] { width: 130px; }
 .settings-control select { width: 100%; }
 .settings-control .field-hint, .settings-control .field-error { flex-basis: 100%; }
+
+/* ===== Accounts: the account page, the users table and the follow button ===== */
+.follow-card { max-width: 760px; }
+.follow-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+.follow-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 16px; }
+.follow-item.stale { border-style: dashed; }
+.follow-main { min-width: 0; flex: 1 1 280px; display: flex; flex-direction: column; gap: 4px; }
+.follow-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.follow-name { font-weight: 600; overflow-wrap: anywhere; }
+.follow-sub { font-size: 12.5px; }
+.chip.new-chip { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+.chip.role-view { background: var(--warning-bg); color: var(--warning-text); }
+.chip.role-admin { background: var(--blue-soft); color: var(--blue); }
+.chip.status-off { background: var(--danger-soft); color: var(--danger); }
+.refresh-info { font-size: 12px; }
+.users-card { gap: 10px; }
+.users-card h2 { font-size: 16px; }
+.users-form .field-row { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.users-table .row-actions { flex-wrap: wrap; justify-content: flex-end; }
+.header-actions .button-link.hidden { display: none; }
+#followStashButton.following { border-color: var(--blue); color: var(--blue); background: var(--blue-soft); }
 
 /* ===== Small screens: the sidebar becomes a top bar ===== */
 @media (max-width: 760px) {

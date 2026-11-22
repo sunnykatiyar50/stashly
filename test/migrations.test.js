@@ -72,7 +72,7 @@ test('a schema 2 database gets the trash table (and then thumbnails) and keeps i
 
         const db = connect(file);
         assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
-        assert.equal(SCHEMA_VERSION, 5);
+        assert.equal(SCHEMA_VERSION, 6);
         assert.deepEqual(columns(db, 'trash'), [
             'id', 'stash_id', 'kind', 'title', 'text', 'file_name', 'file_type', 'file_size', 'created_at',
             'expires_at', 'burn', 'secret', 'pinned', 'edited_at', 'sort_order', 'deleted_at', 'has_thumb',
@@ -139,7 +139,7 @@ test('a schema 4 database gets the uploads table at version 5, keeps its data, a
         first.close();
 
         const db = connect(file);
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 5);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
         assert.deepEqual(columns(db, 'uploads'), ['id', 'stash_id', 'role', 'name', 'title', 'size', 'received', 'created_at', 'last_activity']);
         assert.equal(db.prepare('SELECT COUNT(*) AS n FROM uploads').get().n, 0);
         assert.equal(db.prepare('SELECT text FROM items').get().text, 'kept');
@@ -152,7 +152,61 @@ test('a schema 4 database gets the uploads table at version 5, keeps its data, a
 
         // Opening it again changes nothing
         const again = connect(file);
-        assert.equal(again.prepare('PRAGMA user_version').get().user_version, 5);
+        assert.equal(again.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
+        again.close();
+    } finally {
+        cleanup();
+    }
+});
+
+test('a schema 5 database gets the users and follow tables at version 6, keeps its data, and the tables are wired up', () => {
+    const { file, cleanup } = tempDb();
+    try {
+        // A database exactly as the previous release left it: schema 5, without the account tables
+        const first = connect(file);
+        first.exec('DROP TABLE user_stashes');
+        first.exec('DROP TABLE users');
+        first.exec("INSERT INTO stashes (slug, created_at) VALUES ('five', '2026-01-01T00:00:00Z')");
+        first.exec("INSERT INTO items (stash_id, kind, text, created_at, sort_order) VALUES (1, 'note', 'kept', '2026-01-01T00:00:02Z', 1)");
+        first.exec('PRAGMA user_version = 5');
+        first.close();
+
+        const db = connect(file);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 6);
+        assert.equal(SCHEMA_VERSION, 6);
+        assert.deepEqual(columns(db, 'users'), [
+            'id', 'username', 'display_name', 'password_hash', 'password_salt', 'role', 'disabled', 'session_version',
+            'created_at', 'created_by', 'last_login_at',
+        ]);
+        assert.deepEqual(columns(db, 'user_stashes'), [
+            'user_id', 'stash_id', 'added_at', 'last_seen_at', 'grant_role', 'grant_salt', 'grant_version', 'grant_view_hash',
+        ]);
+        assert.equal(db.prepare('SELECT text FROM items').get().text, 'kept');
+        assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 0);
+
+        // Usernames are unique, roles are checked, and a disabled flag and session version start at 0
+        db.exec("INSERT INTO users (username, password_hash, password_salt, role, created_at) VALUES ('sam', 'h', 's', 'user', '2026-01-01T00:00:00Z')");
+        assert.throws(() => db.exec("INSERT INTO users (username, password_hash, password_salt, role, created_at) VALUES ('sam', 'h', 's', 'user', '2026-01-01T00:00:00Z')"), /UNIQUE/);
+        assert.throws(() => db.exec("INSERT INTO users (username, password_hash, password_salt, role, created_at) VALUES ('kim', 'h', 's', 'member', '2026-01-01T00:00:00Z')"), /CHECK/);
+        const row = db.prepare("SELECT disabled, session_version FROM users WHERE username = 'sam'").get();
+        assert.deepEqual({ ...row }, { disabled: 0, session_version: 0 });
+
+        // A follow goes when its user goes, and when its stash goes; the other side is never touched
+        db.exec("INSERT INTO user_stashes (user_id, stash_id, added_at, last_seen_at, grant_role) VALUES (1, 1, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'full')");
+        db.exec('DELETE FROM users WHERE id = 1');
+        assert.equal(db.prepare('SELECT COUNT(*) AS n FROM user_stashes').get().n, 0);
+        assert.equal(db.prepare('SELECT COUNT(*) AS n FROM stashes').get().n, 1);
+        db.exec("INSERT INTO users (username, password_hash, password_salt, role, created_at) VALUES ('lee', 'h', 's', 'admin', '2026-01-01T00:00:00Z')");
+        db.exec("INSERT INTO user_stashes (user_id, stash_id, added_at, last_seen_at, grant_role) VALUES (2, 1, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'view')");
+        db.exec('DELETE FROM stashes WHERE id = 1');
+        assert.equal(db.prepare('SELECT COUNT(*) AS n FROM user_stashes').get().n, 0);
+        assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 1);
+        db.close();
+
+        // Opening it again changes nothing
+        const again = connect(file);
+        assert.equal(again.prepare('PRAGMA user_version').get().user_version, 6);
+        assert.equal(again.prepare('SELECT COUNT(*) AS n FROM users').get().n, 1);
         again.close();
     } finally {
         cleanup();

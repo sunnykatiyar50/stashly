@@ -28,10 +28,18 @@ class AdminAuth {
         return crypto.timingSafeEqual(digest(password), digest(this.config.adminPassword));
     }
 
-    isAdmin = req => {
+    // The ADMIN_PASSWORD admin (its own cookie). It is not a user row: it is what creates the first users.
+    isRoot = req => {
         if (!this.enabled) return false;
         const token = parseCookies(req.headers.cookie)[COOKIE];
         return Boolean(verifyToken(this.secret, 'admin', this.salt, token, this.now().getTime()));
+    };
+
+    // Either admin: the ADMIN_PASSWORD one, or a signed-in user whose role is admin (req.user comes from the user
+    // middleware, which has already checked the session and that the account is not disabled)
+    isAdmin = req => {
+        if (!this.enabled) return false;
+        return this.isRoot(req) || Boolean(req.user && req.user.role === 'admin');
     };
 
     startSession(req, res) {
@@ -53,7 +61,11 @@ class AdminAuth {
     // Middleware for the admin API
     require = (req, res, next) => {
         if (!this.enabled) return res.status(404).json({ error: 'Admin is not enabled on this server.' });
-        if (!this.isAdmin(req)) return res.status(401).json({ error: 'Sign in as admin first.', signedIn: false });
+        if (!this.isAdmin(req)) {
+            // A signed-in user without the admin role is known, just not allowed
+            if (req.user) return res.status(403).json({ error: 'This needs an admin account.', signedIn: false });
+            return res.status(401).json({ error: 'Sign in as admin first.', signedIn: false });
+        }
         next();
     };
 }

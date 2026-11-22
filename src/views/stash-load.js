@@ -58,6 +58,8 @@
         updateSessionInfo();
         // Share links only make sense on a password-protected stash, and only for someone with full access
         $('shareButton').classList.toggle('hidden', !(r === 'full' && state.stash.hasPassword));
+        // The account's Follow button (stash-account.js) follows the role too
+        if (P.afterRole) P.afterRole();
     }
 
     function updateHeader() {

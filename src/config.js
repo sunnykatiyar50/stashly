@@ -62,6 +62,13 @@ function loadConfig(env = process.env, overrides = {}) {
         // The admin area is only on when a password is set
         adminPassword,
         requireAdminToCreate: Boolean(adminPassword) && flag(env.REQUIRE_ADMIN_TO_CREATE),
+        // Accounts exist only when the admin area is on (ADMIN_PASSWORD set). With this on, only a signed-in user (any
+        // role) or the admin may create stashes; visitors can still open any stash they have the link to.
+        requireLoginToCreate: Boolean(adminPassword) && flag(env.REQUIRE_LOGIN_TO_CREATE),
+        // How long a user stays signed in on one browser (1 to 90 days)
+        userSessionDays: Math.max(1, Math.min(90, Math.floor(num(env.USER_SESSION_DAYS, 7)))),
+        // Wrong account passwords per address per 15 minutes (the per-username lockout uses the STASH_UNLOCK_* settings)
+        rateUserLogin: num(env.RATE_USER_LOGIN, 10),
         // Operating: access log (off | json), audit log (off | stdout) and the /metrics token (empty = no /metrics)
         logFormat: (env.LOG_FORMAT || 'off').trim().toLowerCase(),
         auditLog: (env.AUDIT_LOG || 'off').trim().toLowerCase(),

@@ -156,6 +156,45 @@ const MIGRATIONS = [
         db.exec('CREATE INDEX IF NOT EXISTS idx_uploads_stash ON uploads (stash_id)');
         db.exec('CREATE INDEX IF NOT EXISTS idx_uploads_activity ON uploads (last_activity)');
     },
+
+    // 6: optional user accounts. Accounts are created by the admin; a user can follow stashes to watch them in one place.
+    // `username` is stored lowercase (case-insensitive unique). `session_version` is raised to end every session of that
+    // user at once (a password change, a role change, a disable, "sign out everywhere"). A role is 'admin' or 'user'.
+    // `user_stashes` is the follow list. The grant_* columns are a snapshot of the access the user proved when they
+    // followed (the stash's password salt and session version, and for a read-only link the hash of its token): the
+    // snapshot stops matching the moment the password changes, sessions are signed out or the link is replaced, which
+    // ends the grant exactly like it ends a cookie. Deleting a user or a stash deletes the follow rows, never the stash.
+    db => {
+        db.exec(
+            `CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                display_name TEXT,
+                password_hash TEXT NOT NULL,
+                password_salt TEXT NOT NULL,
+                role TEXT NOT NULL CHECK (role IN ('admin', 'user')),
+                disabled INTEGER NOT NULL DEFAULT 0,
+                session_version INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                created_by TEXT,
+                last_login_at TEXT
+            )`
+        );
+        db.exec(
+            `CREATE TABLE IF NOT EXISTS user_stashes (
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                stash_id INTEGER NOT NULL REFERENCES stashes(id) ON DELETE CASCADE,
+                added_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                grant_role TEXT NOT NULL CHECK (grant_role IN ('full', 'view')),
+                grant_salt TEXT,
+                grant_version INTEGER NOT NULL DEFAULT 0,
+                grant_view_hash TEXT,
+                PRIMARY KEY (user_id, stash_id)
+            )`
+        );
+        db.exec('CREATE INDEX IF NOT EXISTS idx_user_stashes_stash ON user_stashes (stash_id)');
+    },
 ];
 
 const SCHEMA_VERSION = MIGRATIONS.length;
@@ -180,7 +219,7 @@ function migrate(db, context = {}) {
     }
 }
 
-// Uses Node's built-in SQLite driver (same as Message-Sandbox), so there is no native module to compile.
+// Uses Node's built-in SQLite driver so there is no native module to compile.
 // Timestamps are ISO-8601 text, which sorts and compares correctly as strings.
 // options.fileStore: where uploaded files live (needed only to move files out of an older database)
 function connect(filePath = ':memory:', { fileStore = null } = {}) {

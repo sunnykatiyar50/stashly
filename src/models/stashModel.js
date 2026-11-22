@@ -1,4 +1,4 @@
-// All SQL lives here, so the model can be ported to another database (or merged into Message-Sandbox) in one place.
+// All SQL lives here, so the model can be ported to another database in one place.
 // What an item row holds, in the order the trash table keeps it (moving a row between the two tables copies these)
 const ITEM_COLUMNS = 'id, stash_id, kind, title, text, file_name, file_type, file_size, created_at, expires_at, burn, secret, pinned, edited_at, sort_order, has_thumb';
 

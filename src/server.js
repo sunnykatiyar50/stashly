@@ -5,6 +5,10 @@ const StashController = require('./controllers/stashController');
 const AdminController = require('./controllers/adminController');
 const createStashRoutes = require('./routes/stashRoutes');
 const createAdminRoutes = require('./routes/adminRoutes');
+const createUserRoutes = require('./routes/userRoutes');
+const UserController = require('./controllers/userController');
+const { UserModel } = require('./models/userModel');
+const { UserAuth } = require('./utils/userAuth');
 const { AdminAuth } = require('./utils/adminAuth');
 const { SettingsStore } = require('./utils/settings');
 const { accessLog } = require('./utils/accessLog');
@@ -28,9 +32,14 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
     const settings = new SettingsStore({ model, config });
     const audit = createAudit({ mode: config.auditLog, out: auditOut, secret, now });
     const metrics = new Metrics();
-    const controller = new StashController({ model, events, config, secret, now, isAdmin: adminAuth.isAdmin, audit, metrics });
+    // Accounts (only on while the admin area is): who is signed in is read before every route, and the stash controller
+    // consults the signed-in user's follow list when a visitor has no cookie for a stash
+    const users = new UserModel(model.db);
+    const userAuth = new UserAuth({ config, secret, users, now });
+    const controller = new StashController({ model, events, config, secret, now, isAdmin: adminAuth.isAdmin, audit, metrics, users, userAuth });
+    const userController = new UserController({ model, users, userAuth, adminAuth, config, stashes: controller, now, audit, metrics });
     const adminController = new AdminController({
-        model, events, config, adminAuth, settings, now, audit, metrics,
+        model, events, config, adminAuth, settings, users, now, audit, metrics,
         // A new password clears the wrong-password count the stash controller keeps
         resetFailures: slug => controller.lockout.clear(slug),
     });
@@ -90,6 +99,7 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
             },
             { name: 'stashly_stored_bytes', help: 'Bytes of the files in all stashes.', samples: [{ value: totals.bytes }] },
             { name: 'stashly_trashed_items', help: 'Deleted items still waiting out their undo time.', samples: [{ value: model.countTrash() }] },
+            { name: 'stashly_users', help: 'User accounts, by role.', samples: ['admin', 'user'].map(role => ({ labels: { role }, value: users.countByRole()[role] })) },
             { name: 'stashly_sse_connections', help: 'Open live-update streams.', samples: [{ value: events.connections() }] },
             { name: 'stashly_build_info', help: 'The running version.', samples: [{ labels: { version }, value: 1 }] },
             { name: 'stashly_process_start_time_seconds', help: 'When the server started (Unix time).', samples: [{ value: startedAt }] },
@@ -116,6 +126,9 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
         express.json({ limit: `${Math.ceil((config.maxNoteBytes * 2) / 1024) + 4}kb` })(req, res, next);
     });
 
+    // Who is signed in (req.user), for every request from here on. A cookie that does not check out is ignored.
+    app.use(userAuth.load);
+
     app.get('/metrics', metricsLimiter, (req, res) => {
         // Off unless a token is set: a server that was never asked to publish numbers does not
         if (!config.metricsToken) return res.status(404).json({ error: 'Not found' });
@@ -139,7 +152,8 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
     });
     app.get('/api/config', controller.appConfig);
     app.use('/api/stashes', createStashRoutes({ controller, config }));
-    app.use('/api/admin', createAdminRoutes({ controller: adminController, adminAuth, config }));
+    app.use('/api/admin', createAdminRoutes({ controller: adminController, users: userController, adminAuth, config }));
+    app.use('/api', createUserRoutes({ controller: userController, config }));
     app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
     // The QR code library, served from node_modules (the page's CSP only allows scripts from this server)
@@ -160,6 +174,8 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
         res.redirect(303, fragment ? `/share#${fragment}` : '/share');
     });
     app.get('/admin', (req, res) => res.sendFile(path.join(viewsDir, 'admin.html')));
+    // Sign in, and the stashes you follow
+    app.get('/account', (req, res) => res.sendFile(path.join(viewsDir, 'account.html')));
     app.use(express.static(viewsDir, { index: 'index.html' }));
 
     // Malformed JSON and oversized bodies come through here as 4xx errors from the body parsers
@@ -175,7 +191,7 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
         res.status(status).json({ error: message });
     });
 
-    return { app, controller, adminController, settings, metrics, audit };
+    return { app, controller, adminController, userController, userAuth, users, settings, metrics, audit };
 }
 
 module.exports = { createApp };
