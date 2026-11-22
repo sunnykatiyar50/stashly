@@ -71,6 +71,8 @@ function createStashRoutes({ controller, config }) {
     // Always allowed: signing out must work even when the session has already ended
     router.post('/:slug/logout', c.loadStash, c.logout);
     router.post('/:slug/session', ...anyRole, c.setSession);
+    // The whole stash as a zip (not for drop-box links, which cannot read)
+    router.get('/:slug/export', readLimiter, ...read, c.exportZip);
     router.get('/:slug/events', readLimiter, ...read, c.stream);
     // GET never changes anything. POST also reads a burn-after-reading note, which deletes it.
     router.get('/:slug/latest', readLimiter, ...read, c.latest);

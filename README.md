@@ -14,6 +14,7 @@ A self-hosted shared stash. Two machines that can't reach each other open the sa
 - **Renaming a stash**: **Options > Stash name > Rename** (full access only). The note count, pins, expiry and password stay. The old address stops working at once and the old name stays reserved (see **Reserved names** below), read-only and drop-box links are cancelled (they carry the old name), and on a password-protected stash everyone else has to sign in again while the person who renamed it stays signed in. Open pages on other devices follow the new address.
 - **Auto-copy, notifications and who is here** (Options > This tab, both off by default and kept for this tab only): **Copy new notes automatically** puts a note that arrives from another device on this computer's clipboard (browsers only allow this while the tab is in front, so otherwise it is copied when you come back). Secret and burn-after-reading notes are never copied automatically, so they don't end up in the system's clipboard history or its cloud sync. **Notify me** shows a desktop notification for a new item while the tab is in the background (needs https or localhost and your permission; secret and burn notes show no text). The header shows **N connected**, the number of pages open on the stash right now; a device with two tabs counts twice.
 - **Share from your phone (PWA)**: Stashly can be installed as an app, and then appears in the phone's share sheet. Share text or a link from any app, and the "Share to a stash" page opens with it filled in; pick the stash (those you opened on this device are suggested) and tap Send. The share sheet sends what you shared with POST, and the page receives it in the part of the address after `#` and then clears it, so it never appears in proxy logs or the browser's history (reinstall the app if you installed it before this change). Browsers only offer install and sharing over **HTTPS** (or `localhost`), so put Stashly behind a TLS reverse proxy. On Android open the site in Chrome and choose "Install app"; the share target works for text and links, not files. **The installed app reopens the last stash** you used when you launch it from its icon (it starts at `/?source=pwa`, which only the icon uses, so visiting the home page in a browser is unaffected). **Log out** or **Exit**, or a stash that has expired or been deleted, clears that memory so the next launch starts at the home page. Only the stash's name is remembered, in the browser's local storage; if you installed the app before this change, reinstall it (or wait for the browser to refresh the manifest) so the new start address takes effect. A password-protected stash must be opened once on that device first, so its unlock cookie exists. The service worker caches nothing.
+- **Export**: `GET /api/stashes/NAME/export` (or `stashly export NAME`, there is no button in the page yet) downloads the whole stash as `NAME.zip` for full and read-only access (a drop-box link cannot read, so it cannot export). The zip holds `stash.json` (the stash and a list of its items, each with its id, kind, title, dates, pin and the path of its entry), `notes/<id>-<title>.txt` for every note and `files/<id>-<file name>` for every file, exactly as uploaded. **Burn-after-reading notes are never exported**, because reading one uses it up; `stash.json` only says that one was skipped. Secret notes are exported. The zip is built while it is sent (nothing is held in memory or written to disk), names are made safe (no folders, control characters or `..`), and a stash that would not fit in a plain zip (4 GB or 65535 entries) is refused with a 413 before anything is sent. It uses the same rate limit as other reads.
 - **Live**: items appear on every open page without a refresh (Server-Sent Events).
 - **QR code**: the "QR code" button in a stash's header shows a code that opens the stash on a phone or another device. It is made in the browser from the address you are using, so open Stashly by its network address or domain (not `localhost`) for a code a phone can reach; the page says so when the address is `localhost`. A stash password is not part of the code.
 - **Password** (optional, per stash): at least 10 characters (`MIN_PASSWORD_LENGTH`, or Admin > Settings; passwords set before the rule keep working), stored as a salted scrypt hash; unlocking sets an HttpOnly cookie for that stash only.
@@ -87,6 +88,8 @@ Set `ADMIN_PASSWORD` and restart to turn on the admin area at `/admin`. There is
 
 - **Stashes**: every stash with its item count, size, creation and expiry time, plus totals against the server limits. Search by name, extend, delete, or **set or change its password**. The admin pages never show note text or file content, and the admin session does not unlock a password-protected stash. Setting a password is the exception that lets someone in: it signs everyone out of that stash, cancels its read-only and drop-box links, and clears any wrong-password lockout, and then whoever knows the new password (the admin included) can open it. It is meant for a forgotten password, so tell the owner. The notes and files are not touched.
 - **Settings**: change the limits (file size, files and items per stash, space per stash and on the server, note size, number of stashes), allow stashes that never expire, and make creating stashes admin-only. Changes apply at once and are kept in the database across restarts. "Reset to defaults" goes back to the environment values. Settings you never touch keep following the environment.
+- **Backup**: **Stashes > Download backup** (or `GET /api/admin/backup` while signed in as admin) streams `stashly-backup-<date>.zip` with `stashly.sqlite`, a consistent snapshot of the database taken with SQLite's `VACUUM INTO` while the server keeps running, and `files/<id>` for every uploaded file. The snapshot goes through a private temporary file in the files folder's `tmp/` that is always deleted, even when the download fails or the browser disconnects. Limited to 5 per 10 minutes per address. **The backup is not encrypted and holds everything readable: every note and file, the stash password hashes and the session secret** (so it can sign in as anyone). Keep it as private as the server's own disk. Making it briefly pauses the server for a large database, so do it at a quiet time; a file uploaded or deleted while it runs may be missing from it or extra in it (extras are removed at the next start).
+- **Restoring a backup**: stop Stashly, unzip the backup into the data folder so that `stashly.sqlite` and `files/` end up where the server expects them (next to each other, or wherever `SQLITE_PATH` and `FILES_DIR` point; in Docker that is the `/data` volume), delete any `stashly.sqlite-wal` and `stashly.sqlite-shm` files left next to a database you are replacing, and start Stashly again. Passwords, share links and sign-ins keep working if `SESSION_SECRET` is the same as before; without it, people just sign in again.
 - Sign-in is rate limited (wrong passwords only) and the session lasts 12 hours. Changing `ADMIN_PASSWORD` signs the admin out everywhere.
 
 ## From a terminal (no browser)
@@ -99,6 +102,26 @@ curl -X POST http://HOST:3000/api/stashes/NAME/files -H "X-File-Name: report.pdf
 ```
 
 Password-protected stashes need the unlock cookie: `curl -c jar -d '{"password":"..."}' -H "Content-Type: application/json" .../unlock`, then add `-b jar` to later calls.
+
+### The `stashly` command
+
+`bin/stashly.js` is the same thing in one file with no dependencies (Node 22 or newer): it unlocks password-protected stashes for you, uploads files straight from disk (a large file is never read into memory) and saves downloads as files. Run it as `node bin/stashly.js ...`, or with `npm link` (or `npm install -g .`) as `stashly ...`.
+
+```bash
+export STASHLY_URL=http://HOST:3000        # default http://localhost:3000 (or --url)
+export STASHLY_PASSWORD=...                # for password-protected stashes (or --password)
+
+stashly new NAME --ttl 7d --password P     # create a stash (ttl: 1h, 8h, 1d, 7d, 30d; --password is optional)
+stashly send NAME "text to share"          # a note; with no text, or "-", the text is read from stdin
+echo "from a pipe" | stashly send NAME --title "Pipe"
+stashly send NAME --file report.pdf        # upload a file (optional --title)
+stashly get NAME                           # the newest note, to stdout
+stashly list NAME                          # id, kind, size, date, title
+stashly pull NAME ID --out copy.pdf        # download a file item (default: its own name; "-" for stdout)
+stashly export NAME --out all.zip          # the whole stash as a zip (default NAME.zip)
+```
+
+It exits with 0 when it worked, and 1 on any error with one line on stderr that carries the server's own message (for example `stashly: This stash is locked. Enter the password.`). `get` leaves a burn-after-reading note alone (the server answers 409), and `pull` and `export` never overwrite an existing file. Prefer `STASHLY_PASSWORD` to `--password`, which other users of the computer can see in the process list.
 
 ## Limits (all configurable)
 
@@ -151,6 +174,7 @@ Whatever the mode, files are downloaded as attachments (images show inline), and
 ## Security notes
 
 - The stash name is the "key". Random 12-character names can't be guessed; short custom names can, so add a password for anything private.
+- A backup (Admin > Download backup) contains the password hashes and the session secret as well as all content, unencrypted. Treat it like the server's disk.
 - Passwords protect access. Content is stored unencrypted, notes in the SQLite file and uploaded files in the `files` folder next to it, so protect the server and its disk.
 - Deleted notes and files (burned, expired, trimmed or deleted) and the old text of edited notes are overwritten in the database file (`secure_delete`) and the write-ahead log is emptied afterwards, and an uploaded file is overwritten with zeros before it is removed from the `files` folder, so they can't be read back from disk. Copies already in backups are not affected.
 - The admin can reset any stash's password and so get into it; use a long random `ADMIN_PASSWORD` (the server logs a warning below 12 characters).
@@ -181,8 +205,10 @@ Add `preview` (`true` in the body, or `?preview=1`) to a listing and notes longe
 | DELETE | `/api/stashes/:slug/items/:id` | delete a note or file |
 | POST | `/api/stashes/:slug/extend` | restart the expiry timer |
 | DELETE | `/api/stashes/:slug` | delete the stash |
+| GET | `/api/stashes/:slug/export` | the whole stash as `<slug>.zip` (full and read-only access; burn-after-reading notes are left out) |
 | GET | `/api/stashes/:slug/events` | live stream |
 | GET | `/health`, `/api/config` | liveness; expiry options and limits |
+| GET | `/api/admin/backup` | admin only: the database snapshot and all files as one zip |
 
 ## Browser extension
 

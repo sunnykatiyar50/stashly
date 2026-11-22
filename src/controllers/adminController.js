@@ -2,7 +2,15 @@
 // No note text or file content is exposed here, and the admin session does not unlock a password-protected stash.
 // Setting a new password is the one way in: it signs everyone out of that stash, but whoever knows the new password
 // (the admin included) can open it. That is what makes it a reset for a forgotten password.
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { once } = require('events');
 const { hashPassword, MAX_PASSWORD } = require('../utils/password');
+const { ZipWriter, STORE, DEFLATE } = require('../utils/zipWriter');
+
+// Windows can briefly hold a file that was just closed, so a few tries
+const removeTemp = temp => fs.promises.rm(temp, { force: true, maxRetries: 5, retryDelay: 50 }).catch(() => {});
 
 class AdminController {
     constructor({ model, events, config, adminAuth, settings, now = () => new Date(), resetFailures = () => {} }) {
@@ -109,6 +117,62 @@ class AdminController {
     resetSettings = (req, res) => {
         this.settings.reset();
         res.json({ fields: this.settings.describe() });
+    };
+
+    // A backup as one zip: stashly.sqlite and files/<id> for every stored file. Unzip both into the data folder to restore.
+    //
+    // The database is copied with VACUUM INTO, which makes a complete, consistent snapshot even while the server is
+    // busy (copying the live file, or its write-ahead log, could catch it half way through a change). The snapshot
+    // goes to a private temp file that is deleted whatever happens. The files are then streamed straight from disk.
+    // Note that this holds everything, including the session secret and the password hashes: keep it private.
+    backup = async (req, res) => {
+        const files = this.model.files;
+        files.ensure();
+        const temp = path.join(files.tmpDir, `backup-${crypto.randomBytes(12).toString('hex')}.sqlite`);
+        try {
+            // VACUUM INTO needs a missing or empty file; making it first, private to this user, keeps the snapshot
+            // from ever existing with looser permissions
+            fs.closeSync(fs.openSync(temp, 'wx', 0o600));
+            this.model.db.prepare('VACUUM INTO ?').run(temp);
+
+            const now = this.now();
+            res.set({
+                'Content-Type': 'application/zip',
+                'Content-Disposition': `attachment; filename="stashly-backup-${now.toISOString().slice(0, 10)}.zip"`,
+                'X-Content-Type-Options': 'nosniff',
+                'Cache-Control': 'private, no-store',
+            });
+            const zip = new ZipWriter(res, { now });
+            await zip.addStream('stashly.sqlite', fs.createReadStream(temp), { method: DEFLATE });
+            // Done with it: remove it now, not after the files have gone out (the finally below covers the failures)
+            await removeTemp(temp);
+            for (const name of fs.readdirSync(files.dir)) {
+                if (!/^\d+$/.test(name) || !files.exists(name)) continue; // only plain files named by item id
+                const source = files.stream(name);
+                try {
+                    await once(source, 'open', { signal: zip.signal });
+                } catch (err) {
+                    source.destroy();
+                    if (zip.signal.aborted) throw err;
+                    continue; // deleted since the listing, or not a plain file
+                }
+                // Uploads are mostly compressed already; storing them avoids burning CPU for nothing
+                await zip.addStream(`files/${name}`, source, { method: STORE });
+            }
+            await zip.finish();
+        } catch (err) {
+            // Removed before answering, so by the time the admin sees the error nothing is left on disk
+            await removeTemp(temp);
+            if (!res.headersSent) {
+                if (!res.destroyed) res.status(500).json({ error: 'The backup could not be made.' });
+                console.error('Backup failed:', err);
+            } else {
+                res.destroy();
+            }
+        } finally {
+            // Always removed, also after an error or a client that left part way
+            await removeTemp(temp);
+        }
     };
 }
 

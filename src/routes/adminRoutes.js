@@ -16,6 +16,15 @@ function createAdminRoutes({ controller, adminAuth, config }) {
         message: { error: 'Too many wrong passwords. Try again in a few minutes.' },
     });
 
+    // A backup copies the whole database, so it is limited to a few a while per address
+    const backupLimiter = rateLimit({
+        windowMs: 10 * 60 * 1000,
+        limit: 5,
+        standardHeaders: 'draft-8',
+        legacyHeaders: false,
+        message: { error: 'Too many backups. Try again in a few minutes.' },
+    });
+
     router.get('/status', c.status);
     router.post('/login', loginLimiter, c.login);
     router.post('/logout', c.logout);
@@ -24,6 +33,7 @@ function createAdminRoutes({ controller, adminAuth, config }) {
     router.delete('/stashes/:slug', admin, c.deleteStash);
     router.post('/stashes/:slug/extend', admin, c.extendStash);
     router.put('/stashes/:slug/password', admin, c.setPassword);
+    router.get('/backup', admin, backupLimiter, c.backup);
     router.get('/settings', admin, c.getSettings);
     router.put('/settings', admin, c.putSettings);
     router.post('/settings/reset', admin, c.resetSettings);

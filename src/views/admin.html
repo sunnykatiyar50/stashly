@@ -110,6 +110,13 @@
                 <p id="stashEmpty" class="empty-state hidden"></p>
             </div>
             <p class="muted">You can delete or extend a stash from here, but you can't read what is in it.</p>
+
+            <div class="card form-card backup-card">
+                <h2>Backup</h2>
+                <p class="muted">Downloads one zip with the whole database and every uploaded file, taken while the server keeps running. To restore, stop the server and unzip it into the data folder.</p>
+                <p class="muted"><strong>Keep it private:</strong> the backup holds every note and file in readable form, the stash password hashes and the session secret.</p>
+                <p><a class="button-link" id="backupLink" href="/api/admin/backup" download>Download backup</a></p>
+            </div>
         </section>
 
         <!-- ===== Settings ===== -->

@@ -7,6 +7,9 @@ const { parseTitle, deriveTitle } = require('../utils/title');
 const { listZip } = require('../utils/zip');
 const { UnlockLockout } = require('../utils/lockout');
 const { pipeline } = require('stream');
+const { once } = require('events');
+const { ZipWriter } = require('../utils/zipWriter');
+const { planExport } = require('../utils/stashExport');
 
 // Three cookies per stash: full access (the password), or one of the two share links. The names cannot collide,
 // because the prefixes differ before the stash name starts.
@@ -844,6 +847,52 @@ class StashController {
         pipeline(this.model.files.stream(row.id, range || null), res, () => {
             // A client that goes away part way ends the stream; nothing more to do
         });
+    };
+
+    // The whole stash as one zip: stash.json, a text file per note and every file as it was uploaded. Burn-after-reading
+    // notes are left out (reading one would use it up). The zip is written entry by entry straight to the response, and
+    // each file streams from disk, so even a large stash never sits in memory. Full and read-only access may export;
+    // a drop-box link cannot read, so it cannot export either.
+    exportZip = async (req, res) => {
+        const stash = req.stash;
+        const now = this.now();
+        const rows = this.model.listItems(stash.id, { now });
+        const plan = planExport({ stash, rows, fileSize: id => this.model.files.size(id), now });
+        // Checked before a byte is sent, so the answer can still be a clean error instead of a broken download
+        if (!plan.fits) {
+            return res.status(413).json({ error: 'This stash is too large to export as one zip (the limit is 4 GB or 65535 entries).' });
+        }
+        res.set({
+            'Content-Type': 'application/zip',
+            'Content-Disposition': `attachment; filename="${stash.slug}.zip"`,
+            'X-Content-Type-Options': 'nosniff',
+            'Cache-Control': 'private, no-store',
+        });
+        const zip = new ZipWriter(res, { now });
+        try {
+            for (const entry of plan.entries) {
+                if (entry.kind === 'file') {
+                    // Opened first: a file that has vanished since the listing is skipped, not left as a broken entry
+                    const source = this.model.files.stream(entry.id);
+                    try {
+                        await once(source, 'open', { signal: zip.signal });
+                    } catch (err) {
+                        source.destroy();
+                        if (zip.signal.aborted) throw err;
+                        continue;
+                    }
+                    await zip.addStream(entry.name, source, { method: entry.method });
+                } else {
+                    await zip.addBuffer(entry.name, entry.kind === 'note' ? entry.text : entry.data, { method: entry.method });
+                }
+            }
+            await zip.finish();
+        } catch {
+            // Part of the zip has already gone out, so there is no way to send an error: cut the connection, which
+            // the client sees as a failed download rather than a complete-looking but short zip. Any open file was
+            // closed when its stream was destroyed.
+            res.destroy();
+        }
     };
 
     // The names inside a zip file, for the preview. Nothing is unpacked.
