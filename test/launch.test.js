@@ -53,7 +53,11 @@ test('the stash page remembers the last stash, and forgets it on logout, exit or
     assert.match(html, /<script src="\/pwa\.js"><\/script>/);
     const pwa = (await request(app).get('/pwa.js').expect(200)).text;
     assert.match(pwa, /sl_last_stash/);
-    const stash = (await request(app).get('/stash.js').expect(200)).text;
+    // The page's own script comes in several parts (stash-core.js ... stash.js); check them all
+    const parts = [...html.matchAll(/<script src="(\/stash[\w-]*\.js)"><\/script>/g)].map(match => match[1]);
+    assert.ok(parts.length > 1 && parts[parts.length - 1] === '/stash.js', 'stash.js starts the page, so it loads last');
+    let stash = '';
+    for (const part of parts) stash += (await request(app).get(part).expect(200)).text + '\n';
     assert.match(stash, /StashlyLast\.set\(slug\)/);
     assert.match(stash, /StashlyLast\.clear\(slug\)/);
 });

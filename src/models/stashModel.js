@@ -2,8 +2,28 @@
 const escapeLike = value => value.replace(/[\\%_]/g, c => `\\${c}`);
 
 class StashModel {
-    constructor(db) {
+    // files: the FileStore holding uploaded files' bytes (the database only keeps each file's row in `items`)
+    constructor(db, files = null) {
         this.db = db;
+        this.files = files;
+    }
+
+    // ---- uploaded files ----
+
+    // Ids of the file items in one stash, read before the stash is deleted so their bytes can go with it
+    fileIdsOfStash(stashId) {
+        return this.db.prepare("SELECT id FROM items WHERE stash_id = ? AND kind = 'file'").all(stashId).map(row => row.id);
+    }
+
+    // Every file item's id: what the file store should hold (anything else in its folder is left over)
+    liveFileIds() {
+        return new Set(this.db.prepare("SELECT id FROM items WHERE kind = 'file'").all().map(row => row.id));
+    }
+
+    // Removes the bytes of deleted file items. Done after the rows are gone: a crash in between leaves a stray file
+    // that the next startup sweep removes, never a row without its file.
+    dropFiles(ids) {
+        if (this.files && ids.length) this.files.remove(ids);
     }
 
     // ---- stashes ----
@@ -92,7 +112,9 @@ class StashModel {
     deleteStash(id, now = new Date()) {
         const stash = this.getStashById(id);
         if (!stash) return false;
+        const fileIds = this.fileIdsOfStash(id);
         this.db.prepare('DELETE FROM stashes WHERE id = ?').run(id);
+        this.dropFiles(fileIds);
         this.retireSlug(stash.slug, now);
         this.checkpoint();
         return true;
@@ -106,7 +128,9 @@ class StashModel {
         if (!rows.length) return [];
         const remove = this.db.prepare('DELETE FROM stashes WHERE id = ?');
         for (const row of rows) {
+            const fileIds = this.fileIdsOfStash(row.id);
             remove.run(row.id);
+            this.dropFiles(fileIds);
             this.retireSlug(row.slug, now);
         }
         // Gives the freed pages back to the file system (needs auto_vacuum = INCREMENTAL)
@@ -161,13 +185,14 @@ class StashModel {
     purgeExpiredItems(now = new Date()) {
         const rows = this.db
             .prepare(
-                `SELECT i.id, s.slug FROM items i JOIN stashes s ON s.id = i.stash_id
+                `SELECT i.id, i.kind, s.slug FROM items i JOIN stashes s ON s.id = i.stash_id
                  WHERE i.expires_at IS NOT NULL AND i.expires_at <= ?`
             )
             .all(now.toISOString());
         if (!rows.length) return [];
         const remove = this.db.prepare('DELETE FROM items WHERE id = ?');
         for (const row of rows) remove.run(row.id);
+        this.dropFiles(rows.filter(row => row.kind === 'file').map(row => row.id));
         this.checkpoint();
         return rows;
     }
@@ -181,21 +206,25 @@ class StashModel {
         );
     }
 
-    addFile(stashId, { fileName, fileType, content, title = null }, now = new Date()) {
+    // `tmp` is the received upload (see FileStore.receive) and `size` its length. The row is made first, then the
+    // upload is moved to the file store under the row's id; if anything fails, neither is left behind.
+    addFile(stashId, { fileName, fileType, tmp, size, title = null }, now = new Date()) {
         this.db.exec('BEGIN');
+        let id = null;
         try {
             const result = this.db
                 .prepare(
                     `INSERT INTO items (stash_id, kind, file_name, file_type, file_size, created_at, sort_order, title)
                      VALUES (?, 'file', ?, ?, ?, ?, ?, ?)`
                 )
-                .run(stashId, fileName, fileType, content.length, now.toISOString(), this.nextOrder(stashId), title);
-            const id = Number(result.lastInsertRowid);
-            this.db.prepare('INSERT INTO files (item_id, content) VALUES (?, ?)').run(id, content);
+                .run(stashId, fileName, fileType, size, now.toISOString(), this.nextOrder(stashId), title);
+            id = Number(result.lastInsertRowid);
+            this.files.adopt(tmp, id);
             this.db.exec('COMMIT');
             return this.getItem(stashId, id);
         } catch (err) {
             this.db.exec('ROLLBACK');
+            if (id !== null) this.files.remove([id]);
             throw err;
         }
     }
@@ -252,17 +281,13 @@ class StashModel {
         );
     }
 
-    // The file's bytes as a Buffer over the same memory the driver returned: no second copy of a large file
-    getFileContent(itemId) {
-        const row = this.db.prepare('SELECT content FROM files WHERE item_id = ?').get(itemId);
-        if (!row) return null;
-        const bytes = row.content;
-        return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    }
-
     deleteItem(stashId, id) {
+        const row = this.getItem(stashId, id);
         const deleted = this.db.prepare('DELETE FROM items WHERE stash_id = ? AND id = ?').run(stashId, id).changes > 0;
-        if (deleted) this.checkpoint();
+        if (deleted) {
+            if (row && row.kind === 'file') this.dropFiles([id]);
+            this.checkpoint();
+        }
         return deleted;
     }
 
@@ -329,10 +354,11 @@ class StashModel {
     trimToLast(stashId, keep) {
         if (!keep || keep < 1) return [];
         const rows = this.db
-            .prepare('SELECT id FROM items WHERE stash_id = ? AND pinned = 0 ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET ?')
+            .prepare('SELECT id, kind FROM items WHERE stash_id = ? AND pinned = 0 ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET ?')
             .all(stashId, keep);
         const remove = this.db.prepare('DELETE FROM items WHERE id = ?');
         for (const row of rows) remove.run(row.id);
+        this.dropFiles(rows.filter(row => row.kind === 'file').map(row => row.id));
         if (rows.length) this.checkpoint();
         return rows.map(row => row.id);
     }

@@ -49,7 +49,7 @@ docker compose pull; docker compose up -d     # update later
 
 Open http://localhost:3000. Data lives in the `stashly-data` volume (`docker compose down -v` deletes it). Set `SESSION_SECRET`, `ADMIN_PASSWORD` and other options under `environment:` in [docker-compose.yml](docker-compose.yml).
 
-**Keep the data on a volume.** The database is `/data/stashly.sqlite`, and `/data` must be a volume or bind mount, because updating the image recreates the container and deletes anything stored inside it. Leave `SQLITE_PATH` unset (a bare file name such as `stashly.sqlite` puts the database inside the container). At startup the container logs a `WARNING` when the database folder isn't on a mount or is only on an anonymous volume; set `ALLOW_EPHEMERAL_DATA=true` to silence it for a throwaway container.
+**Keep the data on a volume.** The database is `/data/stashly.sqlite` and the uploaded files are in `/data/files`, and `/data` must be a volume or bind mount, because updating the image recreates the container and deletes anything stored inside it. Leave `SQLITE_PATH` unset (a bare file name such as `stashly.sqlite` puts the database inside the container). At startup the container logs a `WARNING` when the database folder isn't on a mount or is only on an anonymous volume; set `ALLOW_EPHEMERAL_DATA=true` to silence it for a throwaway container.
 
 Run a released version instead of `latest` by setting `IMAGE_TAG` (see the Releases page), or build from this source tree:
 
@@ -127,6 +127,7 @@ Set these as environment variables (or in `.env`, see [.env.example](.env.exampl
 | `MAX_STREAMS_PER_STASH` / `MAX_STREAMS_PER_IP` | 100 / 30 | Open live streams (0 = no limit) |
 | `STASH_UNLOCK_WINDOW_MIN` | 15 | How long that refusal lasts, in minutes |
 | `COOKIE_SECURE` | auto | `auto` marks cookies Secure when the connection is HTTPS; `true` always (use it behind a TLS proxy you did not set `TRUST_PROXY` for) |
+| `FILES_DIR` | `files` next to the database | Where uploaded files are stored (one plain file each). **Back up the database and this folder together.** Older databases that kept files inside SQLite are moved here automatically at the first start |
 | `RATE_UNLOCK` | 10 | Wrong passwords per address per 15 minutes |
 
 The per-stash lockout is on top of the per-address limit, so guessing from many addresses gets nowhere either. The cost: someone who knows a stash's name can deliberately lock new unlocks for a while by guessing wrong. A person who is already unlocked, or who has a share link, is not affected, and the count lives in memory, so a restart clears it. Cookies are always `HttpOnly` and `SameSite=Strict`, and responses carry a content security policy, `no-store`, and a permissions policy that turns off camera, microphone, location and similar features Stashly never uses.
@@ -150,8 +151,8 @@ Whatever the mode, files are downloaded as attachments (images show inline), and
 ## Security notes
 
 - The stash name is the "key". Random 12-character names can't be guessed; short custom names can, so add a password for anything private.
-- Passwords protect access. Content is stored unencrypted in the SQLite file, so protect the server and its disk.
-- Deleted notes and files (burned, expired, trimmed or deleted) and the old text of edited notes are overwritten in the database file (`secure_delete`) and the write-ahead log is emptied afterwards, so they can't be read back from the file. Copies already in backups are not affected.
+- Passwords protect access. Content is stored unencrypted, notes in the SQLite file and uploaded files in the `files` folder next to it, so protect the server and its disk.
+- Deleted notes and files (burned, expired, trimmed or deleted) and the old text of edited notes are overwritten in the database file (`secure_delete`) and the write-ahead log is emptied afterwards, and an uploaded file is overwritten with zeros before it is removed from the `files` folder, so they can't be read back from disk. Copies already in backups are not affected.
 - The admin can reset any stash's password and so get into it; use a long random `ADMIN_PASSWORD` (the server logs a warning below 12 characters).
 - Notes are shown as plain text (never as HTML). Strict CSP, `Cache-Control: no-store`, `noindex`, no referrer.
 - Rate limits per IP on creating stashes, posting, uploading and wrong passwords. Behind a reverse proxy set `TRUST_PROXY=1` (`true` means the same: one proxy).
@@ -166,6 +167,9 @@ Whatever the mode, files are downloaded as attachments (images show inline), and
 | GET | `/api/stashes/suggest` | a fresh random name |
 | GET | `/api/stashes/:slug` | the stash and its items (`search`, `startDate`, `endDate`, `tz`, and `limit` for only the first 1-200; `total` still counts every match) |
 | POST | `/api/stashes/:slug/query` | the same, with those fields in the body so search words stay out of addresses |
+| GET | `/api/stashes/:slug/items/:id` | one item in full (a note's whole text) |
+
+Add `preview` (`true` in the body, or `?preview=1`) to a listing and notes longer than 2000 characters come back cut to their first 2000, with `truncated: true` and `textLength`; fetch the rest from `items/:id`. The web page does this so a stash of large notes loads quickly. Without `preview`, text is always complete.
 | POST | `/api/stashes/:slug/unlock` | `{password}` sets the cookie |
 | POST | `/api/stashes/:slug/notes` | `{title?, text}` (or a plain-text body, which gets an automatic title) |
 | POST | `/api/stashes/:slug/files` | raw body, `X-File-Name` header, optional `X-Title` header (both URI-encoded) |
@@ -198,5 +202,5 @@ npm test
 The project is laid out like Message-Sandbox on purpose (Express 5, `node:sqlite`, helmet CSP, routes -> controller -> model, vanilla JS views, the same CSS tokens and theme script).
 
 - **Backend**: copy `src/routes/stashRoutes.js`, `controllers/stashController.js`, `models/stashModel.js` and `utils/`. Mount with `app.use('/api/stashes', createStashRoutes({ controller, config }))` *outside* the dashboard auth, since the stash link and password are the access control. All SQL is in `stashModel.js` and the table definitions in `database/sqlite.js`, so porting to MySQL/Postgres is contained.
-- **UI**: `views/stash.html` and `stash.js` can become a "Stashly" view in the dashboard; the public `/s/:slug` page stays standalone. A dashboard-only "Stashes" list would be an admin route calling the model.
+- **UI**: `views/stash.html` and its `stash-*.js` scripts (`stash.js` starts the page) can become a "Stashly" view in the dashboard; the public `/s/:slug` page stays standalone. A dashboard-only "Stashes" list would be an admin route calling the model.
 - **Things to reconcile**: the localStorage keys (Stashly uses `sl_theme` and `sl_sidebar_collapsed`; Message-Sandbox uses `ms_theme`), and Message-Sandbox's `express.json` body limit, which the upload route must skip (it reads its own raw body).

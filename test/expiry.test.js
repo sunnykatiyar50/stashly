@@ -64,11 +64,11 @@ test('the cleanup job removes expired stashes with their files, and leaves the r
         .set('Content-Type', 'application/octet-stream')
         .send(PNG)
         .expect(201);
-    assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM files').get().n, 1);
+    assert.equal(ctx.fileStore.count(), 1);
 
     ctx.clock.time = new Date(ctx.clock.time.getTime() + 2 * HOUR);
     assert.deepEqual(ctx.controller.cleanup(), ['old-one']);
-    assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM files').get().n, 0);
+    assert.equal(ctx.fileStore.count(), 0);
     assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM items').get().n, 0);
     await request(ctx.app).get('/api/stashes/new-one').expect(200);
     assert.deepEqual(ctx.controller.cleanup(), []);

@@ -55,7 +55,6 @@ function createStashRoutes({ controller, config }) {
         next();
     };
     // Built per request so the limits follow what the admin sets at runtime
-    const rawBody = (req, res, next) => express.raw({ type: () => true, limit: config.maxFileBytes })(req, res, next);
     const textBody = (req, res, next) => express.text({ type: 'text/plain', limit: config.maxNoteBytes })(req, res, next);
 
     router.get('/suggest', readLimiter, c.suggest);
@@ -77,7 +76,8 @@ function createStashRoutes({ controller, config }) {
     router.get('/:slug/latest', readLimiter, ...read, c.latest);
     router.post('/:slug/latest', readLimiter, ...read, c.latest);
     router.post('/:slug/notes', postLimiter, ...write, c.acceptsNotes, textBody, c.addNote);
-    router.post('/:slug/files', uploadLimiter, ...write, c.acceptsFiles, checkUploadSize, rawBody, c.addFile);
+    router.post('/:slug/files', uploadLimiter, ...write, c.acceptsFiles, checkUploadSize, c.receiveFile, c.addFile);
+    router.get('/:slug/items/:id', readLimiter, ...read, c.getItem);
     router.get('/:slug/files/:id', readLimiter, ...read, c.getFile);
     router.get('/:slug/files/:id/contents', readLimiter, ...read, c.listArchive);
     // Revealing deletes the note, so it is not something a read-only link may do
