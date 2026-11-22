@@ -1,6 +1,6 @@
 {
   "name": "stashly",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Self-hosted shared stash: open the same link on machines that can't reach each other and trade text, images and files.",
   "main": "src/app.js",
   "scripts": {
