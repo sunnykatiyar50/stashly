@@ -95,21 +95,11 @@
         }).catch(function () { /* keeps saying "Sign in" */ });
     }
 
-    // The Admin link is for someone who is already signed in as an admin (the root admin or an admin-role user).
-    // Guests never see it. Everyone signs in on the account page, so a signed-in admin (the server's admin account or a
-    // user with the admin role) is the one who sees it.
-    function showAdminLink() {
-        api('/api/admin/status').then(function (res) {
-            if (res.ok && res.body && res.body.signedIn) $('adminLink').classList.remove('hidden');
-        }).catch(function () { /* stays hidden */ });
-    }
-
     function loadConfig() {
         return api('/api/config').then(function (res) {
             if (!res.ok) return;
             if (!res.body.canCreate) lockCreateForm(res.body.createRule);
             if (res.body.accountsEnabled) showAccountLink();
-            if (res.body.adminEnabled) showAdminLink();
             minOpen = Number(res.body.minOpenNameLength) || 0;
             minPassword = Number(res.body.minPasswordLength) || minPassword;
             updateHint();
