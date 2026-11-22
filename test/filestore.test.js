@@ -11,6 +11,10 @@ const { connect, SCHEMA_VERSION } = require('../src/database/sqlite');
 const { StashModel } = require('../src/models/stashModel');
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
+// Cleanup after a dropped connection is asynchronous: wait (up to 3 s) for it instead of guessing a delay
+async function until(check) {
+    for (let i = 0; i < 60 && !check(); i++) await wait(50);
+}
 const tmpFiles = ctx => (fs.existsSync(ctx.fileStore.tmpDir) ? fs.readdirSync(ctx.fileStore.tmpDir) : []);
 
 async function stash(ctx, slug = 'disk-stash') {
@@ -142,7 +146,7 @@ test('an upload with no Content-Length that grows past the limit is cut off and 
         server.closeAllConnections();
         server.close();
     }
-    await wait(50);
+    await until(() => tmpFiles(ctx).length === 0);
     assert.equal(ctx.fileStore.count(), 0);
     assert.deepEqual(tmpFiles(ctx), []);
 });
@@ -161,7 +165,7 @@ test('an upload the client abandons leaves nothing behind', async () => {
                 resolve();
             }, 50);
         });
-        await wait(100);
+        await until(() => tmpFiles(ctx).length === 0);
     } finally {
         server.closeAllConnections();
         server.close();

@@ -50,8 +50,14 @@ class FileStore {
                 req.off('close', onClose);
                 if (!err) return resolve({ tmp, size, head: Buffer.concat(heads, headLength) });
                 req.pause();
-                out.destroy();
-                fs.rm(tmp, { force: true }, () => reject(err));
+                // Remove the file only once the stream has closed: destroying it before it finished opening would
+                // otherwise let the file appear after it was removed
+                const cleanup = () => fs.rm(tmp, { force: true }, () => reject(err));
+                if (out.closed) cleanup();
+                else {
+                    out.once('close', cleanup);
+                    out.destroy();
+                }
             };
             const onData = chunk => {
                 size += chunk.length;
