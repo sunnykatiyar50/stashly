@@ -156,6 +156,17 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
     app.use('/api', createUserRoutes({ controller: userController, config }));
     app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
+    // Pages and static files read from disk, so they are rate limited too (per IP, the same budget as other reads)
+    app.use(
+        rateLimit({
+            windowMs: 60 * 1000,
+            limit: Math.max(config.rateRead, 1) * 2,
+            standardHeaders: 'draft-8',
+            legacyHeaders: false,
+            message: 'Too many requests, slow down.',
+        })
+    );
+
     // The QR code library, served from node_modules (the page's CSP only allows scripts from this server)
     app.get('/vendor/qrcode.js', (req, res) => res.sendFile(require.resolve('qrcode-generator')));
 

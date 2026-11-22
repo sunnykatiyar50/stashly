@@ -4,8 +4,6 @@ const { signToken, verifyToken, parseCookies } = require('./token');
 const COOKIE = 'stashly_admin';
 const SESSION_MS = 12 * 60 * 60 * 1000;
 
-const digest = value => crypto.createHash('sha256').update(String(value)).digest();
-
 // One admin, set by ADMIN_PASSWORD. Without it the admin area is switched off.
 // The session cookie is bound to the password, so changing ADMIN_PASSWORD signs everyone out.
 class AdminAuth {
@@ -15,17 +13,23 @@ class AdminAuth {
         this.now = now;
     }
 
+    // A keyed hash of a value, for constant-time comparison and for binding the admin cookie to the password.
+    // Keyed with the server secret, so it is of no use to anyone who only sees a cookie.
+    digest(value) {
+        return crypto.createHmac('sha256', this.secret).update(String(value)).digest();
+    }
+
     get enabled() {
         return Boolean(this.config.adminPassword);
     }
 
     get salt() {
-        return digest(this.config.adminPassword).toString('hex').slice(0, 16);
+        return this.digest(this.config.adminPassword).toString('hex').slice(0, 16);
     }
 
     checkPassword(password) {
         if (!this.enabled || typeof password !== 'string') return false;
-        return crypto.timingSafeEqual(digest(password), digest(this.config.adminPassword));
+        return crypto.timingSafeEqual(this.digest(password), this.digest(this.config.adminPassword));
     }
 
     // The ADMIN_PASSWORD admin (its own cookie). It is not a user row: it is what creates the first users.
