@@ -251,6 +251,8 @@ class StashController {
 
     appConfig = (req, res) => {
         res.json({
+            // Shown at the bottom of the left menu
+            version: this.config.version || null,
             ttlOptions: this.config.ttlOptions.map(({ key, label }) => ({ key, label })),
             defaultTtl: this.config.defaultTtl,
             limits: this.limits(),
