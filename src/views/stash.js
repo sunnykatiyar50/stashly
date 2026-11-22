@@ -220,14 +220,14 @@
 
     // The properties of a clip, shown as small chips on the right of its row so they read as labels, not as content:
     // Pinned, Burns after reading, Secret, and a countdown when the note has its own expiry.
-    // Pinned and Secret are shown as icons, with their name on hover.
+    // Each is shown as an icon, with its name on hover; the expiry also shows the time left in short ("3h 20m").
     function clipFlags(item) {
         var flags = [];
         if (item.pinned) flags.push({ text: 'Pinned', kind: 'pinned', icon: PIN_ICON });
         if (item.kind === 'note') {
-            if (item.burn) flags.push({ text: 'Burns after reading', kind: 'burn' });
+            if (item.burn) flags.push({ text: 'Burns after reading', kind: 'burn', icon: FLAME_ICON });
             if (item.secret) flags.push({ text: 'Secret', kind: 'secret', icon: LOCK_ICON });
-            if (item.expiresAt) flags.push({ text: expiryText(item.expiresAt), kind: 'expiry', expires: item.expiresAt });
+            if (item.expiresAt) flags.push({ text: expiryText(item.expiresAt), kind: 'expiry', icon: CLOCK_ICON, expires: item.expiresAt });
         }
         return flags;
     }
@@ -293,6 +293,7 @@
                     chip.setAttribute('role', 'img');
                     chip.setAttribute('aria-label', flag.text);
                     chip.appendChild(svg(flag.icon));
+                    if (flag.expires) chip.appendChild(make('span', 'clip-flag-short', shortExpiry(flag.text)));
                 } else {
                     chip = make('span', 'clip-flag clip-flag-' + flag.kind, flag.text);
                 }
@@ -308,7 +309,7 @@
         time.title = new Date(item.createdAt).toLocaleString();
         var side = make('span', 'clip-side');
         side.appendChild(time);
-        // Quick buttons that show only when the row is hovered (or reached with the keyboard): pin and copy
+        // Quick buttons, always shown (a phone has no hover): pin and copy
         var quick = make('span', 'clip-quick');
         if (role() === 'full') {
             var pinLabel = item.pinned ? 'Unpin' : 'Pin to the top';
@@ -354,6 +355,7 @@
     }
 
     var PIN_ICON = '<svg viewBox="0 0 24 24"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z"/></svg>';
+    var FLAME_ICON = '<svg viewBox="0 0 24 24"><path d="M12 22c4 0 7-2.7 7-7 0-3.5-2.2-6.2-4-8-.4 2-1.4 3.4-3 4 .3-3.3-1.2-6.4-4-9 0 4-5 6.7-5 13 0 4.3 4 7 9 7z"/></svg>';
     var LOCK_ICON = '<svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
     var GRIP_ICON = '<svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>';
 
@@ -877,8 +879,12 @@
         // Notes with their own expiry: count down, and drop them from the page when the time is up
         state.items.filter(function (item) { return item.expiresAt && new Date(item.expiresAt).getTime() <= Date.now(); })
             .forEach(function (item) { onItemDeleted(item.id); });
-        Array.prototype.forEach.call(document.querySelectorAll('.clip-flag[data-expires]'), function (el) {
-            el.textContent = expiryText(el.dataset.expires);
+        Array.prototype.forEach.call(document.querySelectorAll('.clip-flags [data-expires]'), function (el) {
+            var words = expiryText(el.dataset.expires);
+            el.title = words;
+            el.setAttribute('aria-label', words);
+            var short = el.querySelector('.clip-flag-short');
+            if (short) short.textContent = shortExpiry(words);
         });
         updateExpiry();
         updateSessionInfo();
