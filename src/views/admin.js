@@ -3,8 +3,9 @@
     'use strict';
 
     var $ = function (id) { return document.getElementById(id); };
-    var states = { loading: $('stateLoading'), disabled: $('stateDisabled'), login: $('stateLogin'), stashes: $('viewStashes'), settings: $('viewSettings') };
+    var states = { loading: $('stateLoading'), disabled: $('stateDisabled'), login: $('stateLogin'), stashes: $('viewStashes'), users: $('viewUsers'), settings: $('viewSettings') };
     var signedIn = false;
+    var via = 'password'; // how the admin is signed in: with the admin password, or as a user with the admin role
     var fields = [];
 
     // ---- helpers ----
@@ -102,7 +103,9 @@
     });
 
     $('logoutButton').addEventListener('click', function () {
-        api('/api/admin/logout', { method: 'POST' }).then(function () {
+        // An admin who signed in as a user is signed out of the account too, or the next page load would sign them back in
+        var done = via === 'account' ? api('/api/auth/logout', { method: 'POST' }) : Promise.resolve();
+        done.then(function () { return api('/api/admin/logout', { method: 'POST' }); }).then(function () {
             setSignedIn(false);
             show('login');
             $('loginInput').focus();
@@ -132,6 +135,7 @@
         var t = data.totals;
         $('statStashes').textContent = t.stashes;
         $('statStashesSub').textContent = 'of ' + data.maxStashes + ' allowed';
+        $('statUsers').textContent = data.userCount;
         $('statItems').textContent = t.items;
         $('statItemsSub').textContent = t.files + (t.files === 1 ? ' file' : ' files');
         $('statBytes').textContent = formatSize(t.bytes);
@@ -268,6 +272,190 @@
     $('searchInput').addEventListener('keydown', function (event) { if (event.key === 'Enter') loadStashes(); });
     $('resetButton').addEventListener('click', function () { $('searchInput').value = ''; loadStashes(); });
     $('refreshButton').addEventListener('click', loadStashes);
+
+    // ---- users ----
+
+    function userStatus(res) {
+        // 401 or 403: the admin session ended, or an admin account lost its role
+        if (res.status === 401 || res.status === 403) { expired(); return true; }
+        return false;
+    }
+
+    function loadUsers() {
+        return api('/api/admin/users').then(function (res) {
+            if (userStatus(res)) return;
+            if (!res.ok) return toast('Could not load the users.', true);
+            renderUsers(res.body.users);
+        });
+    }
+
+    function chip(text, className) {
+        var el = document.createElement('span');
+        el.className = 'chip' + (className ? ' ' + className : '');
+        el.textContent = text;
+        return el;
+    }
+
+    function renderUsers(users) {
+        $('userInfo').textContent = users.length + (users.length === 1 ? ' user' : ' users');
+        var body = $('userBody');
+        body.textContent = '';
+        users.forEach(function (user) { body.appendChild(buildUserRow(user)); });
+        $('userEmpty').classList.toggle('hidden', users.length > 0);
+    }
+
+    function actionButton(label, className, onClick, ariaLabel) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = className + ' small';
+        button.textContent = label;
+        if (ariaLabel) button.setAttribute('aria-label', ariaLabel);
+        button.addEventListener('click', onClick);
+        return button;
+    }
+
+    function buildUserRow(user) {
+        var tr = document.createElement('tr');
+        var name = document.createElement('span');
+        name.className = 'name-cell';
+        var login = document.createElement('span');
+        login.className = 'mono';
+        login.textContent = user.username;
+        name.appendChild(login);
+        if (user.displayName) {
+            var shown = document.createElement('span');
+            shown.className = 'muted';
+            shown.textContent = user.displayName;
+            name.appendChild(shown);
+        }
+        tr.appendChild(cell(name));
+        tr.appendChild(cell(chip(user.role === 'admin' ? 'Admin' : 'User', user.role === 'admin' ? 'role-admin' : '')));
+        tr.appendChild(cell(chip(user.disabled ? 'Disabled' : 'Active', user.disabled ? 'status-off' : '')));
+        tr.appendChild(cell(user.lastLoginAt ? formatDate(user.lastLoginAt) : 'Never'));
+        tr.appendChild(cell(String(user.stashCount), 'num'));
+
+        var actions = document.createElement('div');
+        actions.className = 'row-actions';
+        var who = ' ' + user.username;
+        actions.appendChild(actionButton(user.role === 'admin' ? 'Make user' : 'Make admin', 'ghost', function () {
+            changeUser(user, { role: user.role === 'admin' ? 'user' : 'admin' }, user.username + ' is now ' + (user.role === 'admin' ? 'a user' : 'an admin') + '. Their sessions ended.');
+        }, (user.role === 'admin' ? 'Make user' : 'Make admin') + who));
+        actions.appendChild(actionButton(user.disabled ? 'Enable' : 'Disable', 'ghost', function () {
+            changeUser(user, { disabled: !user.disabled }, user.username + (user.disabled ? ' can sign in again.' : ' is disabled and signed out.'));
+        }, (user.disabled ? 'Enable' : 'Disable') + who));
+        actions.appendChild(actionButton('Reset password', 'ghost', function () { openUserPassword(user); }, 'Reset password of' + who));
+        actions.appendChild(actionButton('Sign out', 'ghost', function () { signOutUser(user); }, 'Sign out' + who + ' everywhere'));
+        actions.appendChild(actionButton('Delete', 'danger-ghost', function () { deleteUser(user); }, 'Delete' + who));
+        tr.appendChild(cell(actions, 'actions'));
+        return tr;
+    }
+
+    function changeUser(user, changes, message) {
+        api('/api/admin/users/' + encodeURIComponent(user.id), { method: 'PATCH', body: changes }).then(function (res) {
+            if (userStatus(res)) return;
+            if (res.ok) { toast(message); loadUsers(); }
+            else toast((res.body && res.body.error) || 'Could not change the user.', true);
+        });
+    }
+
+    function signOutUser(user) {
+        api('/api/admin/users/' + encodeURIComponent(user.id) + '/sign-out', { method: 'POST' }).then(function (res) {
+            if (userStatus(res)) return;
+            if (res.ok) toast(user.username + ' was signed out everywhere.');
+            else toast((res.body && res.body.error) || 'Could not sign the user out.', true);
+        });
+    }
+
+    function deleteUser(user) {
+        var message = 'Delete the user "' + user.username + '"? Their list of followed stashes goes with them. The stashes themselves are not touched. This cannot be undone.';
+        if (!window.confirm(message)) return;
+        api('/api/admin/users/' + encodeURIComponent(user.id), { method: 'DELETE' }).then(function (res) {
+            if (userStatus(res)) return;
+            if (res.ok || res.status === 404) { toast('Deleted ' + user.username); loadUsers(); }
+            else toast((res.body && res.body.error) || 'Could not delete the user.', true);
+        });
+    }
+
+    var userPasswordDialog = $('userPasswordDialog');
+    var userPasswordTarget = null;
+
+    function openUserPassword(user) {
+        userPasswordTarget = user;
+        $('userPasswordTitle').textContent = 'Reset the password of ' + user.username;
+        $('userPasswordInput').value = '';
+        $('userPasswordError').textContent = '';
+        if (typeof userPasswordDialog.showModal === 'function') userPasswordDialog.showModal(); else userPasswordDialog.setAttribute('open', '');
+        $('userPasswordInput').focus();
+    }
+
+    $('userPasswordCancel').addEventListener('click', function () { userPasswordDialog.close(); });
+    userPasswordDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
+    $('userPasswordForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        var password = $('userPasswordInput').value;
+        $('userPasswordError').textContent = '';
+        if (!password) { $('userPasswordError').textContent = 'Enter a password.'; $('userPasswordInput').focus(); return; }
+        $('userPasswordSave').disabled = true;
+        api('/api/admin/users/' + encodeURIComponent(userPasswordTarget.id) + '/password', { method: 'POST', body: { password: password } }).then(function (res) {
+            $('userPasswordSave').disabled = false;
+            if (userStatus(res)) { userPasswordDialog.close(); return; }
+            if (res.ok) {
+                // The password is not kept anywhere on the page
+                $('userPasswordInput').value = '';
+                userPasswordDialog.close();
+                toast('Password reset for ' + userPasswordTarget.username + '. They were signed out everywhere.');
+            } else {
+                $('userPasswordError').textContent = (res.body && res.body.error) || 'Could not reset the password.';
+            }
+        }).catch(function () {
+            $('userPasswordSave').disabled = false;
+            $('userPasswordError').textContent = 'Could not reach the server.';
+        });
+    });
+
+    var userFormErrors = { username: $('newUsernameError'), displayName: $('newDisplayNameError'), password: $('newUserPasswordError') };
+
+    $('userForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        Object.keys(userFormErrors).forEach(function (key) { userFormErrors[key].textContent = ''; });
+        var status = $('userFormStatus');
+        status.textContent = '';
+        status.classList.remove('error');
+        var username = $('newUsername').value.trim();
+        var password = $('newUserPassword').value;
+        if (!username) { userFormErrors.username.textContent = 'Enter a username.'; $('newUsername').focus(); return; }
+        // The server checks the length against the live "Shortest stash password" setting and says what it needs
+        if (!password) { userFormErrors.password.textContent = 'Enter an initial password.'; $('newUserPassword').focus(); return; }
+        $('createUserButton').disabled = true;
+        var displayName = $('newDisplayName').value.trim();
+        api('/api/admin/users', {
+            method: 'POST',
+            body: { username: username, displayName: displayName || undefined, password: password, role: $('newUserRole').value },
+        }).then(function (res) {
+            $('createUserButton').disabled = false;
+            // Cleared whatever the answer: a password is never left in the form
+            $('newUserPassword').value = '';
+            if (userStatus(res)) return;
+            if (res.ok) {
+                $('newUsername').value = '';
+                $('newDisplayName').value = '';
+                $('newUserRole').value = 'user';
+                toast('Added ' + res.body.username + '. Tell them their password.');
+                loadUsers();
+            } else {
+                var message = (res.body && res.body.error) || 'Could not add the user.';
+                var field = res.body && res.body.field;
+                if (field && userFormErrors[field]) userFormErrors[field].textContent = message;
+                else { status.textContent = message; status.classList.add('error'); }
+            }
+        }).catch(function () {
+            $('createUserButton').disabled = false;
+            status.textContent = 'Could not reach the server.';
+            status.classList.add('error');
+        });
+    });
+
+    $('refreshUsersButton').addEventListener('click', loadUsers);
 
     // ---- settings ----
 
@@ -576,6 +764,9 @@
         if (location.hash === '#/settings') {
             show('settings');
             loadSettings();
+        } else if (location.hash === '#/users') {
+            show('users');
+            loadUsers();
         } else {
             show('stashes');
             loadStashes();
@@ -587,6 +778,7 @@
             if (!res.ok) return toast('Could not reach the server.', true);
             if (!res.body.enabled) { setSignedIn(false); return show('disabled'); }
             if (!res.body.signedIn) { setSignedIn(false); show('login'); $('loginInput').focus(); return; }
+            via = res.body.via || 'password';
             setSignedIn(true);
             route();
         }).catch(function () { toast('Could not reach the server.', true); });

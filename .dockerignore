@@ -6,3 +6,4 @@ test
 *.sqlite-wal
 *.sqlite-shm
 extension
+files

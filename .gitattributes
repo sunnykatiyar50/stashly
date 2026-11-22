@@ -1,3 +1,5 @@
 # Shell scripts and the Dockerfile must keep LF line endings to work in Linux containers
 *.sh text eol=lf
 Dockerfile text eol=lf
+# The command line tool starts with a shebang line, which breaks with CRLF on Linux and macOS
+bin/stashly.js text eol=lf

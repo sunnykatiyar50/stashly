@@ -73,16 +73,30 @@
         });
     }
 
-    // When only the admin may create stashes, a visitor gets a notice instead of a form that would be refused
-    function lockCreateForm() {
-        $('adminNotice').classList.remove('hidden');
+    // When creating is limited (to the admin, or to signed-in users), a visitor gets a notice instead of a form that
+    // would be refused
+    function lockCreateForm(rule) {
+        $(rule === 'login' ? 'loginNotice' : 'adminNotice').classList.remove('hidden');
         Array.prototype.forEach.call($('createForm').elements, function (el) { el.disabled = true; });
+    }
+
+    // "Sign in" when nobody is signed in to an account, "My stashes" when someone is (the link only exists when the
+    // server has accounts)
+    function showAccountLink() {
+        $('accountLink').classList.remove('hidden');
+        api('/api/me').then(function (res) {
+            if (res.ok && res.body && res.body.user) {
+                $('accountLinkLabel').textContent = 'My stashes';
+                $('accountLink').title = 'My stashes, signed in as ' + res.body.user.username;
+            }
+        }).catch(function () { /* keeps saying "Sign in" */ });
     }
 
     function loadConfig() {
         return api('/api/config').then(function (res) {
             if (!res.ok) return;
-            if (!res.body.canCreate) lockCreateForm();
+            if (!res.body.canCreate) lockCreateForm(res.body.createRule);
+            if (res.body.accountsEnabled) showAccountLink();
             minOpen = Number(res.body.minOpenNameLength) || 0;
             minPassword = Number(res.body.minPasswordLength) || minPassword;
             updateHint();

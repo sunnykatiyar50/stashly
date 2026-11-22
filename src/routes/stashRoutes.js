@@ -23,6 +23,8 @@ function createStashRoutes({ controller, config }) {
     const createLimiter = limiter(60 * 1000, config.rateCreate, 'Too many stashes created, slow down.');
     const postLimiter = limiter(60 * 1000, config.ratePost, 'Too many notes, slow down.');
     const uploadLimiter = limiter(60 * 1000, config.rateUpload, 'Too many uploads, slow down.');
+    // The pieces of a resumable upload: one file is many requests, so this allows far more than uploadLimiter
+    const chunkLimiter = limiter(60 * 1000, config.rateChunk, 'Too many pieces, slow down.');
     // Only failed attempts count, so a person who types the right password is never blocked
     const unlockLimiter = rateLimit({
         windowMs: 15 * 60 * 1000,
@@ -55,8 +57,10 @@ function createStashRoutes({ controller, config }) {
         next();
     };
     // Built per request so the limits follow what the admin sets at runtime
-    const rawBody = (req, res, next) => express.raw({ type: () => true, limit: config.maxFileBytes })(req, res, next);
     const textBody = (req, res, next) => express.text({ type: 'text/plain', limit: config.maxNoteBytes })(req, res, next);
+
+    // A thumbnail is raw image bytes whatever Content-Type is claimed; anything over the limit is refused with a 413
+    const thumbBody = (req, res, next) => express.raw({ type: () => true, limit: config.maxThumbBytes })(req, res, next);
 
     router.get('/suggest', readLimiter, c.suggest);
     router.post('/', createLimiter, c.create);
@@ -72,17 +76,33 @@ function createStashRoutes({ controller, config }) {
     // Always allowed: signing out must work even when the session has already ended
     router.post('/:slug/logout', c.loadStash, c.logout);
     router.post('/:slug/session', ...anyRole, c.setSession);
+    // The whole stash as a zip (not for drop-box links, which cannot read)
+    router.get('/:slug/export', readLimiter, ...read, c.exportZip);
     router.get('/:slug/events', readLimiter, ...read, c.stream);
     // GET never changes anything. POST also reads a burn-after-reading note, which deletes it.
     router.get('/:slug/latest', readLimiter, ...read, c.latest);
     router.post('/:slug/latest', readLimiter, ...read, c.latest);
     router.post('/:slug/notes', postLimiter, ...write, c.acceptsNotes, textBody, c.addNote);
-    router.post('/:slug/files', uploadLimiter, ...write, c.acceptsFiles, checkUploadSize, rawBody, c.addFile);
+    router.post('/:slug/files', uploadLimiter, ...write, c.acceptsFiles, checkUploadSize, c.receiveFile, c.addFile);
+    // Resumable uploads: start (every check that needs no bytes), ask where it stands (GET, and HEAD for the offset
+    // alone), send a piece at the offset the server expects, finish, or cancel. See the README.
+    router.post('/:slug/uploads', uploadLimiter, ...write, c.acceptsFiles, c.createUpload);
+    router.get('/:slug/uploads/:id', readLimiter, ...write, c.uploadOf, c.getUpload);
+    router.patch('/:slug/uploads/:id', chunkLimiter, ...write, c.acceptsFiles, c.uploadOf, c.checkChunkSize, c.patchUpload);
+    router.post('/:slug/uploads/:id/complete', postLimiter, ...write, c.acceptsFiles, c.uploadOf, c.completeUpload);
+    router.delete('/:slug/uploads/:id', postLimiter, ...write, c.uploadOf, c.abortUpload);
+    router.get('/:slug/items/:id', readLimiter, ...read, c.getItem);
     router.get('/:slug/files/:id', readLimiter, ...read, c.getFile);
     router.get('/:slug/files/:id/contents', readLimiter, ...read, c.listArchive);
+    // An image's thumbnail, made by the page. A drop-box link may attach one to what it just uploaded (see
+    // thumbTarget); the body is raw image bytes, read only after those checks, with its own small size limit.
+    router.get('/:slug/files/:id/thumb', readLimiter, ...read, c.getThumb);
+    router.put('/:slug/files/:id/thumb', postLimiter, ...write, c.thumbTarget, thumbBody, c.putThumb);
     // Revealing deletes the note, so it is not something a read-only link may do
     router.post('/:slug/items/:id/reveal', ...full, c.reveal);
     router.delete('/:slug/items/:id', ...full, c.deleteItem);
+    // Undoing a delete puts an item back (it counts against the same limits as adding one)
+    router.post('/:slug/items/:id/restore', postLimiter, ...full, c.restore);
     router.put('/:slug/items/:id', ...full, c.editNote);
     router.post('/:slug/items/:id/pin', ...full, c.setPinned);
     // Dragging clips into a new order; a read-only or drop-box link cannot rearrange

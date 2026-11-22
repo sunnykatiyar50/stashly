@@ -75,10 +75,20 @@ const FIELDS = {
             if (v) c.ttlOptions.push({ key: 'never', label: 'Never', ms: null });
         },
     },
+    undoSeconds: {
+        group: 'Stashes', label: 'Undo a delete for', unit: 'seconds', type: 'int', min: 0, max: 3600,
+        help: 'After someone deletes a note or file, it can be brought back for this long (a deleted item stays in the database until then). Burn-after-reading and secret notes, and anything removed automatically, are never kept. 0 turns undo off: deletes are immediate.',
+        read: c => c.undoSeconds, write: (c, v) => { c.undoSeconds = v; },
+    },
     requireAdminToCreate: {
         group: 'Stashes', label: 'Only the admin can create stashes', type: 'bool',
         help: 'Visitors can still open and use stashes they have the link to.',
         read: c => c.requireAdminToCreate, write: (c, v) => { c.requireAdminToCreate = v; },
+    },
+    requireLoginToCreate: {
+        group: 'Stashes', label: 'Only signed-in users can create stashes', type: 'bool',
+        help: 'Users the admin made, and admins, can create stashes; anyone else can still open and use stashes they have the link to. "Only the admin" above wins when both are on.',
+        read: c => c.requireLoginToCreate, write: (c, v) => { c.requireLoginToCreate = v; },
     },
 };
 
@@ -94,9 +104,12 @@ class SettingsStore {
         this.normalise();
     }
 
-    // "Only the admin can create" makes no sense when there is no admin
+    // "Only the admin can create" makes no sense when there is no admin, and accounts only exist with the admin area
     normalise() {
-        if (!this.config.adminPassword) this.config.requireAdminToCreate = false;
+        if (!this.config.adminPassword) {
+            this.config.requireAdminToCreate = false;
+            this.config.requireLoginToCreate = false;
+        }
     }
 
     values() {
@@ -140,6 +153,7 @@ class SettingsStore {
             errors.maxItemsPerStash = 'Must be at least the number of files per stash.';
         }
         if (merged.requireAdminToCreate && !this.config.adminPassword) errors.requireAdminToCreate = 'Admin is not enabled.';
+        if (merged.requireLoginToCreate && !this.config.adminPassword) errors.requireLoginToCreate = 'Accounts are not enabled (they need the admin area).';
         if (Object.keys(errors).length) return { errors };
 
         for (const key of Object.keys(input)) FIELDS[key].write(this.config, input[key]);

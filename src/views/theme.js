@@ -1,4 +1,4 @@
-// Theme: System (follows the browser/OS), Light or Dark. Same behaviour as Message-Sandbox's theme.js.
+// Theme: System (follows the browser/OS), Light or Dark.
 //
 // Loaded in <head>, so the saved theme is in place on first paint. Sets on <html>:
 //   data-theme="light" | "dark"   only for an explicit choice (styles.css keys the palettes off this)

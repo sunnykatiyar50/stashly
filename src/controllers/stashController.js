@@ -1,10 +1,19 @@
 const { generateSlug, parseSlug } = require('../utils/slug');
 const { hashPassword, verifyPassword, MAX_PASSWORD } = require('../utils/password');
 const { signToken, verifyToken, parseCookies, generateLinkToken, hashLinkToken, linkTokenMatches } = require('../utils/token');
-const { detectFile, cleanFileName } = require('../utils/fileType');
+const { detectFile, detectThumb, cleanFileName, extensionProblem } = require('../utils/fileType');
+const crypto = require('crypto');
 const { dateRange } = require('../utils/time');
 const { parseTitle, deriveTitle } = require('../utils/title');
 const { listZip } = require('../utils/zip');
+const { UnlockLockout } = require('../utils/lockout');
+const { pipeline } = require('stream');
+const { once } = require('events');
+const { ZipWriter } = require('../utils/zipWriter');
+const { planExport } = require('../utils/stashExport');
+const { noopAudit } = require('../utils/auditLog');
+const { noopMetrics } = require('../utils/metrics');
+const { grantRole } = require('../models/userModel');
 
 // Three cookies per stash: full access (the password), or one of the two share links. The names cannot collide,
 // because the prefixes differ before the stash name starts.
@@ -12,13 +21,22 @@ const cookieName = slug => `stashly_${slug}`;
 const ROLE_COOKIES = { view: slug => `stashlyv_${slug}`, drop: slug => `stashlyd_${slug}` };
 // What a share link signs: its own label plus the hash of its token, so a new link voids cookies from the old one
 const roleSubject = (slug, kind) => `${slug}:${kind}`;
-const DAY = 24 * 60 * 60 * 1000;
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
 // The most clips one reorder may move (a stash holds at most a few thousand; a page shows them all)
 const MAX_REORDER = 5000;
 // The most items one listing can be asked for with `limit` (the extension asks for a few; without a limit, all come)
 const MAX_LIST_LIMIT = 200;
-// The whole stash locks after this many times the per-visitor limit of wrong passwords
-const GLOBAL_FACTOR = 5;
+// A listing asked for with `preview` carries only this many characters of each note (the rest comes from
+// GET .../items/:id), so a stash full of large notes does not make every page load huge
+const PREVIEW_CHARS = 2000;
+
+// The first PREVIEW_CHARS characters of a note, without cutting a character in half
+function previewOf(text) {
+    if (text.length <= PREVIEW_CHARS) return text;
+    const code = text.charCodeAt(PREVIEW_CHARS - 1);
+    return text.slice(0, code >= 0xd800 && code <= 0xdbff ? PREVIEW_CHARS - 1 : PREVIEW_CHARS);
+}
 
 // The optional `limit` of a listing: undefined for none, a whole number from 1 to MAX_LIST_LIMIT, or an error
 function parseLimit(value) {
@@ -27,6 +45,17 @@ function parseLimit(value) {
     if (!Number.isInteger(n) || n < 1) return { error: `limit must be a whole number from 1 to ${MAX_LIST_LIMIT}.` };
     return { value: Math.min(n, MAX_LIST_LIMIT) };
 }
+// The optional `offset` of a listing (how many items to skip): undefined for none, or a whole number from 0, or an error
+function parseOffset(value) {
+    if (value === undefined || value === null || value === '') return { value: undefined };
+    const n = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
+    if (!Number.isSafeInteger(n) || n < 0) return { error: 'offset must be a whole number, 0 or more.' };
+    return { value: n };
+}
+
+// A drop-box link may attach a thumbnail only to an image it has just uploaded: while the image has none, and for this
+// long after the item was made. Full access may attach or replace a thumbnail at any time.
+const THUMB_DROP_WINDOW_MS = 5 * 60 * 1000;
 const RESERVED_MESSAGE = 'That name belonged to a stash that was deleted, expired or renamed recently, so it is reserved for now. Pick another.';
 
 // "bytes=START-END", "bytes=START-" or "bytes=-SUFFIX" for one range. Returns { start, end }, 'invalid', or null when
@@ -55,26 +84,41 @@ const CONTENT_KINDS = ['all', 'notes', 'files'];
 const contentOf = stash => (CONTENT_KINDS.includes(stash.content) ? stash.content : 'all');
 
 class StashController {
-    constructor({ model, events, config, secret, now = () => new Date(), isAdmin = () => false }) {
+    // audit(event, { req, stash, actor, detail }) writes the audit log and metrics counts what is worth counting; both
+    // do nothing unless the app passes real ones (see utils/auditLog.js and utils/metrics.js)
+    // users (the follow list) and userAuth (who is signed in) are only given when accounts exist; without them nothing
+    // about accounts is consulted
+    constructor({ model, events, config, secret, now = () => new Date(), isAdmin = () => false, audit = noopAudit, metrics = noopMetrics, users = null, userAuth = null }) {
+        this.users = users;
+        this.userAuth = userAuth;
+        this.audit = audit;
+        this.metrics = metrics;
         this.isAdmin = isAdmin;
         this.model = model;
         this.events = events;
         this.config = config;
         this.secret = secret;
         this.now = now;
-        this.failures = new Map(); // slug -> { start, count } of wrong passwords, from anyone
-        this.ipFailures = new Map(); // slug -> Map(ip -> { start, count }) of wrong passwords
+        this.lockout = new UnlockLockout({ config, now });
+    }
+
+    // Wrong-password counts per stash name (read by the tests)
+    get failures() {
+        return this.lockout.global;
     }
 
     // ---- presentation ----
 
     // A burn-after-reading note never leaves the server in a list or live event: its text only comes out of /reveal.
     // A note with no title of its own would show its first words as a title, so secret and burn notes get a plain one.
-    presentItem(slug, row) {
+    // preview: cut a long note's text for a listing (text is then only the start, and truncated is true)
+    presentItem(slug, row, { preview = false } = {}) {
         const isFile = row.kind === 'file';
         const burn = !isFile && Boolean(row.burn);
         const secret = !isFile && Boolean(row.secret);
         const generic = burn ? 'Burn-after-reading note' : secret ? 'Secret note' : null;
+        const full = isFile || burn ? null : row.text;
+        const cut = preview && full !== null && full.length > PREVIEW_CHARS;
         return {
             id: row.id,
             kind: row.kind,
@@ -82,7 +126,9 @@ class StashController {
             // Files: the given title, or the file's name.
             title: isFile ? row.title || row.file_name : row.title || generic || deriveTitle(row.text),
             hasTitle: Boolean(row.title),
-            text: isFile || burn ? null : row.text,
+            text: cut ? previewOf(full) : full,
+            // Only in a preview listing: the text above is just the start of a longer note
+            ...(cut ? { truncated: true, textLength: full.length } : {}),
             burn,
             secret,
             pinned: Boolean(row.pinned),
@@ -95,6 +141,8 @@ class StashController {
             fileSize: isFile ? row.file_size : null,
             isImage: isFile && row.file_type.startsWith('image/'),
             url: isFile ? `/api/stashes/${slug}/files/${row.id}` : null,
+            // A small picture for the list, when the page has made one (the bytes never travel in a listing)
+            thumbUrl: isFile && row.has_thumb ? `/api/stashes/${slug}/files/${row.id}/thumb` : null,
             createdAt: row.created_at,
         };
     }
@@ -107,6 +155,7 @@ class StashController {
             maxStashBytes: c.maxStashBytes,
             maxItemsPerStash: c.maxItemsPerStash,
             maxFilesPerStash: c.maxFilesPerStash,
+            maxThumbBytes: c.maxThumbBytes,
         };
     }
 
@@ -114,36 +163,66 @@ class StashController {
 
     // Finds the stash named in the URL. A stash whose time is up is deleted on the spot.
     loadStash = (req, res, next) => {
-        const stash = this.model.findBySlug(String(req.params.slug || '').toLowerCase());
-        if (stash && stash.expires_at && stash.expires_at <= this.now().toISOString()) {
-            this.model.deleteStash(stash.id, this.now());
-            this.events.closeAll(stash.slug, 'stash-gone', { reason: 'expired' });
-            return res.status(404).json({ error: 'This stash has expired or does not exist.' });
-        }
+        const stash = this.liveStash(req.params.slug);
         if (!stash) return res.status(404).json({ error: 'This stash has expired or does not exist.' });
         req.stash = stash;
         next();
     };
 
-    // What this visitor may do in this stash: 'full' (no password, or unlocked), 'view' (a read-only link),
-    // 'drop' (a drop-box link: can add, cannot read) or null (locked out).
-    roleOf(req, stash) {
-        return this.access(req, stash).role;
+    // The stash with this name, or null when there is none. A stash whose time is up is deleted on the spot.
+    liveStash(slug) {
+        const stash = this.model.findBySlug(String(slug || '').toLowerCase());
+        if (stash && stash.expires_at && stash.expires_at <= this.now().toISOString()) {
+            this.model.deleteStash(stash.id, this.now());
+            this.events.closeAll(stash.slug, 'stash-gone', { reason: 'expired' });
+            this.audit('stash.deleted', { stash, actor: 'system', detail: { reason: 'expired' } });
+            return null;
+        }
+        return stash || null;
     }
 
-    // The role, plus the valid sign-in token it came from ({ expiresAt, signedInAt }; none for a stash with no password)
-    access(req, stash) {
+    // What this visitor may do in this stash: 'full' (no password, or unlocked), 'view' (a read-only link),
+    // 'drop' (a drop-box link: can add, cannot read) or null (locked out).
+    roleOf(req, stash, user = req.user) {
+        return this.access(req, stash, user).role;
+    }
+
+    // The role, plus the valid sign-in token it came from ({ expiresAt, signedInAt }; none for a stash with no password,
+    // or when the access comes from the signed-in user's follow list).
+    // `user` is the signed-in user (req.user unless the caller has looked them up again, as a live stream does on each
+    // heartbeat). A follow only counts while its snapshot still matches the stash (see grantRole), so it ends with a
+    // password change, "sign out other devices" or a replaced read-only link, exactly as a cookie does. A cookie that
+    // gives more than the follow wins.
+    access(req, stash, user = req.user) {
         if (!stash.password_hash) return { role: 'full', token: null };
         const cookies = parseCookies(req.headers.cookie);
         const now = this.now().getTime();
         const full = verifyToken(this.secret, stash.slug, this.saltFor(stash, 'full'), cookies[cookieName(stash.slug)], now);
         if (full) return { role: 'full', token: full };
+        const granted = this.grantFor(user, stash);
+        if (granted === 'full') return { role: 'full', token: null };
         for (const kind of ['view', 'drop']) {
             if (!stash[`${kind}_token_hash`]) continue;
             const token = verifyToken(this.secret, roleSubject(stash.slug, kind), this.saltFor(stash, kind), cookies[ROLE_COOKIES[kind](stash.slug)], now);
             if (token) return { role: kind, token };
         }
+        if (granted) return { role: granted, token: null };
         return { role: null, token: null };
+    }
+
+    // What the user's follow of this stash lets them do right now ('full', 'view' or null)
+    grantFor(user, stash) {
+        if (!user || !this.users) return null;
+        return grantRole(this.users.getFollow(user.id, stash.id), stash);
+    }
+
+    // The person who changed a stash's password or signed out the other devices stays in (their cookie is renewed). If
+    // they follow the stash, their follow is renewed the same way; everyone else's follow stops working.
+    renewOwnFollow(req, stash) {
+        if (!req.user || !this.users) return;
+        const follow = this.users.getFollow(req.user.id, stash.id);
+        if (!follow || follow.grant_role !== 'full') return;
+        this.users.follow(req.user.id, stash.id, { role: 'full', salt: stash.password_salt, version: stash.session_version || 0, viewHash: null }, this.now());
     }
 
     // What a sign-in cookie is tied to: the password's salt (or the share link's hash), and the stash's session
@@ -182,14 +261,21 @@ class StashController {
             defaultSession: this.config.defaultSession,
             itemTtlOptions: this.config.itemTtlOptions.map(({ key, label }) => ({ key, label })),
             fileTypes: this.config.fileTypes,
-            // false when only the admin may create stashes and the visitor is not signed in as admin
+            // false when creating is limited (to admins, or to signed-in users) and the visitor does not qualify
             canCreate: this.canCreate(req),
+            // Who may create: 'open' (anyone, the default), 'login' (signed-in users and admins) or 'admin'
+            createRule: this.config.requireAdminToCreate ? 'admin' : this.config.requireLoginToCreate ? 'login' : 'open',
             adminEnabled: Boolean(this.config.adminPassword),
+            accountsEnabled: Boolean(this.config.adminPassword),
         });
     };
 
+    // Anyone, unless the admin limited it: to admins (the ADMIN_PASSWORD admin or a user with the admin role), or to
+    // anyone signed in. Visitors without an account keep opening and using stashes either way.
     canCreate(req) {
-        return !this.config.requireAdminToCreate || this.isAdmin(req);
+        if (this.config.requireAdminToCreate) return this.isAdmin(req);
+        if (this.config.requireLoginToCreate) return this.isAdmin(req) || Boolean(req.user);
+        return true;
     }
 
     // A name another stash gave up recently (deleted, expired or renamed away) is kept from new stashes for a while:
@@ -208,7 +294,9 @@ class StashController {
 
     create = async (req, res) => {
         if (!this.canCreate(req)) {
-            return res.status(403).json({ error: 'Only the admin can create stashes on this server. Sign in at /admin first.' });
+            return this.config.requireAdminToCreate
+                ? res.status(403).json({ error: 'Only the admin can create stashes on this server. Sign in at /admin first.' })
+                : res.status(403).json({ error: 'You need to sign in to create stashes on this server. Sign in at /account first.' });
         }
         const body = req.body || {};
         const parsed = parseSlug(body.slug);
@@ -255,6 +343,12 @@ class StashController {
             });
             // The creator is let in without retyping the password
             if (stash.password_hash) this.setAccessCookie(req, res, stash);
+            this.audit('stash.created', { req, stash, detail: { password: Boolean(password), ttl: ttl.key } });
+            // A signed-in user follows what they create: it shows up on their page without typing the password again
+            if (req.user && this.users) {
+                this.users.follow(req.user.id, stash.id, { role: 'full', salt: stash.password_salt, version: stash.session_version || 0, viewHash: null }, this.now());
+                this.audit('user.followed', { req, stash, actor: 'user', detail: { user: req.user.id, role: 'full', via: 'create' } });
+            }
             res.status(201).json({
                 slug: stash.slug,
                 url: `/s/${stash.slug}`,
@@ -327,69 +421,47 @@ class StashController {
         return Number.isFinite(expiresAt) && expiresAt > 0 ? new Date(expiresAt).toISOString() : null;
     }
 
-    // Wrong passwords, held in memory (a restart clears them). Two counts per stash:
-    //  - per visitor (IP): STASH_UNLOCK_FAILURES wrong passwords lock that visitor out, so a stranger cannot lock the
-    //    owner out of their own stash;
-    //  - for the whole stash: STASH_UNLOCK_FAILURES x GLOBAL_FACTOR from anyone, against guessing from many addresses.
-    // Returns the ms left on a lock in `map` (a Map of key -> { start, count }) for `key`, or 0.
-    lockLeft(map, key, max) {
-        const entry = map.get(key);
-        if (!max || !entry) return 0;
-        const now = this.now().getTime();
-        if (now - entry.start >= this.config.stashUnlockWindowMs) {
-            map.delete(key);
-            return 0;
-        }
-        return entry.count >= max ? entry.start + this.config.stashUnlockWindowMs - now : 0;
+    // Wrong passwords are counted by this.lockout (see utils/lockout.js). Sends the 429 and returns true when this
+    // visitor must wait before trying this stash's password again.
+    refuseIfLocked(req, res, extra = {}) {
+        const wait = this.lockout.locked(req.stash.slug, req.ip);
+        if (!wait) return false;
+        const minutes = Math.max(1, Math.ceil(wait / 60000));
+        res.status(429)
+            .set('Retry-After', String(Math.ceil(wait / 1000)))
+            .json({ error: `Too many wrong passwords for this stash. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`, ...extra });
+        return true;
     }
 
-    countFailure(map, key) {
-        const now = this.now().getTime();
-        const entry = map.get(key);
-        if (!entry || now - entry.start >= this.config.stashUnlockWindowMs) map.set(key, { start: now, count: 1 });
-        else entry.count += 1;
+    // How long this browser has left on its sign-in, to carry over when the password, the name or the sessions change
+    remainingSession(req, stash) {
+        const end = this.sessionEnd(req, stash, 'full');
+        return end ? Math.max(0, new Date(end).getTime() - this.now().getTime()) : this.sessionMs(null);
     }
 
-    lockedFor(slug, ip) {
-        const max = this.config.stashUnlockFailures;
-        const perIp = this.ipFailures.get(slug);
-        const own = perIp ? this.lockLeft(perIp, ip, max) : 0;
-        if (perIp && !perIp.size) this.ipFailures.delete(slug);
-        return Math.max(own, this.lockLeft(this.failures, slug, max * GLOBAL_FACTOR));
-    }
-
-    noteFailure(slug, ip) {
-        this.countFailure(this.failures, slug);
-        if (!this.ipFailures.has(slug)) this.ipFailures.set(slug, new Map());
-        this.countFailure(this.ipFailures.get(slug), ip);
-    }
-
-    // A right password, a new password or a deleted stash: forget the counts
-    clearFailures(slug) {
-        this.failures.delete(slug);
-        this.ipFailures.delete(slug);
+    // A wrong password: counted for the lockout, in the metrics and in the audit log (with the address, never the
+    // password). The log also says when this wrong guess is the one that locks the visitor out.
+    noteFailure(req, stash, via) {
+        const wasLocked = this.lockout.locked(stash.slug, req.ip) > 0;
+        this.lockout.note(stash.slug, req.ip);
+        this.metrics.inc('stashly_unlock_failures_total');
+        this.audit('stash.unlock_failed', { req, stash, detail: { via } });
+        if (!wasLocked && this.lockout.locked(stash.slug, req.ip) > 0) this.audit('stash.locked_out', { req, stash });
     }
 
     unlock = async (req, res) => {
         const stash = req.stash;
         if (!stash.password_hash) return res.json({ ok: true, hasPassword: false });
         // Too many wrong passwords for this stash: refuse before even checking, so guessing gets nowhere
-        const wait = this.lockedFor(stash.slug, req.ip);
-        if (wait) {
-            const minutes = Math.max(1, Math.ceil(wait / 60000));
-            return res
-                .status(429)
-                .set('Retry-After', String(Math.ceil(wait / 1000)))
-                .json({ error: `Too many wrong passwords for this stash. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`, locked: true });
-        }
+        if (this.refuseIfLocked(req, res, { locked: true })) return;
         const password = req.body && req.body.password;
         const session = this.sessionOptionFor(req.body && req.body.session);
         if (!session) return res.status(400).json({ error: 'Pick one of the listed session lengths.', field: 'session' });
         if (!(await verifyPassword(password, stash.password_hash, stash.password_salt))) {
-            this.noteFailure(stash.slug, req.ip);
+            this.noteFailure(req, stash, 'unlock');
             return res.status(401).json({ error: 'That password is not right.', locked: true });
         }
-        this.clearFailures(stash.slug);
+        this.lockout.clear(stash.slug);
         this.setAccessCookie(req, res, stash, 'full', session.ms);
         res.json({ ok: true, sessionEndsAt: new Date(this.now().getTime() + session.ms).toISOString() });
     };
@@ -434,8 +506,7 @@ class StashController {
 
         if (this.nameReserved(parsed.slug)) return res.status(409).json({ error: RESERVED_MESSAGE, field: 'slug' });
 
-        const end = this.sessionEnd(req, stash, 'full');
-        const remaining = end ? Math.max(0, new Date(end).getTime() - this.now().getTime()) : this.sessionMs(null);
+        const remaining = this.remainingSession(req, stash);
         let updated;
         try {
             updated = this.model.renameStash(stash.id, parsed.slug, this.now());
@@ -445,14 +516,10 @@ class StashController {
         }
 
         // A wrong-password count belongs to the stash, not the name
-        const failures = this.failures.get(stash.slug);
-        if (failures) this.failures.set(updated.slug, failures);
-        const ipFailures = this.ipFailures.get(stash.slug);
-        if (ipFailures) this.ipFailures.set(updated.slug, ipFailures);
-        this.failures.delete(stash.slug);
-        this.ipFailures.delete(stash.slug);
+        this.lockout.rename(stash.slug, updated.slug);
         for (const kind of ['full', 'view', 'drop']) res.clearCookie(this.cookieFor(stash.slug, kind), { path: '/' });
         if (updated.password_hash) this.setAccessCookie(req, res, updated, 'full', remaining, this.signedInAt(req));
+        this.audit('stash.renamed', { req, stash: updated, detail: { from: this.audit.tag(stash.slug), to: this.audit.tag(updated.slug) } });
         this.events.closeAll(stash.slug, 'stash-renamed', { slug: updated.slug, origin: this.withOrigin({}, req).origin });
         res.json({ ok: true, slug: updated.slug, url: `/s/${updated.slug}` });
     };
@@ -471,16 +538,9 @@ class StashController {
         if (typeof newPassword !== 'string' || newPassword.length < min || newPassword.length > MAX_PASSWORD) {
             return res.status(400).json({ error: `The new password must be ${min} to ${MAX_PASSWORD} characters.`, field: 'newPassword' });
         }
-        const wait = this.lockedFor(stash.slug, req.ip);
-        if (wait) {
-            const minutes = Math.max(1, Math.ceil(wait / 60000));
-            return res
-                .status(429)
-                .set('Retry-After', String(Math.ceil(wait / 1000)))
-                .json({ error: `Too many wrong passwords for this stash. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.` });
-        }
+        if (this.refuseIfLocked(req, res)) return;
         if (!(await verifyPassword(currentPassword, stash.password_hash, stash.password_salt))) {
-            this.noteFailure(stash.slug, req.ip);
+            this.noteFailure(req, stash, 'password_change');
             return res.status(401).json({ error: 'That is not the current password.', field: 'currentPassword' });
         }
         if (newPassword === currentPassword) {
@@ -489,12 +549,13 @@ class StashController {
 
         // This browser stays signed in for as long as it had left; everyone else is signed out (a new password means a
         // new salt, which the sign-in cookies are tied to), and the read-only and drop-box links are cancelled
-        const end = this.sessionEnd(req, stash, 'full');
-        const remaining = end ? Math.max(0, new Date(end).getTime() - this.now().getTime()) : this.sessionMs(null);
+        const remaining = this.remainingSession(req, stash);
         const hashed = await hashPassword(newPassword);
         const updated = this.model.setPassword(stash.id, hashed.hash, hashed.salt);
-        this.clearFailures(stash.slug);
+        this.lockout.clear(stash.slug);
         const ends = this.setAccessCookie(req, res, updated, 'full', remaining, this.signedInAt(req));
+        this.renewOwnFollow(req, updated);
+        this.audit('stash.password_changed', { req, stash });
         this.events.closeAll(stash.slug, 'access-changed', { origin: this.withOrigin({}, req).origin });
         res.json({ ok: true, sessionEndsAt: new Date(ends).toISOString() });
     };
@@ -505,10 +566,11 @@ class StashController {
     signOutOthers = (req, res) => {
         const stash = req.stash;
         if (!stash.password_hash) return res.status(400).json({ error: 'This stash has no password, so nobody is signed in to it.' });
-        const end = this.sessionEnd(req, stash, 'full');
-        const remaining = end ? Math.max(0, new Date(end).getTime() - this.now().getTime()) : this.sessionMs(null);
+        const remaining = this.remainingSession(req, stash);
         const updated = this.model.bumpSessionVersion(stash.id);
         const ends = this.setAccessCookie(req, res, updated, 'full', remaining, this.signedInAt(req));
+        this.renewOwnFollow(req, updated);
+        this.audit('stash.sessions_signed_out', { req, stash });
         this.events.closeAll(stash.slug, 'access-changed', { origin: this.withOrigin({}, req).origin });
         res.json({ ok: true, sessionEndsAt: new Date(ends).toISOString() });
     };
@@ -535,6 +597,7 @@ class StashController {
         }
         const token = generateLinkToken();
         this.model.setShareToken(stash.id, kind, hashLinkToken(token));
+        this.audit('stash.share_link_created', { req, stash, detail: { kind } });
         // The token is shown once. It is in the fragment (#), which browsers never send to the server.
         res.status(201).json({ kind, token, path: `/s/${stash.slug}#${kind}=${token}` });
     };
@@ -543,6 +606,7 @@ class StashController {
         const kind = req.params.kind;
         if (!['view', 'drop'].includes(kind)) return res.status(404).json({ error: 'No such link.' });
         this.model.setShareToken(req.stash.id, kind, null);
+        this.audit('stash.share_link_revoked', { req, stash: req.stash, detail: { kind } });
         res.json({ ok: true });
     };
 
@@ -555,14 +619,22 @@ class StashController {
         if (range.error) return res.status(400).json({ error: range.error });
         const search = typeof input.search === 'string' ? input.search.trim().slice(0, 200) : '';
         // Optional: only the first `limit` items (pinned, then newest), with `total` still counting every match
+        const preview = input.preview === true || input.preview === '1' || input.preview === 'true';
         const limit = parseLimit(input.limit);
         if (limit.error) return res.status(400).json({ error: limit.error, field: 'limit' });
+        // Optional: skip the first `offset` items, to read a long list a page at a time (limit + offset)
+        const offset = parseOffset(input.offset);
+        if (offset.error) return res.status(400).json({ error: offset.error, field: 'offset' });
+        const skip = offset.value || 0;
 
         // A drop-box visitor can add but not read: they get the stash's shape and no items or counts
         const dropOnly = req.role === 'drop';
         const filters = { search, from: range.from, to: range.to, now: this.now() };
-        const rows = dropOnly ? [] : this.model.listItems(stash.id, { ...filters, limit: limit.value });
-        const total = dropOnly ? 0 : limit.value && rows.length === limit.value ? this.model.countItems(stash.id, filters) : rows.length;
+        const rows = dropOnly ? [] : this.model.listItems(stash.id, { ...filters, limit: limit.value, offset: skip });
+        // The whole list is only counted when the rows above are not already all of it (a full page, or a page that
+        // starts past the first item)
+        const counted = !dropOnly && (skip > 0 || (limit.value && rows.length === limit.value));
+        const total = dropOnly ? 0 : counted ? this.model.countItems(stash.id, filters) : rows.length;
         res.json({
             slug: stash.slug,
             role: req.role,
@@ -578,9 +650,20 @@ class StashController {
             content: contentOf(stash),
             usage: dropOnly ? { items: 0, files: 0, bytes: 0 } : this.model.usage(stash.id),
             limits: this.limits(),
+            // Every match, not just this page
             total,
-            items: rows.map(row => this.presentItem(stash.slug, row)),
+            // True when items remain after this page, so a page can offer "Show more" without doing the sums
+            hasMore: skip + rows.length < total,
+            items: rows.map(row => this.presentItem(stash.slug, row, { preview })),
         });
+    };
+
+    // One item in full: the way to get the whole text of a note that a preview listing cut short
+    getItem = (req, res) => {
+        const id = Number(req.params.id);
+        const row = Number.isInteger(id) ? this.model.getLiveItem(req.stash.id, id, this.now()) : null;
+        if (!row) return res.status(404).json({ error: 'Item not found.' });
+        res.json(this.presentItem(req.stash.slug, row));
     };
 
     // The per-note options: from the JSON body of the page, or from headers when the body is plain text (curl)
@@ -642,6 +725,27 @@ class StashController {
         return removed;
     }
 
+    // Optimistic concurrency for edits. The page sends `baseEditedAt`: the editedAt of the item as it last saw it (null
+    // if it had never been edited). If the item has been edited since, nothing is changed and the answer is a 409 with
+    // the current item in full, so the person can overwrite it or take it. A request that leaves `baseEditedAt` out
+    // is not checked at all (scripts written before this existed keep working, last write wins). Sends the answer and
+    // returns true when there is a conflict (or the value is malformed).
+    editConflict(req, res, row) {
+        const base = req.body ? req.body.baseEditedAt : undefined;
+        if (base === undefined) return false;
+        if (base !== null && typeof base !== 'string') {
+            res.status(400).json({ error: 'baseEditedAt must be the editedAt of the item you are changing, or null.', field: 'baseEditedAt' });
+            return true;
+        }
+        if (base === (row.edited_at || null)) return false;
+        res.status(409).json({
+            error: `Someone else changed this ${row.kind === 'file' ? 'file' : 'note'} while you were editing.`,
+            conflict: true,
+            item: this.presentItem(req.stash.slug, row),
+        });
+        return true;
+    }
+
     // Edits a note's title and text in place, or a file's title. Burn notes cannot be edited: their text is not on
     // the page to change.
     editNote = (req, res) => {
@@ -649,8 +753,9 @@ class StashController {
         const id = Number(req.params.id);
         const row = Number.isInteger(id) ? this.model.getLiveItem(stash.id, id, this.now()) : null;
         if (!row) return res.status(404).json({ error: 'Item not found.' });
+        if (row.kind === 'note' && row.burn) return res.status(400).json({ error: 'A burn-after-reading note cannot be edited.' });
+        if (this.editConflict(req, res, row)) return;
         if (row.kind === 'file') return this.editFileTitle(req, res, row);
-        if (row.burn) return res.status(400).json({ error: 'A burn-after-reading note cannot be edited.' });
         const raw = req.body && req.body.text;
         if (typeof raw !== 'string' || !raw.trim()) return res.status(400).json({ error: 'A note cannot be empty.', field: 'text' });
         const title = parseTitle(req.body.title);
@@ -737,10 +842,78 @@ class StashController {
         res.json({ keepLast: keep, removed: removed.length });
     };
 
+    // Receives the upload's body into the file store as it arrives (never held in memory), and leaves it on req.upload.
+    // Runs after the checks that can refuse an upload without reading it (role, content kind, Content-Length).
+    receiveFile = async (req, res, next) => {
+        try {
+            req.upload = await this.model.files.receive(req, this.config.maxFileBytes);
+        } catch (err) {
+            if (err.code === 'TOO_LARGE') {
+                // The rest of the body is not read: close the connection once this answer is sent
+                res.set('Connection', 'close');
+                return res.status(413).json({ error: `A file can be at most ${Math.round(this.config.maxFileBytes / 1048576)} MB.` });
+            }
+            // The client went away part way: there is nobody to answer, but make sure nothing is left hanging
+            if (!res.headersSent && !res.destroyed) return res.status(400).json({ error: 'The upload was interrupted.' });
+            return;
+        }
+        next();
+    };
+
     addFile = (req, res) => {
+        const upload = req.upload;
+        try {
+            this.storeUpload(req, res, upload);
+        } finally {
+            // Does nothing once the upload has been moved into the file store
+            this.model.files.discard(upload.tmp);
+        }
+    };
+
+    // The first stash limit that adding an item (a file of `size` bytes, or a note) would break, as { status, error }, or
+    // null when it fits. Used for uploads and for bringing a deleted item back, which must obey the same limits.
+    limitProblem(stash, { file, size = 0 }) {
+        const usage = this.model.usage(stash.id);
+        const c = this.config;
+        if (usage.items >= c.maxItemsPerStash) {
+            return { status: 413, error: `This stash is full (${c.maxItemsPerStash} items). Delete something first.` };
+        }
+        if (!file) return null;
+        if (usage.files >= c.maxFilesPerStash) return { status: 413, error: `A stash can hold ${c.maxFilesPerStash} files. Delete one first.` };
+        if (usage.bytes + size > c.maxStashBytes) {
+            return { status: 413, error: `This stash would pass its ${Math.round(c.maxStashBytes / 1048576)} MB limit.` };
+        }
+        if (this.model.totalBytes() + size > c.maxTotalBytes) return { status: 507, error: 'The server is out of file space. Try again later.' };
+        return null;
+    }
+
+    // The rules about what a file is called and may be, shared by the single-request upload and the start of a resumable
+    // one so they cannot drift apart. With `head` (the first bytes) the type is detected from the content; without it
+    // (a resumable upload that has not sent anything yet) only the extension can be judged, and the content is checked
+    // when the upload completes. Returns { fileName, mime, title } or { status, error, field? }.
+    fileMeta({ rawName, rawTitle, head = null, nameError }) {
+        const fileName = cleanFileName(rawName);
+        if (!fileName) return { status: 400, error: nameError };
+
+        let mime = null;
+        if (head) {
+            // File types are recognised from the first bytes, which is all that was kept in memory
+            const detected = detectFile(fileName, head, this.config.fileTypes);
+            if (detected.error) return { status: 415, error: detected.error };
+            mime = detected.mime;
+        } else {
+            const refused = extensionProblem(fileName, this.config.fileTypes);
+            if (refused) return { status: 415, error: refused };
+        }
+
+        const title = parseTitle(rawTitle);
+        if (title.error) return { status: 400, error: title.error, field: 'title' };
+        return { fileName, mime, title: title.value };
+    }
+
+    storeUpload(req, res, { tmp, size, head }) {
         const stash = req.stash;
-        const content = req.body;
-        if (!Buffer.isBuffer(content) || !content.length) return res.status(400).json({ error: 'The file is empty.' });
+        if (!size) return res.status(400).json({ error: 'The file is empty.' });
 
         let rawName = req.get('x-file-name') || '';
         try {
@@ -748,12 +921,6 @@ class StashController {
         } catch {
             // keep the raw header value
         }
-        const fileName = cleanFileName(rawName);
-        if (!fileName) return res.status(400).json({ error: 'The file needs a name (X-File-Name header).' });
-
-        const detected = detectFile(fileName, content, this.config.fileTypes);
-        if (detected.error) return res.status(415).json({ error: detected.error });
-
         // An optional title, in the X-Title header (URI-encoded, like the name)
         let rawTitle = req.get('x-title');
         if (rawTitle !== undefined) {
@@ -763,29 +930,220 @@ class StashController {
                 // keep the raw header value
             }
         }
-        const title = parseTitle(rawTitle);
-        if (title.error) return res.status(400).json({ error: title.error, field: 'title' });
+        const meta = this.fileMeta({ rawName, rawTitle, head, nameError: 'The file needs a name (X-File-Name header).' });
+        if (meta.error) return res.status(meta.status).json({ error: meta.error, ...(meta.field ? { field: meta.field } : {}) });
 
-        const usage = this.model.usage(stash.id);
-        const c = this.config;
-        if (usage.items >= c.maxItemsPerStash) {
-            return res.status(413).json({ error: `This stash is full (${c.maxItemsPerStash} items). Delete something first.` });
-        }
-        if (usage.files >= c.maxFilesPerStash) {
-            return res.status(413).json({ error: `A stash can hold ${c.maxFilesPerStash} files. Delete one first.` });
-        }
-        if (usage.bytes + content.length > c.maxStashBytes) {
-            return res.status(413).json({ error: `This stash would pass its ${Math.round(c.maxStashBytes / 1048576)} MB limit.` });
-        }
-        if (this.model.totalBytes() + content.length > c.maxTotalBytes) {
-            return res.status(507).json({ error: 'The server is out of file space. Try again later.' });
-        }
+        const problem = this.limitProblem(stash, { file: true, size });
+        if (problem) return res.status(problem.status).json({ error: problem.error });
 
-        const row = this.model.addFile(stash.id, { fileName, fileType: detected.mime, content, title: title.value }, this.now());
+        this.commitFile(req, res, { fileName: meta.fileName, mime: meta.mime, title: meta.title, tmp, size });
+    }
+
+    // Makes the finished upload an item and does everything that follows a new file: the counters, the live event, "keep
+    // the last N". The same for a single request and a completed resumable upload (uploadId: the upload that ends here).
+    commitFile(req, res, { fileName, mime, title, tmp, size, uploadId = null }) {
+        const stash = req.stash;
+        const row = this.model.addFile(stash.id, { fileName, fileType: mime, tmp, size, title, uploadId }, this.now());
+        this.metrics.inc('stashly_uploads_total');
+        this.metrics.inc('stashly_uploaded_bytes_total', [], size);
         const item = this.presentItem(stash.slug, row);
         this.events.publish(stash.slug, 'item-added', this.withOrigin(item, req));
         this.trim(stash);
         res.status(201).json(item);
+    }
+
+    // ---- resumable (chunked) uploads ----
+    // A big file survives a bad connection: it is started with POST .../uploads (all the checks that need no bytes run
+    // then), sent in pieces with PATCH (each at the offset the server expects), and made an item with .../complete.
+    // The bytes wait in a partial file in the file store's tmp/; the database row only records who started it.
+
+    // The upload ids that have a piece (or the end) being handled right now: a second request for the same upload is
+    // refused (409) instead of interleaving with it
+    uploadLocks = new Set();
+
+    // Finds the upload in the URL for this stash. An id of another stash is as good as unknown, and a drop-box visitor
+    // only reaches uploads started with a drop-box link (so a link cannot poke at uploads of full access).
+    uploadOf = (req, res, next) => {
+        const id = String(req.params.id || '');
+        const row = /^[A-Za-z0-9_-]{16,64}$/.test(id) ? this.model.getUpload(req.stash.id, id) : null;
+        if (!row || (req.role === 'drop' && row.role !== 'drop')) return res.status(404).json({ error: 'That upload does not exist (any more).' });
+        req.openUpload = row;
+        next();
+    };
+
+    // How far an upload really got: the partial file is the truth (the database only copies it). While a piece is being
+    // written the last whole piece counts, never the middle of one. Null when the file is gone (the upload is dropped).
+    uploadOffset(row) {
+        if (this.uploadLocks.has(row.id)) return row.received;
+        const size = this.model.files.partSize(row.id);
+        if (size === null || size > row.size) {
+            this.model.dropUploads([row.id]);
+            return null;
+        }
+        if (size !== row.received) this.model.setUploadProgress(row.id, size, new Date(row.last_activity));
+        return size;
+    }
+
+    describeUpload(row, offset) {
+        return { id: row.id, offset, size: row.size, chunkSize: this.config.maxChunkBytes };
+    }
+
+    createUpload = (req, res) => {
+        const stash = req.stash;
+        const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+        if (typeof body.name !== 'string') return res.status(400).json({ error: 'Send the file name as "name".', field: 'name' });
+        const size = body.size;
+        if (typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0) {
+            return res.status(400).json({ error: 'Send the file size in bytes as "size".', field: 'size' });
+        }
+        if (!size) return res.status(400).json({ error: 'The file is empty.', field: 'size' });
+        if (body.title !== undefined && body.title !== null && typeof body.title !== 'string') {
+            return res.status(400).json({ error: 'The title must be text.', field: 'title' });
+        }
+
+        const meta = this.fileMeta({ rawName: body.name, rawTitle: body.title, nameError: 'The file needs a name.' });
+        if (meta.error) return res.status(meta.status).json({ error: meta.error, ...(meta.field ? { field: meta.field } : {}) });
+        if (size > this.config.maxFileBytes) {
+            return res.status(413).json({ error: `A file can be at most ${Math.round(this.config.maxFileBytes / 1048576)} MB.`, field: 'size' });
+        }
+        // The same limits as a single upload (items, files, stash space, server space), checked against the declared size
+        const problem = this.limitProblem(stash, { file: true, size });
+        if (problem) return res.status(problem.status).json({ error: problem.error });
+        // Many open uploads must not be able to fill the disk together: what they declared counts against the server's space
+        if (this.model.totalBytes() + this.model.reservedBytes() + size > this.config.maxTotalBytes) {
+            return res.status(507).json({ error: 'The server is out of file space. Try again later.' });
+        }
+        if (this.model.countUploads(stash.id) >= this.config.maxOpenUploads) {
+            return res.status(429).json({ error: `This stash already has ${this.config.maxOpenUploads} unfinished uploads. Finish or cancel one first.` });
+        }
+        if (this.model.countUploads() >= this.config.maxOpenUploadsServer) {
+            return res.status(429).json({ error: 'The server has too many unfinished uploads right now. Try again later.' });
+        }
+
+        const id = crypto.randomBytes(24).toString('base64url');
+        const row = this.model.createUpload({ id, stashId: stash.id, role: req.role, name: meta.fileName, title: meta.title, size }, this.now());
+        res.status(201)
+            .set('Location', `/api/stashes/${stash.slug}/uploads/${id}`)
+            .set('Upload-Offset', '0')
+            .json(this.describeUpload(row, 0));
+    };
+
+    // Where the upload stands: the point a client resumes from (also the Upload-Offset header, which HEAD sends alone)
+    getUpload = (req, res) => {
+        const row = req.openUpload;
+        const offset = this.uploadOffset(row);
+        if (offset === null) return res.status(404).json({ error: 'That upload does not exist (any more).' });
+        res.set({ 'Upload-Offset': String(offset), 'Upload-Length': String(row.size) });
+        res.json(this.describeUpload(row, offset));
+    };
+
+    // Refuses a piece from its Content-Length before any of the body is read
+    checkChunkSize = (req, res, next) => {
+        const length = Number(req.headers['content-length']);
+        if (Number.isFinite(length) && length > this.config.maxChunkBytes) {
+            res.set('Connection', 'close');
+            return res.status(413).json({ error: `A piece can be at most ${Math.round(this.config.maxChunkBytes / 1024)} KB.` });
+        }
+        next();
+    };
+
+    // One piece. It is received into its own tmp file (never more than one piece is held, and never in memory) and is
+    // appended to the partial file only when it arrived whole, so a piece cut off half way changes nothing: the offset
+    // stays at the last whole piece and the client sends that piece again.
+    patchUpload = async (req, res) => {
+        const row = req.openUpload;
+        if (this.uploadLocks.has(row.id)) {
+            return res.status(409).json({ error: 'Another piece of this upload is still being received.', busy: true, offset: row.received });
+        }
+        this.uploadLocks.add(row.id);
+        let piece = null;
+        try {
+            const offset = this.uploadOffset(row);
+            if (offset === null) return res.status(404).json({ error: 'That upload does not exist (any more).' });
+            const given = req.get('upload-offset');
+            if (given === undefined || !/^\d{1,16}$/.test(given)) {
+                return res.status(400).json({ error: 'Send the Upload-Offset header: the offset this piece starts at.', offset });
+            }
+            if (Number(given) !== offset) {
+                return res.status(409).set('Upload-Offset', String(offset)).json({ error: 'That is not where this upload stands. Continue at the offset given.', offset });
+            }
+            const room = row.size - offset;
+            const limit = Math.min(this.config.maxChunkBytes, room);
+            const length = Number(req.headers['content-length']);
+            if (room <= 0 || (Number.isFinite(length) && length > room)) {
+                res.set('Connection', 'close');
+                return res.status(413).json({ error: 'This piece goes past the size the upload declared.', offset });
+            }
+            if (Number.isFinite(length) && length === 0) return res.status(400).json({ error: 'The piece is empty.', offset });
+
+            try {
+                piece = await this.model.files.receive(req, limit);
+            } catch (err) {
+                if (err.code === 'TOO_LARGE') {
+                    res.set('Connection', 'close');
+                    const error = room < this.config.maxChunkBytes ? 'This piece goes past the size the upload declared.' : `A piece can be at most ${Math.round(this.config.maxChunkBytes / 1024)} KB.`;
+                    return res.status(413).json({ error, offset });
+                }
+                // The client went away part way: nothing was kept, and there is nobody to answer
+                if (!res.headersSent && !res.destroyed) return res.status(400).json({ error: 'The piece was interrupted. Ask for the offset and send it again.', offset });
+                return;
+            }
+            if (!piece.size) return res.status(400).json({ error: 'The piece is empty.', offset });
+
+            let size;
+            try {
+                size = await this.model.files.appendPart(row.id, piece.tmp, offset);
+            } catch {
+                return res.status(500).json({ error: 'Could not store the piece. Try again.', offset });
+            }
+            this.model.setUploadProgress(row.id, size, this.now());
+            res.set('Upload-Offset', String(size)).json(this.describeUpload(row, size));
+        } finally {
+            if (piece) this.model.files.discard(piece.tmp);
+            this.uploadLocks.delete(row.id);
+        }
+    };
+
+    // The end: only when every byte is there. The type is judged from the first bytes, the limits are checked once more
+    // (the stash may have filled up since), and then it becomes an item exactly like a single-request upload.
+    completeUpload = (req, res) => {
+        const stash = req.stash;
+        const row = req.openUpload;
+        if (this.uploadLocks.has(row.id)) {
+            return res.status(409).json({ error: 'A piece of this upload is still being received.', busy: true, offset: row.received });
+        }
+        this.uploadLocks.add(row.id);
+        try {
+            const offset = this.uploadOffset(row);
+            if (offset === null) return res.status(404).json({ error: 'That upload does not exist (any more).' });
+            if (offset !== row.size) {
+                return res.status(409).set('Upload-Offset', String(offset)).json({ error: 'The upload is not complete yet.', offset, size: row.size });
+            }
+            const meta = this.fileMeta({ rawName: row.name, rawTitle: row.title, head: this.model.files.readPartHead(row.id), nameError: 'The file needs a name.' });
+            if (meta.error) {
+                // The bytes will never be acceptable: nothing to keep
+                this.model.dropUploads([row.id]);
+                return res.status(meta.status).json({ error: meta.error });
+            }
+            // Over a limit now: the upload is kept, so it can be completed once there is room
+            const problem = this.limitProblem(stash, { file: true, size: row.size });
+            if (problem) return res.status(problem.status).json({ error: problem.error });
+            this.commitFile(req, res, {
+                fileName: meta.fileName, mime: meta.mime, title: meta.title, tmp: this.model.files.partPath(row.id), size: row.size, uploadId: row.id,
+            });
+        } finally {
+            this.uploadLocks.delete(row.id);
+        }
+    };
+
+    // Cancels an upload and removes what it received
+    abortUpload = (req, res) => {
+        const row = req.openUpload;
+        if (this.uploadLocks.has(row.id)) {
+            return res.status(409).json({ error: 'A piece of this upload is still being received. Try again in a moment.', busy: true });
+        }
+        this.model.dropUploads([row.id]);
+        res.status(204).end();
     };
 
     // Reads one file of this stash, or null
@@ -797,9 +1155,9 @@ class StashController {
 
     getFile = (req, res) => {
         const row = this.fileRow(req);
-        if (!row) return res.status(404).json({ error: 'File not found.' });
-        const content = this.model.getFileContent(row.id);
-        if (!content) return res.status(404).json({ error: 'File not found.' });
+        // The size on disk is what is served; a row whose file has gone missing is the same as no file
+        const length = row ? this.model.files.size(row.id) : null;
+        if (length === null) return res.status(404).json({ error: 'File not found.' });
 
         const type = row.file_type;
         const download = req.query.download === '1';
@@ -818,29 +1176,142 @@ class StashController {
         });
 
         // Audio and video players ask for byte ranges so they can seek
-        const range = parseRange(req.headers.range, content.length);
+        const range = parseRange(req.headers.range, length);
         if (range === 'invalid') {
-            res.set('Content-Range', `bytes */${content.length}`);
+            res.set('Content-Range', `bytes */${length}`);
             return res.status(416).end();
         }
         if (range) {
             res.status(206).set({
-                'Content-Range': `bytes ${range.start}-${range.end}/${content.length}`,
+                'Content-Range': `bytes ${range.start}-${range.end}/${length}`,
                 'Content-Length': String(range.end - range.start + 1),
             });
-            return res.end(content.subarray(range.start, range.end + 1));
+        } else {
+            res.set('Content-Length', String(length));
         }
-        res.set('Content-Length', String(content.length));
-        res.send(content);
+        // Streamed from disk: a big file never sits in memory, and the server stays free for other requests
+        pipeline(this.model.files.stream(row.id, range || null), res, () => {
+            // A client that goes away part way ends the stream; nothing more to do
+        });
+    };
+
+    // ---- thumbnails ----
+    // The server has no image library, so the page makes the thumbnail in the browser (a canvas) and sends it here.
+    // The server only checks what arrives: it must be small and must really be a JPEG, PNG or WebP.
+
+    // Run before the body is read, so a request that is not allowed is refused without receiving it. Full access may
+    // attach or replace a thumbnail on any image. A drop-box link has to be able to attach the thumbnail of what it
+    // just uploaded (it cannot read anything back), so it may do so only while the image has none and is under
+    // THUMB_DROP_WINDOW_MS old: it cannot overwrite or tamper with thumbnails of images it did not just add.
+    thumbTarget = (req, res, next) => {
+        const row = this.fileRow(req);
+        if (!row) return res.status(404).json({ error: 'File not found.' });
+        if (!row.file_type.startsWith('image/')) return res.status(400).json({ error: 'Only images have thumbnails.' });
+        if (req.role !== 'full') {
+            const age = this.now().getTime() - new Date(row.created_at).getTime();
+            if (row.has_thumb || age > THUMB_DROP_WINDOW_MS) {
+                return res.status(403).json({ error: 'This image already has a thumbnail, or was added too long ago for this link to give it one.', role: req.role });
+            }
+        }
+        req.fileRow = row;
+        next();
+    };
+
+    putThumb = (req, res) => {
+        const stash = req.stash;
+        const bytes = req.body;
+        if (!Buffer.isBuffer(bytes) || !bytes.length) return res.status(400).json({ error: 'Send the thumbnail image as the request body.' });
+        // express.raw has already stopped anything over the limit (413); this is the same rule for a body that slipped by
+        if (bytes.length > this.config.maxThumbBytes) {
+            return res.status(413).json({ error: `A thumbnail can be at most ${Math.round(this.config.maxThumbBytes / 1024)} KB.` });
+        }
+        // Judged by content, never by the name or the Content-Type the sender gives: an SVG called .jpg is refused
+        if (!detectThumb(bytes)) return res.status(415).json({ error: 'A thumbnail must be a JPEG, PNG or WebP image.' });
+        const row = this.model.setThumb(stash.id, req.fileRow.id, bytes);
+        if (!row) return res.status(404).json({ error: 'File not found.' });
+        const item = this.presentItem(stash.slug, row);
+        // Other open pages swap the file icon (or the full image) in their list for the new thumbnail
+        this.events.publish(stash.slug, 'item-updated', item);
+        res.json(item);
+    };
+
+    getThumb = async (req, res) => {
+        const row = this.fileRow(req);
+        if (!row || !row.has_thumb) return res.status(404).json({ error: 'No thumbnail.' });
+        let bytes = null;
+        try {
+            bytes = await this.model.files.readThumb(row.id);
+        } catch {
+            // the file has gone from the disk
+        }
+        // The type comes from the bytes (they were checked when stored); anything else is treated as no thumbnail
+        const type = detectThumb(bytes);
+        if (!type) return res.status(404).json({ error: 'No thumbnail.' });
+        res.set({
+            'Content-Type': type,
+            'Content-Disposition': `inline; filename="thumb-${row.id}"`,
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Security-Policy': "default-src 'none'; sandbox",
+            'Cache-Control': 'private, no-store',
+        });
+        res.send(bytes);
+    };
+
+    // The whole stash as one zip: stash.json, a text file per note and every file as it was uploaded. Burn-after-reading
+    // notes are left out (reading one would use it up). The zip is written entry by entry straight to the response, and
+    // each file streams from disk, so even a large stash never sits in memory. Full and read-only access may export;
+    // a drop-box link cannot read, so it cannot export either.
+    exportZip = async (req, res) => {
+        const stash = req.stash;
+        const now = this.now();
+        const rows = this.model.listItems(stash.id, { now });
+        const plan = planExport({ stash, rows, fileSize: id => this.model.files.size(id), now });
+        // Checked before a byte is sent, so the answer can still be a clean error instead of a broken download
+        if (!plan.fits) {
+            return res.status(413).json({ error: 'This stash is too large to export as one zip (the limit is 4 GB or 65535 entries).' });
+        }
+        this.metrics.inc('stashly_exports_total');
+        this.audit('stash.exported', { req, stash });
+        res.set({
+            'Content-Type': 'application/zip',
+            'Content-Disposition': `attachment; filename="${stash.slug}.zip"`,
+            'X-Content-Type-Options': 'nosniff',
+            'Cache-Control': 'private, no-store',
+        });
+        const zip = new ZipWriter(res, { now });
+        try {
+            for (const entry of plan.entries) {
+                if (entry.kind === 'file') {
+                    // Opened first: a file that has vanished since the listing is skipped, not left as a broken entry
+                    const source = this.model.files.stream(entry.id);
+                    try {
+                        await once(source, 'open', { signal: zip.signal });
+                    } catch (err) {
+                        source.destroy();
+                        if (zip.signal.aborted) throw err;
+                        continue;
+                    }
+                    await zip.addStream(entry.name, source, { method: entry.method });
+                } else {
+                    await zip.addBuffer(entry.name, entry.kind === 'note' ? entry.text : entry.data, { method: entry.method });
+                }
+            }
+            await zip.finish();
+        } catch {
+            // Part of the zip has already gone out, so there is no way to send an error: cut the connection, which
+            // the client sees as a failed download rather than a complete-looking but short zip. Any open file was
+            // closed when its stream was destroyed.
+            res.destroy();
+        }
     };
 
     // The names inside a zip file, for the preview. Nothing is unpacked.
-    listArchive = (req, res) => {
+    listArchive = async (req, res) => {
         const row = this.fileRow(req);
         if (!row) return res.status(404).json({ error: 'File not found.' });
         if (row.file_type !== 'application/zip') return res.status(400).json({ error: 'Only zip files can be listed.' });
-        const content = this.model.getFileContent(row.id);
-        if (!content) return res.status(404).json({ error: 'File not found.' });
+        if (!this.model.files.exists(row.id)) return res.status(404).json({ error: 'File not found.' });
+        const content = await this.model.files.readAll(row.id);
         const listing = listZip(content);
         if (listing.error) return res.status(422).json({ error: listing.error });
         res.json(listing);
@@ -859,13 +1330,14 @@ class StashController {
                     .type('text/plain; charset=utf-8')
                     .send('The newest note burns after reading. Fetch it with POST (curl -X POST) to read it and delete it.\n');
             }
-            this.burn(req.stash, row);
+            this.burn(req.stash, row, req);
         }
         res.type('text/plain; charset=utf-8').send(row.text);
     };
 
     // Deletes a note that has been read and tells every open page
-    burn(stash, row) {
+    burn(stash, row, req) {
+        this.audit('item.deleted', { req, stash, detail: { kind: row.kind, reason: 'burned' } });
         // The model overwrites the text and empties the write-ahead log, so it cannot be read back from the files
         this.model.deleteItem(stash.id, row.id);
         this.events.publish(stash.slug, 'item-deleted', { id: row.id, burned: true });
@@ -878,18 +1350,52 @@ class StashController {
         if (!row || row.kind !== 'note' || !row.burn) {
             return res.status(404).json({ error: 'That note is gone, or it does not burn after reading.' });
         }
-        this.burn(req.stash, row);
+        this.burn(req.stash, row, req);
         res.set('Cache-Control', 'no-store').json({ id: row.id, text: row.text });
     };
 
+    // A person's delete. With undo on, the item goes to the trash for UNDO_SECONDS and can be restored; the answer says
+    // until when (undoUntil, or null when it is gone for good). Never kept: burn-after-reading and secret notes (their
+    // point is that they cannot be read back), and a note already past its own expiry.
     deleteItem = (req, res) => {
         const stash = req.stash;
         const id = Number(req.params.id);
-        if (!Number.isInteger(id) || !this.model.deleteItem(stash.id, id)) {
-            return res.status(404).json({ error: 'Item not found.' });
-        }
+        const row = Number.isInteger(id) ? this.model.getItem(stash.id, id) : null;
+        if (!row) return res.status(404).json({ error: 'Item not found.' });
+        const now = this.now();
+        const seconds = this.config.undoSeconds;
+        const expired = Boolean(row.expires_at) && row.expires_at <= now.toISOString();
+        const undoable = seconds > 0 && !row.burn && !row.secret && !expired;
+        if (undoable) this.model.trashItem(stash.id, id, now);
+        else this.model.deleteItem(stash.id, id);
+        this.audit('item.deleted', { req, stash, detail: { kind: row.kind, undoable } });
         this.events.publish(stash.slug, 'item-deleted', { id });
-        res.json({ ok: true });
+        res.json({ ok: true, undoUntil: undoable ? new Date(now.getTime() + seconds * 1000).toISOString() : null });
+    };
+
+    // Brings a deleted item back, with the same id, place in the list and pin. It must still be inside the undo window,
+    // and the stash's limits are checked again, because things may have been added since.
+    restore = (req, res) => {
+        const stash = req.stash;
+        const id = Number(req.params.id);
+        const now = this.now();
+        const seconds = this.config.undoSeconds;
+        const row = seconds > 0 && Number.isInteger(id) ? this.model.getTrashed(stash.id, id, new Date(now.getTime() - seconds * 1000)) : null;
+        if (!row) return res.status(404).json({ error: 'That item cannot be brought back any more.' });
+        // Gone for good if its own expiry passed meanwhile, or its file has vanished from the disk
+        if ((row.expires_at && row.expires_at <= now.toISOString()) || (row.kind === 'file' && !this.model.files.exists(id))) {
+            this.model.dropTrashed(stash.id, id);
+            return res.status(404).json({ error: 'That item cannot be brought back any more.' });
+        }
+        const problem = this.limitProblem(stash, { file: row.kind === 'file', size: row.file_size });
+        if (problem) return res.status(problem.status).json({ error: problem.error });
+        // "Keep the last N" is not applied here: the item would often be the oldest and vanish again at once. The next
+        // new item trims the stash as usual.
+        const restored = this.model.restoreItem(stash.id, id);
+        this.audit('item.restored', { req, stash, detail: { kind: restored.kind } });
+        const item = this.presentItem(stash.slug, restored);
+        this.events.publish(stash.slug, 'item-added', this.withOrigin(item, req));
+        res.json(item);
     };
 
     extend = (req, res) => {
@@ -902,6 +1408,7 @@ class StashController {
     remove = (req, res) => {
         const stash = req.stash;
         this.model.deleteStash(stash.id, this.now());
+        this.audit('stash.deleted', { req, stash, detail: { reason: 'visitor' } });
         this.events.closeAll(stash.slug, 'stash-gone', { reason: 'deleted' });
         res.json({ ok: true });
     };
@@ -914,7 +1421,9 @@ class StashController {
             const stash = this.model.findBySlug(slug);
             if (!stash) return 'stash-gone';
             if (stash.expires_at && stash.expires_at <= this.now().toISOString()) return 'stash-gone';
-            return ['full', 'view'].includes(this.roleOf(req, stash)) ? null : 'access-changed';
+            // The signed-in user is looked up again, so a user who was disabled or signed out stops receiving
+            const user = this.userAuth ? this.userAuth.resolve(req) : null;
+            return ['full', 'view'].includes(this.roleOf(req, stash, user)) ? null : 'access-changed';
         };
         this.events.subscribe(slug, req, res, {
             verify,
@@ -927,18 +1436,20 @@ class StashController {
     // Called on a timer: removes stashes whose time is up and tells anyone still looking at them
     cleanup = () => {
         const removed = this.model.purgeExpired(this.now());
-        for (const slug of removed) this.events.closeAll(slug, 'stash-gone', { reason: 'expired' });
+        for (const slug of removed) {
+            this.audit('stash.deleted', { stash: slug, actor: 'system', detail: { reason: 'expired' } });
+            this.events.closeAll(slug, 'stash-gone', { reason: 'expired' });
+        }
         for (const item of this.model.purgeExpiredItems(this.now())) this.events.publish(item.slug, 'item-deleted', { id: item.id });
+        // Deleted items whose undo time is up are removed for good (with undo turned off, everything waiting goes)
+        this.model.purgeTrash(new Date(this.now().getTime() - this.config.undoSeconds * 1000));
+        // Resumable uploads that got no new piece for UPLOAD_IDLE_HOURS are given up (one with a piece arriving is left)
+        const idle = this.model.idleUploads(new Date(this.now().getTime() - this.config.uploadIdleHours * HOUR));
+        this.model.dropUploads(idle.filter(id => !this.uploadLocks.has(id)));
         // Names reserved long enough are free again
         if (this.config.reserveOldNamesDays) this.model.purgeRetired(new Date(this.now().getTime() - this.config.reserveOldNamesDays * DAY));
         // Forget wrong-password counts whose window has passed
-        const window = this.config.stashUnlockWindowMs;
-        const nowMs = this.now().getTime();
-        for (const [slug, entry] of this.failures) if (nowMs - entry.start >= window) this.failures.delete(slug);
-        for (const [slug, perIp] of this.ipFailures) {
-            for (const [ip, entry] of perIp) if (nowMs - entry.start >= window) perIp.delete(ip);
-            if (!perIp.size) this.ipFailures.delete(slug);
-        }
+        this.lockout.sweep();
         return removed;
     };
 }
