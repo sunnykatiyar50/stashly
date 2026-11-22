@@ -107,7 +107,8 @@ no errors or warnings).
 | Your server's host (asked at run time) | To call the Stashly API with your sign-in cookie. Nothing else is declared up front. The pattern has no port, because Firefox ignores a pattern with a port ([bug 1362809](https://bugzilla.mozilla.org/show_bug.cgi?id=1362809)). So access covers that host on any port. |
 | `clipboardRead` (optional, asked the first time) | Only for the clipboard icon next to **Add**. Pasting into the box needs nothing. |
 
-The extension does not read pages. It sends only what you choose to send, and only to your server.
+The extension does not read pages. It sends only what you choose to send, and only to your server. The full privacy
+policy is in [PRIVACY.md](../PRIVACY.md); link to it from a store listing.
 
 ## Good to know
 
