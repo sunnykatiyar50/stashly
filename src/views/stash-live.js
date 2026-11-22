@@ -56,14 +56,22 @@
         return true;
     }
 
+    // The same order the list is sorted in (see sortItems)
+    function comesBefore(a, b) {
+        if (a.pinned !== b.pinned) return a.pinned;
+        if (a.order !== b.order) return a.order > b.order;
+        return a.id > b.id;
+    }
+
     // A new clip joins the top of the list. What is open on the right is left alone, so a clip
     // arriving from another machine never pulls the page away from what you are reading or typing.
     function onItemAdded(item) {
         if (state.items.some(function (existing) { return existing.id === item.id; })) return;
         if (!matchesFilters(item)) return;
-        // Pinned items stay above everything, so a new item goes in just below them
+        // Where it goes in the list's own order (pinned first, then by place, then newest). A new item has the highest
+        // place, so it lands just below the pinned ones; an item brought back by Undo returns to the place it had.
         var at = 0;
-        while (at < state.items.length && state.items[at].pinned) at++;
+        while (at < state.items.length && comesBefore(state.items[at], item)) at++;
         state.items.splice(at, 0, item);
         var el = buildClip(item);
         el.classList.add('new');

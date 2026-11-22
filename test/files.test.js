@@ -158,7 +158,7 @@ test('the server-wide file space is capped', async () => {
 });
 
 test('deleting a file item removes its content', async () => {
-    const ctx = makeApp();
+    const ctx = makeApp({ undoSeconds: 0 });
     const base = await stash(ctx);
     const up = await upload(ctx, base, 'a.png', PNG).expect(201);
     await request(ctx.app).delete(`${base}/items/${up.body.id}`).expect(200);

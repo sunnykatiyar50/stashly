@@ -85,6 +85,8 @@ function createStashRoutes({ controller, config }) {
     // Revealing deletes the note, so it is not something a read-only link may do
     router.post('/:slug/items/:id/reveal', ...full, c.reveal);
     router.delete('/:slug/items/:id', ...full, c.deleteItem);
+    // Undoing a delete puts an item back (it counts against the same limits as adding one)
+    router.post('/:slug/items/:id/restore', postLimiter, ...full, c.restore);
     router.put('/:slug/items/:id', ...full, c.editNote);
     router.post('/:slug/items/:id/pin', ...full, c.setPinned);
     // Dragging clips into a new order; a read-only or drop-box link cannot rearrange

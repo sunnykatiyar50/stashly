@@ -61,7 +61,9 @@ what is stored there. As built, the server:
 - makes no connections of its own to outside services, and sends no data to the author of Stashly
 
 Burn-after-reading notes are deleted on the server as soon as they are revealed. Deleted notes are overwritten in the
-database file.
+database file. When you delete a note or file yourself, the server keeps it for a short time (2 minutes by default, set
+by `UNDO_SECONDS`) so the delete can be undone, and then overwrites it; burn-after-reading and secret notes are never
+kept.
 
 ## Children
 

@@ -76,6 +76,9 @@ function loadConfig(env = process.env, overrides = {}) {
         // A name given up by a stash (deleted, expired or renamed away) cannot be taken by a new stash for this many
         // days, so a device or script still using it does not send to a stranger. 0 turns it off.
         reserveOldNamesDays: num(env.RESERVE_OLD_NAMES_DAYS, 30),
+        // How long a person's delete of an item can be undone. The item waits in the trash that long (and is then
+        // removed for good). 0 turns undo off: deletes are immediate and secure, as before.
+        undoSeconds: Math.min(3600, Math.floor(num(env.UNDO_SECONDS, 120))),
         // Wrong passwords for one stash, from anyone: after this many in the window, unlocking it is refused until
         // the window ends (a person already signed in is not affected). 0 turns it off.
         // Counted per visitor (IP) for each stash, so a stranger cannot lock the owner out. A looser limit

@@ -1,4 +1,7 @@
 // All SQL lives here, so the model can be ported to another database (or merged into Message-Sandbox) in one place.
+// What an item row holds, in the order the trash table keeps it (moving a row between the two tables copies these)
+const ITEM_COLUMNS = 'id, stash_id, kind, title, text, file_name, file_type, file_size, created_at, expires_at, burn, secret, pinned, edited_at, sort_order';
+
 const escapeLike = value => value.replace(/[\\%_]/g, c => `\\${c}`);
 
 class StashModel {
@@ -10,14 +13,24 @@ class StashModel {
 
     // ---- uploaded files ----
 
-    // Ids of the file items in one stash, read before the stash is deleted so their bytes can go with it
+    // Ids of the file items in one stash, trashed ones included (their bytes are still on disk), read before the stash
+    // is deleted so the bytes can go with it
     fileIdsOfStash(stashId) {
-        return this.db.prepare("SELECT id FROM items WHERE stash_id = ? AND kind = 'file'").all(stashId).map(row => row.id);
+        return this.db
+            .prepare("SELECT id FROM items WHERE stash_id = ? AND kind = 'file' UNION SELECT id FROM trash WHERE stash_id = ? AND kind = 'file'")
+            .all(stashId, stashId)
+            .map(row => row.id);
     }
 
-    // Every file item's id: what the file store should hold (anything else in its folder is left over)
+    // Every file item's id: what the file store should hold (anything else in its folder is left over). A trashed
+    // file is still held, so a restart inside the undo window does not wipe it.
     liveFileIds() {
-        return new Set(this.db.prepare("SELECT id FROM items WHERE kind = 'file'").all().map(row => row.id));
+        return new Set(
+            this.db
+                .prepare("SELECT id FROM items WHERE kind = 'file' UNION SELECT id FROM trash WHERE kind = 'file'")
+                .all()
+                .map(row => row.id)
+        );
     }
 
     // Removes the bytes of deleted file items. Done after the rows are gone: a crash in between leaves a stray file
@@ -291,6 +304,69 @@ class StashModel {
         return deleted;
     }
 
+    // ---- trash (undo for a person's delete) ----
+
+    // Moves an item to the trash instead of destroying it: the row (and, for a file, its bytes on disk) stay until
+    // purgeTrash removes them or restoreItem brings them back. Returns false when there is no such item.
+    trashItem(stashId, id, now = new Date()) {
+        this.db.exec('BEGIN');
+        try {
+            const copied = this.db
+                .prepare(`INSERT INTO trash (${ITEM_COLUMNS}, deleted_at) SELECT ${ITEM_COLUMNS}, ? FROM items WHERE stash_id = ? AND id = ?`)
+                .run(now.toISOString(), stashId, id).changes;
+            if (copied) this.db.prepare('DELETE FROM items WHERE stash_id = ? AND id = ?').run(stashId, id);
+            this.db.exec('COMMIT');
+            return copied > 0;
+        } catch (err) {
+            this.db.exec('ROLLBACK');
+            throw err;
+        }
+    }
+
+    // A trashed item that can still be brought back: deleted after `since` (now minus the undo window)
+    getTrashed(stashId, id, since) {
+        return this.db.prepare('SELECT * FROM trash WHERE stash_id = ? AND id = ? AND deleted_at > ?').get(stashId, id, since.toISOString()) || null;
+    }
+
+    // Puts a trashed item back in the list with the same id, place and pin. The caller has checked the limits.
+    restoreItem(stashId, id) {
+        this.db.exec('BEGIN');
+        try {
+            this.db.prepare(`INSERT INTO items (${ITEM_COLUMNS}) SELECT ${ITEM_COLUMNS} FROM trash WHERE stash_id = ? AND id = ?`).run(stashId, id);
+            this.db.prepare('DELETE FROM trash WHERE stash_id = ? AND id = ?').run(stashId, id);
+            this.db.exec('COMMIT');
+        } catch (err) {
+            this.db.exec('ROLLBACK');
+            throw err;
+        }
+        return this.getItem(stashId, id);
+    }
+
+    // Removes one trashed item for good (its file too), for example one that cannot be restored any more
+    dropTrashed(stashId, id) {
+        const row = this.db.prepare('SELECT kind FROM trash WHERE stash_id = ? AND id = ?').get(stashId, id);
+        if (!row) return false;
+        this.db.prepare('DELETE FROM trash WHERE stash_id = ? AND id = ?').run(stashId, id);
+        if (row.kind === 'file') this.dropFiles([id]);
+        this.checkpoint();
+        return true;
+    }
+
+    // Removes trash deleted at or before `before` for good: the row is overwritten (secure_delete) and the file zeroed.
+    // Returns how many items were removed.
+    purgeTrash(before) {
+        const rows = this.db.prepare('SELECT id, kind FROM trash WHERE deleted_at <= ?').all(before.toISOString());
+        if (!rows.length) return 0;
+        this.db.prepare('DELETE FROM trash WHERE deleted_at <= ?').run(before.toISOString());
+        this.dropFiles(rows.filter(row => row.kind === 'file').map(row => row.id));
+        this.checkpoint();
+        return rows.length;
+    }
+
+    countTrash() {
+        return this.db.prepare('SELECT COUNT(*) AS n FROM trash').get().n;
+    }
+
     // The place a new item takes: above everything already in the stash
     nextOrder(stashId) {
         return this.db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM items WHERE stash_id = ?').get(stashId).n;
@@ -324,17 +400,27 @@ class StashModel {
 
     // Gives a file a title of its own (null goes back to its name). The file and its name stay as they were.
     setFileTitle(stashId, id, title, now = new Date()) {
+        const before = this.getItem(stashId, id);
         const changed = this.db
             .prepare(`UPDATE items SET title = ?, edited_at = ? WHERE stash_id = ? AND id = ? AND kind = 'file'`)
-            .run(title, now.toISOString(), stashId, id).changes;
+            .run(title, this.editStamp(before && before.edited_at, now), stashId, id).changes;
         return changed ? this.getItem(stashId, id) : null;
+    }
+
+    // The time to stamp an edit with: now, but always later than the item's last edit, so two edits can never share a
+    // value (the edit-conflict check compares them)
+    editStamp(current, now) {
+        const stamp = now.toISOString();
+        if (!current || stamp > current) return stamp;
+        return new Date(new Date(current).getTime() + 1).toISOString();
     }
 
     // Changes a note's text and title in place. Its options (burn, secret, expiry) and its date stay as they were.
     updateNote(stashId, id, { text, title }, now = new Date()) {
+        const before = this.getItem(stashId, id);
         const changed = this.db
             .prepare(`UPDATE items SET text = ?, title = ?, edited_at = ? WHERE stash_id = ? AND id = ? AND kind = 'note'`)
-            .run(text, title, now.toISOString(), stashId, id).changes;
+            .run(text, title, this.editStamp(before && before.edited_at, now), stashId, id).changes;
         // The old text is overwritten in the file (secure_delete); this clears it from the log as well
         if (changed) this.checkpoint();
         return changed ? this.getItem(stashId, id) : null;

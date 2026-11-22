@@ -397,6 +397,10 @@ audio.detail-media { max-height: none; }
 
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 30; padding: 9px 16px; border-radius: 8px; background: #111827; color: #fff; font-size: 13.5px; box-shadow: 0 6px 20px var(--shadow); max-width: calc(100vw - 32px); }
 .toast.error { background: var(--danger); }
+/* A toast with a button (Undo): the words and the button side by side */
+.toast .toast-action { margin-left: 14px; padding: 3px 10px; border: 1px solid rgba(255, 255, 255, 0.7); border-radius: 6px; background: transparent; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.toast .toast-action:hover { background: rgba(255, 255, 255, 0.18); }
+.toast .toast-action:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 /* ===== QR code dialog ===== */
 .qr-dialog { border: 1px solid var(--border); border-radius: 12px; padding: 0; background: var(--surface); color: var(--text); width: min(360px, calc(100vw - 32px)); box-shadow: 0 12px 40px var(--shadow); }
@@ -542,6 +546,11 @@ audio.detail-media { max-height: none; }
 .edit-form { display: flex; flex-direction: column; gap: 8px; }
 .edit-form input, .edit-form textarea { width: 100%; }
 .edit-form textarea { min-height: 220px; font-family: var(--mono); font-size: 13px; line-height: 1.5; }
+/* Shown in the edit form when someone else saved the item first: the message and the two ways forward */
+.edit-conflict { padding: 10px 12px; border: 1px solid var(--warning-text); border-radius: 8px; background: var(--warning-bg); color: var(--warning-text); font-size: 13.5px; }
+.edit-conflict:focus { outline: 2px solid var(--warning-text); outline-offset: 2px; }
+.edit-conflict p { margin: 0 0 8px; font-weight: 600; }
+.edit-conflict .edit-conflict-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .role-drop #optionsButton, .role-drop #presenceChip { display: none; }
 .role-view [data-option="keep"] { display: none; }
 

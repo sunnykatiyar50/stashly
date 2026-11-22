@@ -64,15 +64,56 @@
     }
 
     var toastTimer;
+    var toastDeadline = 0;
 
-    function toast(message, isError) {
-        var el = $('toast');
-        el.textContent = message;
-        el.classList.toggle('error', Boolean(isError));
-        el.classList.remove('hidden');
+    function hideToast() {
         clearTimeout(toastTimer);
-        toastTimer = setTimeout(function () { el.classList.add('hidden'); }, isError ? 4000 : 2200);
+        $('toast').classList.add('hidden');
     }
+
+    function startToastTimer(ms) {
+        clearTimeout(toastTimer);
+        toastDeadline = Date.now() + ms;
+        toastTimer = setTimeout(hideToast, ms);
+    }
+
+    // options (all optional): action { label, onClick } adds a real button to the toast (used for "Undo"), and
+    // duration is how long it stays, in ms. A toast with a button stays while the pointer or the keyboard focus is on
+    // it, so it cannot vanish under someone who is about to press it.
+    function toast(message, isError, options) {
+        options = options || {};
+        var el = $('toast');
+        el.textContent = '';
+        el.appendChild(make('span', 'toast-text', message));
+        el.classList.toggle('error', Boolean(isError));
+        if (options.action) {
+            var act = make('button', 'toast-action', options.action.label);
+            act.type = 'button';
+            act.addEventListener('click', function () {
+                hideToast();
+                options.action.onClick();
+            });
+            el.appendChild(act);
+        }
+        el.classList.remove('hidden');
+        startToastTimer(options.duration || (isError ? 4000 : 2200));
+        // After a delete the focused button is gone, so focus would be lost: put it on Undo so the keyboard can reach
+        // it. (Only once the toast is showing; a hidden element cannot take focus.)
+        if (options.action && (!document.activeElement || document.activeElement === document.body)) el.querySelector('.toast-action').focus();
+    }
+
+    (function () {
+        var el = document.getElementById('toast');
+        function hold() { if (el.querySelector('.toast-action')) clearTimeout(toastTimer); }
+        function release() {
+            if (!el.querySelector('.toast-action') || el.classList.contains('hidden') || el.matches(':hover') || el.contains(document.activeElement)) return;
+            startToastTimer(Math.max(toastDeadline - Date.now(), 2000));
+        }
+        el.addEventListener('mouseenter', hold);
+        el.addEventListener('focusin', hold);
+        el.addEventListener('mouseleave', release);
+        el.addEventListener('focusout', function () { setTimeout(release, 0); });
+    })();
 
     function show(name) {
         Object.keys(sections).forEach(function (key) { sections[key].classList.toggle('hidden', key !== name); });

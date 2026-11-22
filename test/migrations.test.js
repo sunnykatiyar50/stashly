@@ -53,6 +53,48 @@ test('a database from before versions existed is upgraded and keeps its data', (
     }
 });
 
+test('a new database has the trash table', () => {
+    const db = connect(':memory:');
+    assert.ok(columns(db, 'trash').includes('deleted_at'));
+});
+
+test('a schema 2 database gets the trash table at version 3 and keeps its data', () => {
+    const { file, cleanup } = tempDb();
+    try {
+        // A database exactly as the previous release left it: schema 2, no trash table
+        const first = connect(file);
+        first.exec('DROP TABLE trash');
+        first.exec("INSERT INTO stashes (slug, created_at) VALUES ('old-stash', '2026-01-01T00:00:00Z')");
+        first.exec("INSERT INTO items (stash_id, kind, text, created_at, sort_order) VALUES (1, 'note', 'kept', '2026-01-01T00:00:00Z', 1)");
+        first.exec("INSERT INTO items (stash_id, kind, file_name, file_type, file_size, created_at, sort_order) VALUES (1, 'file', 'a.png', 'image/png', 5, '2026-01-01T00:00:01Z', 2)");
+        first.exec('PRAGMA user_version = 2');
+        first.close();
+
+        const db = connect(file);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3);
+        assert.equal(SCHEMA_VERSION, 3);
+        assert.deepEqual(columns(db, 'trash'), [
+            'id', 'stash_id', 'kind', 'title', 'text', 'file_name', 'file_type', 'file_size', 'created_at',
+            'expires_at', 'burn', 'secret', 'pinned', 'edited_at', 'sort_order', 'deleted_at',
+        ]);
+        assert.equal(db.prepare('SELECT COUNT(*) AS n FROM trash').get().n, 0);
+        assert.deepEqual(db.prepare('SELECT text FROM items ORDER BY id').all().map(r => r.text), ['kept', null]);
+
+        // The trash is wired to its stash: deleting the stash removes its rows
+        db.exec("INSERT INTO trash (id, stash_id, kind, text, created_at, deleted_at) VALUES (50, 1, 'note', 'bin', '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z')");
+        db.exec('DELETE FROM stashes WHERE id = 1');
+        assert.equal(db.prepare('SELECT COUNT(*) AS n FROM trash').get().n, 0);
+        db.close();
+
+        // Opening it again changes nothing
+        const again = connect(file);
+        assert.equal(again.prepare('PRAGMA user_version').get().user_version, 3);
+        again.close();
+    } finally {
+        cleanup();
+    }
+});
+
 test('a database from a newer release is refused instead of being damaged', () => {
     const { file, cleanup } = tempDb();
     try {

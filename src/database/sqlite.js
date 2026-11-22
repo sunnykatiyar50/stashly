@@ -97,6 +97,35 @@ const MIGRATIONS = [
         }
         db.exec('DROP TABLE files');
     },
+
+    // 3: a trash for items a person deleted, so the delete can be undone for a short while (UNDO_SECONDS). A row is the
+    // item exactly as it was, plus when it was deleted. It keeps the item's id (ids are never reused, because items
+    // is AUTOINCREMENT) and its file, if any, stays in the files folder until the row is purged or restored. Deleting
+    // the stash deletes its trash with it.
+    db => {
+        db.exec(
+            `CREATE TABLE IF NOT EXISTS trash (
+                id INTEGER PRIMARY KEY,
+                stash_id INTEGER NOT NULL REFERENCES stashes(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL,
+                title TEXT,
+                text TEXT,
+                file_name TEXT,
+                file_type TEXT,
+                file_size INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                expires_at TEXT,
+                burn INTEGER NOT NULL DEFAULT 0,
+                secret INTEGER NOT NULL DEFAULT 0,
+                pinned INTEGER NOT NULL DEFAULT 0,
+                edited_at TEXT,
+                sort_order REAL,
+                deleted_at TEXT NOT NULL
+            )`
+        );
+        db.exec('CREATE INDEX IF NOT EXISTS idx_trash_stash ON trash (stash_id)');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_trash_deleted ON trash (deleted_at)');
+    },
 ];
 
 const SCHEMA_VERSION = MIGRATIONS.length;

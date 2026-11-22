@@ -75,6 +75,11 @@ const FIELDS = {
             if (v) c.ttlOptions.push({ key: 'never', label: 'Never', ms: null });
         },
     },
+    undoSeconds: {
+        group: 'Stashes', label: 'Undo a delete for', unit: 'seconds', type: 'int', min: 0, max: 3600,
+        help: 'After someone deletes a note or file, it can be brought back for this long (a deleted item stays in the database until then). Burn-after-reading and secret notes, and anything removed automatically, are never kept. 0 turns undo off: deletes are immediate.',
+        read: c => c.undoSeconds, write: (c, v) => { c.undoSeconds = v; },
+    },
     requireAdminToCreate: {
         group: 'Stashes', label: 'Only the admin can create stashes', type: 'bool',
         help: 'Visitors can still open and use stashes they have the link to.',

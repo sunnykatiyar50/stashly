@@ -626,6 +626,27 @@ class StashController {
         return removed;
     }
 
+    // Optimistic concurrency for edits. The page sends `baseEditedAt`: the editedAt of the item as it last saw it (null
+    // if it had never been edited). If the item has been edited since, nothing is changed and the answer is a 409 with
+    // the current item in full, so the person can overwrite it or take it. A request that leaves `baseEditedAt` out
+    // is not checked at all (scripts written before this existed keep working, last write wins). Sends the answer and
+    // returns true when there is a conflict (or the value is malformed).
+    editConflict(req, res, row) {
+        const base = req.body ? req.body.baseEditedAt : undefined;
+        if (base === undefined) return false;
+        if (base !== null && typeof base !== 'string') {
+            res.status(400).json({ error: 'baseEditedAt must be the editedAt of the item you are changing, or null.', field: 'baseEditedAt' });
+            return true;
+        }
+        if (base === (row.edited_at || null)) return false;
+        res.status(409).json({
+            error: `Someone else changed this ${row.kind === 'file' ? 'file' : 'note'} while you were editing.`,
+            conflict: true,
+            item: this.presentItem(req.stash.slug, row),
+        });
+        return true;
+    }
+
     // Edits a note's title and text in place, or a file's title. Burn notes cannot be edited: their text is not on
     // the page to change.
     editNote = (req, res) => {
@@ -633,8 +654,9 @@ class StashController {
         const id = Number(req.params.id);
         const row = Number.isInteger(id) ? this.model.getLiveItem(stash.id, id, this.now()) : null;
         if (!row) return res.status(404).json({ error: 'Item not found.' });
+        if (row.kind === 'note' && row.burn) return res.status(400).json({ error: 'A burn-after-reading note cannot be edited.' });
+        if (this.editConflict(req, res, row)) return;
         if (row.kind === 'file') return this.editFileTitle(req, res, row);
-        if (row.burn) return res.status(400).json({ error: 'A burn-after-reading note cannot be edited.' });
         const raw = req.body && req.body.text;
         if (typeof raw !== 'string' || !raw.trim()) return res.status(400).json({ error: 'A note cannot be empty.', field: 'text' });
         const title = parseTitle(req.body.title);
@@ -749,6 +771,23 @@ class StashController {
         }
     };
 
+    // The first stash limit that adding an item (a file of `size` bytes, or a note) would break, as { status, error }, or
+    // null when it fits. Used for uploads and for bringing a deleted item back, which must obey the same limits.
+    limitProblem(stash, { file, size = 0 }) {
+        const usage = this.model.usage(stash.id);
+        const c = this.config;
+        if (usage.items >= c.maxItemsPerStash) {
+            return { status: 413, error: `This stash is full (${c.maxItemsPerStash} items). Delete something first.` };
+        }
+        if (!file) return null;
+        if (usage.files >= c.maxFilesPerStash) return { status: 413, error: `A stash can hold ${c.maxFilesPerStash} files. Delete one first.` };
+        if (usage.bytes + size > c.maxStashBytes) {
+            return { status: 413, error: `This stash would pass its ${Math.round(c.maxStashBytes / 1048576)} MB limit.` };
+        }
+        if (this.model.totalBytes() + size > c.maxTotalBytes) return { status: 507, error: 'The server is out of file space. Try again later.' };
+        return null;
+    }
+
     storeUpload(req, res, { tmp, size, head }) {
         const stash = req.stash;
         if (!size) return res.status(400).json({ error: 'The file is empty.' });
@@ -778,20 +817,8 @@ class StashController {
         const title = parseTitle(rawTitle);
         if (title.error) return res.status(400).json({ error: title.error, field: 'title' });
 
-        const usage = this.model.usage(stash.id);
-        const c = this.config;
-        if (usage.items >= c.maxItemsPerStash) {
-            return res.status(413).json({ error: `This stash is full (${c.maxItemsPerStash} items). Delete something first.` });
-        }
-        if (usage.files >= c.maxFilesPerStash) {
-            return res.status(413).json({ error: `A stash can hold ${c.maxFilesPerStash} files. Delete one first.` });
-        }
-        if (usage.bytes + size > c.maxStashBytes) {
-            return res.status(413).json({ error: `This stash would pass its ${Math.round(c.maxStashBytes / 1048576)} MB limit.` });
-        }
-        if (this.model.totalBytes() + size > c.maxTotalBytes) {
-            return res.status(507).json({ error: 'The server is out of file space. Try again later.' });
-        }
+        const problem = this.limitProblem(stash, { file: true, size });
+        if (problem) return res.status(problem.status).json({ error: problem.error });
 
         const row = this.model.addFile(stash.id, { fileName, fileType: detected.mime, tmp, size, title: title.value }, this.now());
         const item = this.presentItem(stash.slug, row);
@@ -943,14 +970,46 @@ class StashController {
         res.set('Cache-Control', 'no-store').json({ id: row.id, text: row.text });
     };
 
+    // A person's delete. With undo on, the item goes to the trash for UNDO_SECONDS and can be restored; the answer says
+    // until when (undoUntil, or null when it is gone for good). Never kept: burn-after-reading and secret notes (their
+    // point is that they cannot be read back), and a note already past its own expiry.
     deleteItem = (req, res) => {
         const stash = req.stash;
         const id = Number(req.params.id);
-        if (!Number.isInteger(id) || !this.model.deleteItem(stash.id, id)) {
-            return res.status(404).json({ error: 'Item not found.' });
-        }
+        const row = Number.isInteger(id) ? this.model.getItem(stash.id, id) : null;
+        if (!row) return res.status(404).json({ error: 'Item not found.' });
+        const now = this.now();
+        const seconds = this.config.undoSeconds;
+        const expired = Boolean(row.expires_at) && row.expires_at <= now.toISOString();
+        const undoable = seconds > 0 && !row.burn && !row.secret && !expired;
+        if (undoable) this.model.trashItem(stash.id, id, now);
+        else this.model.deleteItem(stash.id, id);
         this.events.publish(stash.slug, 'item-deleted', { id });
-        res.json({ ok: true });
+        res.json({ ok: true, undoUntil: undoable ? new Date(now.getTime() + seconds * 1000).toISOString() : null });
+    };
+
+    // Brings a deleted item back, with the same id, place in the list and pin. It must still be inside the undo window,
+    // and the stash's limits are checked again, because things may have been added since.
+    restore = (req, res) => {
+        const stash = req.stash;
+        const id = Number(req.params.id);
+        const now = this.now();
+        const seconds = this.config.undoSeconds;
+        const row = seconds > 0 && Number.isInteger(id) ? this.model.getTrashed(stash.id, id, new Date(now.getTime() - seconds * 1000)) : null;
+        if (!row) return res.status(404).json({ error: 'That item cannot be brought back any more.' });
+        // Gone for good if its own expiry passed meanwhile, or its file has vanished from the disk
+        if ((row.expires_at && row.expires_at <= now.toISOString()) || (row.kind === 'file' && !this.model.files.exists(id))) {
+            this.model.dropTrashed(stash.id, id);
+            return res.status(404).json({ error: 'That item cannot be brought back any more.' });
+        }
+        const problem = this.limitProblem(stash, { file: row.kind === 'file', size: row.file_size });
+        if (problem) return res.status(problem.status).json({ error: problem.error });
+        // "Keep the last N" is not applied here: the item would often be the oldest and vanish again at once. The next
+        // new item trims the stash as usual.
+        const restored = this.model.restoreItem(stash.id, id);
+        const item = this.presentItem(stash.slug, restored);
+        this.events.publish(stash.slug, 'item-added', this.withOrigin(item, req));
+        res.json(item);
     };
 
     extend = (req, res) => {
@@ -990,6 +1049,8 @@ class StashController {
         const removed = this.model.purgeExpired(this.now());
         for (const slug of removed) this.events.closeAll(slug, 'stash-gone', { reason: 'expired' });
         for (const item of this.model.purgeExpiredItems(this.now())) this.events.publish(item.slug, 'item-deleted', { id: item.id });
+        // Deleted items whose undo time is up are removed for good (with undo turned off, everything waiting goes)
+        this.model.purgeTrash(new Date(this.now().getTime() - this.config.undoSeconds * 1000));
         // Names reserved long enough are free again
         if (this.config.reserveOldNamesDays) this.model.purgeRetired(new Date(this.now().getTime() - this.config.reserveOldNamesDays * DAY));
         // Forget wrong-password counts whose window has passed

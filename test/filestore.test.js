@@ -77,7 +77,7 @@ test('a refused upload leaves nothing on disk', async () => {
 });
 
 test('every way an item can go also removes its file', async () => {
-    const ctx = makeApp();
+    const ctx = makeApp({ undoSeconds: 0 });
     // delete one item
     const base = await stash(ctx, 'delete-one');
     const one = await upload(ctx, base, 'a.png', PNG).expect(201);
