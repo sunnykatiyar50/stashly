@@ -1,13 +1,13 @@
 # Static analysis of the JavaScript (server, pages and browser extension) with GitHub's CodeQL.
 name: CodeQL
 
+# Switched off for now: it only runs when started by hand (Actions tab -> CodeQL -> Run workflow).
+# To turn it back on, restore these triggers:
+#   push: { branches: [main] }
+#   pull_request: { branches: [main] }
+#   schedule: [{ cron: '23 4 * * 1' }]
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: '23 4 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
