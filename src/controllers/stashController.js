@@ -48,6 +48,10 @@ function parseRange(header, size) {
     return { start, end };
 }
 
+// What a stash takes: notes and files, notes only, or files only (older rows have no value: everything)
+const CONTENT_KINDS = ['all', 'notes', 'files'];
+const contentOf = stash => (CONTENT_KINDS.includes(stash.content) ? stash.content : 'all');
+
 class StashController {
     constructor({ model, events, config, secret, now = () => new Date(), isAdmin = () => false }) {
         this.isAdmin = isAdmin;
@@ -543,6 +547,7 @@ class StashController {
             sessionEndsAt: this.sessionEnd(req, stash, req.role),
             canExtend: req.role === 'full' && Boolean(stash.ttl_ms),
             keepLast: stash.keep_last || null,
+            content: contentOf(stash),
             usage: dropOnly ? { items: 0, files: 0, bytes: 0 } : this.model.usage(stash.id),
             limits: this.limits(),
             total,
@@ -655,6 +660,26 @@ class StashController {
         if (!orders) return res.status(404).json({ error: 'Some of those clips are gone. Refresh and try again.' });
         this.events.publish(stash.slug, 'items-reordered', { orders });
         res.json({ orders });
+    };
+
+    // What the stash takes: notes and files ('all'), notes only, or files only. What is already there stays.
+    setContent = (req, res) => {
+        const value = req.body && req.body.content;
+        if (!CONTENT_KINDS.includes(value)) return res.status(400).json({ error: 'Pick notes and files, notes only, or files only.' });
+        this.model.setContent(req.stash.id, value);
+        this.events.publish(req.stash.slug, 'content-changed', { content: value });
+        res.json({ content: value });
+    };
+
+    // Run before the body is read, so a stash that takes no files refuses an upload without receiving it
+    acceptsNotes = (req, res, next) => {
+        if (contentOf(req.stash) === 'files') return res.status(403).json({ error: 'This stash only takes files.' });
+        next();
+    };
+
+    acceptsFiles = (req, res, next) => {
+        if (contentOf(req.stash) === 'notes') return res.status(403).json({ error: 'This stash only takes notes, not files.' });
+        next();
     };
 
     // How many unpinned items the stash keeps (null keeps everything). Lowering it trims straight away.

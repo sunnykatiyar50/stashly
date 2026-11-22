@@ -249,74 +249,98 @@
     <dialog id="optionsDialog" class="qr-dialog share-dialog" aria-labelledby="optionsTitle">
         <div class="qr-body share-body">
             <h2 id="optionsTitle">Options</h2>
-            <div class="share-row" data-option="tab">
-                <strong>This tab</strong>
-                <label class="opt"><input type="checkbox" id="autoCopyInput" /> Copy new notes automatically</label>
-                <span class="muted">When a note arrives from another device it goes straight to this computer's clipboard. Stays on in this tab until you turn it off or close the tab. Browsers only allow it while this tab is in front; otherwise it is copied the moment you come back.</span>
-                <label class="opt"><input type="checkbox" id="notifyInput" /> Notify me about new items</label>
-                <span class="muted" id="notifyHint">A desktop notification when something arrives while this tab is in the background. Secret and burn-after-reading notes show no text.</span>
+            <!-- Grouped into tabs; a tab with nothing for this visitor is hidden -->
+            <div class="opt-tabs" role="tablist" aria-label="Options">
+                <button type="button" class="opt-tab" role="tab" id="optTab-device" data-tab="device" aria-controls="optPanel-device" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>This device</span></button>
+                <button type="button" class="opt-tab" role="tab" id="optTab-stash" data-tab="stash" aria-controls="optPanel-stash" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg><span>Stash</span></button>
+                <button type="button" class="opt-tab" role="tab" id="optTab-signin" data-tab="signin" aria-controls="optPanel-signin" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Sign-in</span></button>
+                <button type="button" class="opt-tab" role="tab" id="optTab-danger" data-tab="danger" aria-controls="optPanel-danger" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg><span>Delete</span></button>
             </div>
-            <div class="share-row" data-option="session">
-                <strong>Sign-in</strong>
-                <span class="muted" id="sessionInfo"></span>
-                <label class="opt">Sign me out of this browser after
-                    <select id="sessionChange"></select>
-                </label>
-                <span class="muted">Counted from now, for this browser only, and never more than 30 days after you signed in. Other browsers are not affected.</span>
-                <div class="share-actions">
-                    <button type="button" id="changePasswordToggle" class="ghost small">Change password</button>
-                    <button type="button" id="signOutOthers" class="ghost small">Sign out other devices</button>
-                    <button type="button" id="logoutNow" class="danger-ghost small">Log out now</button>
+            <div class="opt-panel hidden" role="tabpanel" id="optPanel-device" data-panel="device" aria-labelledby="optTab-device">
+                <div class="share-row" data-option="tab">
+                    <strong>This tab</strong>
+                    <label class="opt"><input type="checkbox" id="autoCopyInput" /> Copy new notes automatically</label>
+                    <span class="muted">When a note arrives from another device it goes straight to this computer's clipboard. Stays on in this tab until you turn it off or close the tab. Browsers only allow it while this tab is in front; otherwise it is copied the moment you come back.</span>
+                    <label class="opt"><input type="checkbox" id="notifyInput" /> Notify me about new items</label>
+                    <span class="muted" id="notifyHint">A desktop notification when something arrives while this tab is in the background. Secret and burn-after-reading notes show no text.</span>
                 </div>
-                <!-- Anyone who knows the current password can change it (there is no separate owner account) -->
-                <form id="changePasswordForm" class="edit-form hidden" novalidate>
-                    <span class="muted">Everyone else is signed out and the read-only and drop-box links are cancelled. You stay signed in here.</span>
-                    <input type="password" id="currentPasswordInput" autocomplete="current-password" maxlength="200" placeholder="Current password" aria-label="Current password" />
-                    <input type="password" id="newPasswordInput" autocomplete="new-password" maxlength="200" placeholder="New password" aria-label="New password" />
-                    <input type="password" id="repeatPasswordInput" autocomplete="new-password" maxlength="200" placeholder="New password again" aria-label="New password again" />
-                    <small class="field-error" id="changePasswordError" role="alert"></small>
-                    <div class="share-actions">
-                        <button type="submit" id="changePasswordSave" class="primary small">Change password</button>
-                        <button type="button" id="changePasswordCancel" class="ghost small">Cancel</button>
+            </div>
+            <div class="opt-panel hidden" role="tabpanel" id="optPanel-stash" data-panel="stash" aria-labelledby="optTab-stash">
+                <div class="share-row" data-option="content">
+                    <strong>What this stash can hold</strong>
+                    <div class="content-choices" role="radiogroup" aria-label="What this stash can hold">
+                        <label class="opt"><input type="radio" name="stashContent" value="all" /> Notes and files</label>
+                        <label class="opt"><input type="radio" name="stashContent" value="notes" /> Notes only</label>
+                        <label class="opt"><input type="radio" name="stashContent" value="files" /> Files only</label>
                     </div>
-                </form>
-            </div>
-            <div class="share-row" data-option="keep">
-                <strong>Keep only the last</strong>
-                <label class="opt"><select id="keepSelect"></select></label>
-                <span class="muted">Older items are deleted as new ones arrive, so the stash works like a rolling clipboard. Pinned items are never deleted by this.</span>
-            </div>
-            <div class="share-row" data-option="rename">
-                <strong>Stash name</strong>
-                <span class="muted">Currently <code id="renameCurrent"></code>. The old address stops working at once, so anyone with it needs the new one. Read-only and drop-box links are cancelled, and on a password-protected stash everyone else has to sign in again.</span>
-                <div class="share-actions">
-                    <button type="button" id="renameToggle" class="ghost small">Rename...</button>
+                    <span class="muted">Applies to everyone who can add here, drop-box links too. What is already in the stash stays.</span>
                 </div>
-                <form id="renameForm" class="edit-form hidden" novalidate>
-                    <input type="text" id="renameInput" class="mono" maxlength="64" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="New stash name" />
-                    <small class="field-hint">Letters, numbers, - and _.</small>
-                    <small class="field-error" id="renameError" role="alert"></small>
-                    <div class="share-actions">
-                        <button type="submit" id="renameSave" class="primary small">Rename</button>
-                        <button type="button" id="renameCancel" class="ghost small">Cancel</button>
-                    </div>
-                </form>
-            </div>
-            <!-- Kept here, out of the header, and behind typing the name, so it cannot be hit by accident -->
-            <div class="share-row danger-row" data-option="danger">
-                <strong>Delete this stash</strong>
-                <span class="muted">Deletes the stash with every note and file in it, for everyone. This cannot be undone.</span>
-                <div class="share-actions">
-                    <button type="button" id="deleteStashButton" class="danger-ghost small">Delete this stash...</button>
+                <div class="share-row" data-option="keep">
+                    <strong>Keep only the last</strong>
+                    <label class="opt"><select id="keepSelect"></select></label>
+                    <span class="muted">Older items are deleted as new ones arrive, so the stash works like a rolling clipboard. Pinned items are never deleted by this.</span>
                 </div>
-                <form id="deleteStashForm" class="edit-form hidden" novalidate>
-                    <label class="muted" for="deleteStashName">Type <code id="deleteStashSlug"></code> to confirm.</label>
-                    <input type="text" id="deleteStashName" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Type the stash name to confirm" />
+                <div class="share-row" data-option="rename">
+                    <strong>Stash name</strong>
+                    <span class="muted">Currently <code id="renameCurrent"></code>. The old address stops working at once, so anyone with it needs the new one. Read-only and drop-box links are cancelled, and on a password-protected stash everyone else has to sign in again.</span>
                     <div class="share-actions">
-                        <button type="submit" id="deleteStashConfirm" class="danger-ghost small" disabled>Delete forever</button>
-                        <button type="button" id="deleteStashCancel" class="ghost small">Cancel</button>
+                        <button type="button" id="renameToggle" class="ghost small">Rename...</button>
                     </div>
-                </form>
+                    <form id="renameForm" class="edit-form hidden" novalidate>
+                        <input type="text" id="renameInput" class="mono" maxlength="64" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="New stash name" />
+                        <small class="field-hint">Letters, numbers, - and _.</small>
+                        <small class="field-error" id="renameError" role="alert"></small>
+                        <div class="share-actions">
+                            <button type="submit" id="renameSave" class="primary small">Rename</button>
+                            <button type="button" id="renameCancel" class="ghost small">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="opt-panel hidden" role="tabpanel" id="optPanel-signin" data-panel="signin" aria-labelledby="optTab-signin">
+                <div class="share-row" data-option="session">
+                    <strong>Sign-in</strong>
+                    <span class="muted" id="sessionInfo"></span>
+                    <label class="opt">Sign me out of this browser after
+                        <select id="sessionChange"></select>
+                    </label>
+                    <span class="muted">Counted from now, for this browser only, and never more than 30 days after you signed in. Other browsers are not affected.</span>
+                    <div class="share-actions">
+                        <button type="button" id="changePasswordToggle" class="ghost small">Change password</button>
+                        <button type="button" id="signOutOthers" class="ghost small">Sign out other devices</button>
+                        <button type="button" id="logoutNow" class="danger-ghost small">Log out now</button>
+                    </div>
+                    <!-- Anyone who knows the current password can change it (there is no separate owner account) -->
+                    <form id="changePasswordForm" class="edit-form hidden" novalidate>
+                        <span class="muted">Everyone else is signed out and the read-only and drop-box links are cancelled. You stay signed in here.</span>
+                        <input type="password" id="currentPasswordInput" autocomplete="current-password" maxlength="200" placeholder="Current password" aria-label="Current password" />
+                        <input type="password" id="newPasswordInput" autocomplete="new-password" maxlength="200" placeholder="New password" aria-label="New password" />
+                        <input type="password" id="repeatPasswordInput" autocomplete="new-password" maxlength="200" placeholder="New password again" aria-label="New password again" />
+                        <small class="field-error" id="changePasswordError" role="alert"></small>
+                        <div class="share-actions">
+                            <button type="submit" id="changePasswordSave" class="primary small">Change password</button>
+                            <button type="button" id="changePasswordCancel" class="ghost small">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="opt-panel hidden" role="tabpanel" id="optPanel-danger" data-panel="danger" aria-labelledby="optTab-danger">
+                <!-- Kept here, out of the header, and behind typing the name, so it cannot be hit by accident -->
+                <div class="share-row danger-row" data-option="danger">
+                    <strong>Delete this stash</strong>
+                    <span class="muted">Deletes the stash with every note and file in it, for everyone. This cannot be undone.</span>
+                    <div class="share-actions">
+                        <button type="button" id="deleteStashButton" class="danger-ghost small">Delete this stash...</button>
+                    </div>
+                    <form id="deleteStashForm" class="edit-form hidden" novalidate>
+                        <label class="muted" for="deleteStashName">Type <code id="deleteStashSlug"></code> to confirm.</label>
+                        <input type="text" id="deleteStashName" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Type the stash name to confirm" />
+                        <div class="share-actions">
+                            <button type="submit" id="deleteStashConfirm" class="danger-ghost small" disabled>Delete forever</button>
+                            <button type="button" id="deleteStashCancel" class="ghost small">Cancel</button>
+                        </div>
+                    </form>
+                </div>
             </div>
             <div class="qr-actions">
                 <button type="button" id="optionsClose" class="primary">Close</button>

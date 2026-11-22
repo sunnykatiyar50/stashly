@@ -806,6 +806,15 @@
     // 'full' can do everything. 'view' (a read-only link) cannot change anything. 'drop' (a drop-box link) can only add.
     function role() { return (state.stash && state.stash.role) || 'full'; }
 
+    // What the stash takes: 'all', 'notes' or 'files'. The composer hides what cannot be added.
+    function stashContent() { return (state.stash && state.stash.content) || 'all'; }
+
+    function applyContent() {
+        var content = stashContent();
+        sections.main.classList.toggle('content-notes', content === 'notes');
+        sections.main.classList.toggle('content-files', content === 'files');
+    }
+
     function applyRole() {
         var r = role();
         sections.main.classList.toggle('role-view', r === 'view');
@@ -918,6 +927,7 @@
             // The installed app reopens this stash next time it is launched (whatever the role: a link visitor too)
             if (window.StashlyLast) window.StashlyLast.set(slug);
             applyRole();
+            applyContent();
             sections.main.classList.contains('hidden') && show('main');
             updateHeader();
             renderItems();
@@ -1135,6 +1145,12 @@
             if (state.stash) { state.stash.expiresAt = JSON.parse(event.data).expiresAt; updateExpiry(); }
         });
         es.addEventListener('stash-gone', gone);
+        // Someone changed what the stash takes
+        es.addEventListener('content-changed', function (event) {
+            if (!state.stash) return;
+            state.stash.content = JSON.parse(event.data).content;
+            applyContent();
+        });
         // The stash was renamed (by someone else, or by this page, which moves itself): follow it to the new address
         es.addEventListener('stash-renamed', function (event) {
             var data = {};
@@ -1166,6 +1182,7 @@
 
     $('composer').addEventListener('submit', function (event) {
         event.preventDefault();
+        if (stashContent() === 'files') return;
         var input = $('noteInput');
         var error = $('noteError');
         error.textContent = '';
@@ -1534,6 +1551,10 @@
         document.querySelector('[data-option="keep"]').classList.toggle('hidden', !full);
         document.querySelector('[data-option="danger"]').classList.toggle('hidden', !full);
         document.querySelector('[data-option="rename"]').classList.toggle('hidden', !full);
+        document.querySelector('[data-option="content"]').classList.toggle('hidden', !full);
+        Array.prototype.forEach.call(document.querySelectorAll('input[name="stashContent"]'), function (input) {
+            input.checked = input.value === stashContent();
+        });
         closeRenameForm();
         closePasswordForm();
         $('changePasswordToggle').classList.toggle('hidden', role() !== 'full');
@@ -1563,6 +1584,82 @@
         select.appendChild(all);
         choices.forEach(function (n) { var el = make('option', null, n + ' items'); el.value = String(n); select.appendChild(el); });
         select.value = current ? String(current) : '';
+        updateOptionTabs();
+    }
+
+    // ---- the tabs in Options ----
+
+    var optionTabs = Array.prototype.slice.call(document.querySelectorAll('.opt-tab'));
+    var optionTab = null;
+
+    function panelOf(tab) { return $('optPanel-' + tab.dataset.tab); }
+
+    // A tab is shown only when its panel has something for this visitor; the last one picked stays picked
+    function updateOptionTabs() {
+        optionTabs.forEach(function (tab) {
+            var rows = panelOf(tab).querySelectorAll('.share-row');
+            var any = Array.prototype.some.call(rows, function (row) { return !row.classList.contains('hidden'); });
+            tab.classList.toggle('hidden', !any);
+        });
+        var visible = optionTabs.filter(function (tab) { return !tab.classList.contains('hidden'); });
+        var pick = visible.filter(function (tab) { return tab.dataset.tab === optionTab; })[0] || visible[0];
+        if (pick) selectOptionTab(pick, false);
+    }
+
+    function selectOptionTab(tab, focus) {
+        optionTab = tab.dataset.tab;
+        optionTabs.forEach(function (other) {
+            var on = other === tab;
+            other.setAttribute('aria-selected', on ? 'true' : 'false');
+            other.tabIndex = on ? 0 : -1;
+            panelOf(other).classList.toggle('hidden', !on);
+        });
+        if (focus) tab.focus();
+    }
+
+    optionTabs.forEach(function (tab) {
+        tab.addEventListener('click', function () { selectOptionTab(tab, false); });
+        // Arrow keys move between the tabs, Home and End go to the first and last
+        tab.addEventListener('keydown', function (event) {
+            var visible = optionTabs.filter(function (other) { return !other.classList.contains('hidden'); });
+            var index = visible.indexOf(tab);
+            var next = null;
+            if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = visible[(index + 1) % visible.length];
+            else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = visible[(index - 1 + visible.length) % visible.length];
+            else if (event.key === 'Home') next = visible[0];
+            else if (event.key === 'End') next = visible[visible.length - 1];
+            if (!next) return;
+            event.preventDefault();
+            selectOptionTab(next, true);
+        });
+    });
+
+    // What the stash can hold
+    var CONTENT_WORDS = { all: 'This stash takes notes and files', notes: 'This stash now takes notes only', files: 'This stash now takes files only' };
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="stashContent"]'), function (input) {
+        input.addEventListener('change', function () {
+            if (!input.checked) return;
+            var previous = stashContent();
+            api(base + '/content', { method: 'PUT', body: { content: input.value } }).then(function (res) {
+                if (res.ok) {
+                    state.stash.content = res.body.content;
+                    applyContent();
+                    toast(CONTENT_WORDS[res.body.content]);
+                } else {
+                    restoreContentChoice(previous);
+                    toast((res.body && res.body.error) || 'Could not change that.', true);
+                }
+            }, function () {
+                restoreContentChoice(previous);
+                toast('Could not reach the server.', true);
+            });
+        });
+    });
+
+    function restoreContentChoice(value) {
+        Array.prototype.forEach.call(document.querySelectorAll('input[name="stashContent"]'), function (input) {
+            input.checked = input.value === value;
+        });
     }
 
     $('optionsButton').addEventListener('click', function () {
@@ -1811,6 +1908,7 @@
 
     // Upload progress shows under the composer, which is always on the page
     function addFiles(files) {
+        if (stashContent() === 'notes') { toast('This stash only takes notes, not files.', true); return; }
         uploader.add(files);
     }
 

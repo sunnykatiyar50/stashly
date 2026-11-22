@@ -304,6 +304,11 @@ class StashModel {
         return changed ? this.getItem(stashId, id) : null;
     }
 
+    setContent(id, content) {
+        this.db.prepare('UPDATE stashes SET content = ? WHERE id = ?').run(content, id);
+        return this.getStashById(id);
+    }
+
     setKeepLast(id, keepLast) {
         this.db.prepare('UPDATE stashes SET keep_last = ? WHERE id = ?').run(keepLast, id);
         return this.getStashById(id);

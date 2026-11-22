@@ -30,6 +30,8 @@ function connect(filePath = ':memory:') {
     if (!stashColumns.includes('drop_token_hash')) db.exec('ALTER TABLE stashes ADD COLUMN drop_token_hash TEXT');
     // Keep only the newest N unpinned items (null = keep everything)
     if (!stashColumns.includes('keep_last')) db.exec('ALTER TABLE stashes ADD COLUMN keep_last INTEGER');
+    // What the stash takes: 'all' (notes and files), 'notes' or 'files'
+    if (!stashColumns.includes('content')) db.exec("ALTER TABLE stashes ADD COLUMN content TEXT NOT NULL DEFAULT 'all'");
     // Raised by "Sign out other devices": every sign-in cookie is tied to it, so raising it ends them all
     if (!stashColumns.includes('session_version')) db.exec('ALTER TABLE stashes ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
     db.exec('CREATE INDEX IF NOT EXISTS idx_stashes_expires ON stashes (expires_at)');

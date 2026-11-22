@@ -690,3 +690,30 @@ body:not(.stash-open) .in-topbar { display: none; }
 .clip .clip-copy, .clip.selected .clip-copy { opacity: 0.7; }
 .clip .clip-copy:hover, .clip .clip-copy:focus-visible, .clip-pin.on { opacity: 1; }
 @media (hover: none) { .clip .clip-copy, .clip.selected .clip-copy { opacity: 0.85; } }
+
+/* ===== Options: tabs across the top, one panel at a time ===== */
+#optionsDialog { width: min(560px, calc(100vw - 24px)); }
+#optionsDialog .qr-body { gap: 14px; padding: 22px 24px; }
+.opt-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.opt-tabs::-webkit-scrollbar { display: none; }
+.opt-tab { display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 9px 12px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; background: none; color: var(--text-soft); font-size: 14px; white-space: nowrap; }
+.opt-tab svg { width: 16px; height: 16px; }
+.opt-tab.hidden { display: none; }
+.opt-tab:hover { color: var(--text); background: var(--surface-alt); }
+.opt-tab[aria-selected="true"] { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
+.opt-tab[data-tab="danger"][aria-selected="true"] { color: var(--danger); border-bottom-color: var(--danger); }
+.opt-panel { display: flex; flex-direction: column; gap: 12px; min-height: 220px; max-height: min(60vh, 520px); overflow-y: auto; }
+.opt-panel.hidden { display: none; }
+.opt-panel .share-row { padding: 14px 16px; gap: 8px; }
+.content-choices { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+@media (max-width: 760px) {
+    #optionsDialog .qr-body { padding: 16px; }
+    .opt-tab { padding: 8px 10px; font-size: 13px; gap: 6px; }
+    .opt-panel { min-height: 0; max-height: 65vh; }
+}
+
+/* ===== What the stash takes: hide what cannot be added ===== */
+.content-notes #attachButton, .content-notes #dropZone { display: none; }
+/* Files only: the drop zone (which also opens the file picker) replaces the note row */
+.content-files .composer-row, .content-files .note-options { display: none; }
+.content-files .composer-extra { display: block; }
