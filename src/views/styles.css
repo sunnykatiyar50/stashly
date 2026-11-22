@@ -195,6 +195,10 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 }
 .nav-link:hover { background: var(--sidebar-hover); color: #fff; border: none; }
 .nav-link.active { background: var(--sidebar-active); color: #fff; }
+/* A labelled group in the left menu (the admin section) */
+.nav-section { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.nav-section-label { display: block; padding: 12px 12px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #7b8798; }
+body.sidebar-collapsed .nav-section { margin-top: 8px; padding-top: 8px; border-top: 1px solid #1f2937; }
 .nav-link .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-footer { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid #1f2937; }
 

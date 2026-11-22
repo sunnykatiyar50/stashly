@@ -312,18 +312,22 @@
 
     // justSignedIn: this call follows the sign-in form, so a next=/admin in the address is followed (an admin only; a
     // plain user stays here, and the admin page tells them it is not for them)
+    // The left menu adds (or drops) the Admin section for whoever is signed in now, without a reload
+    function refreshAdminNav() {
+        if (window.StashlyAdminNav) window.StashlyAdminNav.refresh();
+    }
+
     function start(justSignedIn) {
         api('/api/me').then(function (res) {
             if (!res.ok) return toast('Could not reach the server.', true);
             if (!res.body.enabled) return show('disabled');
-            if (!res.body.user) { me = null; show('login'); $('loginUsername').focus(); return null; }
+            if (!res.body.user) { me = null; refreshAdminNav(); show('login'); $('loginUsername').focus(); return null; }
             me = res.body.user;
             if (justSignedIn && me.role === 'admin' && nextTarget(location.search)) { location.href = nextTarget(location.search); return null; }
             $('passwordButton').classList.toggle('hidden', Boolean(me.managed));
             $('whoInfo').textContent = me.displayName ? me.displayName + ' (' + me.username + ')' : me.username;
             $('roleChip').textContent = me.role === 'admin' ? 'Admin' : 'User';
-            $('adminLink').classList.toggle('hidden', me.role !== 'admin');
-            $('adminNavLink').classList.toggle('hidden', me.role !== 'admin');
+            refreshAdminNav();
             show('account');
             loadList();
             startRefresh();
