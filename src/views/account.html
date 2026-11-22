@@ -32,7 +32,8 @@
             </a>
         </nav>
         <div class="sidebar-footer">
-            <a href="/admin" class="nav-link" title="Admin">
+            <!-- Only for an admin; shown by account.js -->
+            <a href="/admin" id="adminNavLink" class="nav-link hidden" title="Admin">
                 <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M2 21v-1a6 6 0 0 1 6-6h3"/><path d="M18 22s4-1.8 4-4.8v-3.4L18 12l-4 1.8v3.4c0 3 4 4.8 4 4.8z"/></svg>
                 <span class="label">Admin</span>
             </a>
@@ -88,32 +89,8 @@
                 </div>
             </header>
 
-            <form id="followForm" class="card form-card follow-card" novalidate aria-labelledby="followTitle">
-                <h3 id="followTitle">Follow a stash</h3>
-                <p class="muted">Add a stash to your account to see it here without typing its password again. The password is checked once and not stored.</p>
-                <div class="field-row">
-                    <div class="field">
-                        <label for="followSlug">Stash name</label>
-                        <input type="text" id="followSlug" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="200" />
-                        <small class="field-error" id="followSlugError" role="alert"></small>
-                    </div>
-                    <div class="field">
-                        <label for="followPassword">Password <span class="optional">if it has one</span></label>
-                        <input type="password" id="followPassword" autocomplete="off" maxlength="200" />
-                    </div>
-                </div>
-                <div class="field">
-                    <label for="followLink">Or a read-only link <span class="optional">instead of the password</span></label>
-                    <input type="text" id="followLink" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="2000" placeholder="https://.../s/name#view=..." />
-                    <small class="field-error" id="followError" role="alert"></small>
-                </div>
-                <div class="form-actions">
-                    <button type="submit" id="followButton" class="primary">Follow</button>
-                </div>
-            </form>
-
             <ul id="followList" class="follow-list" aria-label="Followed stashes"></ul>
-            <p id="followEmpty" class="empty-state hidden">You are not following any stash yet. Follow one above, or press Follow inside a stash.</p>
+            <p id="followEmpty" class="empty-state hidden">You are not following any stash yet. Create or follow one on the <a href="/">New stash</a> page, or press Follow inside a stash.</p>
             <p id="refreshInfo" class="muted refresh-info"></p>
         </section>
     </main>

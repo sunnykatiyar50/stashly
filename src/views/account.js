@@ -277,40 +277,6 @@
         });
     });
 
-    // ---- follow a stash ----
-
-    $('followForm').addEventListener('submit', function (event) {
-        event.preventDefault();
-        $('followSlugError').textContent = '';
-        $('followError').textContent = '';
-        var slug = $('followSlug').value.trim();
-        var password = $('followPassword').value;
-        var link = $('followLink').value.trim();
-        // A whole read-only link carries the name too, so the name field can stay empty
-        if (!slug && !link) { $('followSlugError').textContent = 'Enter the stash name.'; $('followSlug').focus(); return; }
-        $('followButton').disabled = true;
-        api('/api/me/stashes', { method: 'POST', body: { slug: slug || undefined, password: password || undefined, link: link || undefined } }).then(function (res) {
-            $('followButton').disabled = false;
-            if (res.status === 401 && res.body && res.body.signedIn === false) return sessionEnded();
-            if (res.ok) {
-                // Nothing stays in the form
-                $('followSlug').value = '';
-                $('followPassword').value = '';
-                $('followLink').value = '';
-                toast('Following "' + res.body.slug + '"' + (res.body.role === 'view' ? ' (read-only)' : ''));
-                loadList();
-            } else {
-                var message = (res.body && res.body.error) || 'Could not follow the stash.';
-                if (res.body && res.body.field === 'slug') $('followSlugError').textContent = message;
-                else $('followError').textContent = message;
-            }
-            return null;
-        }).catch(function () {
-            $('followButton').disabled = false;
-            $('followError').textContent = 'Could not reach the server.';
-        });
-    });
-
     // ---- keeping the list fresh ----
 
     // Every 20 seconds while this tab is in front, once more when it comes back, and not at all while it is hidden
@@ -343,6 +309,7 @@
             $('whoInfo').textContent = me.displayName ? me.displayName + ' (' + me.username + ')' : me.username;
             $('roleChip').textContent = me.role === 'admin' ? 'Admin' : 'User';
             $('adminLink').classList.toggle('hidden', me.role !== 'admin');
+            $('adminNavLink').classList.toggle('hidden', me.role !== 'admin');
             show('account');
             loadList();
             startRefresh();
