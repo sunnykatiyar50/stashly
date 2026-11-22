@@ -1,11 +1,11 @@
-// The admin page: sign in, see every stash, delete or extend one, change the limits
+// The admin page: see every stash, delete or extend one, manage users, change the limits. There is no sign-in here:
+// everyone signs in on the account page, and the account's admin role is what opens this page.
 (function () {
     'use strict';
 
     var $ = function (id) { return document.getElementById(id); };
-    var states = { loading: $('stateLoading'), disabled: $('stateDisabled'), login: $('stateLogin'), stashes: $('viewStashes'), users: $('viewUsers'), settings: $('viewSettings') };
+    var states = { loading: $('stateLoading'), disabled: $('stateDisabled'), signin: $('stateSignIn'), notAdmin: $('stateNotAdmin'), stashes: $('viewStashes'), users: $('viewUsers'), settings: $('viewSettings') };
     var signedIn = false;
-    var via = 'password'; // how the admin is signed in: with the admin password, or as a user with the admin role
     var fields = [];
 
     // ---- helpers ----
@@ -92,43 +92,23 @@
         return td;
     }
 
-    // ---- sign in ----
+    // ---- sign out ----
 
-    $('loginForm').addEventListener('submit', function (event) {
-        event.preventDefault();
-        var error = $('loginError');
-        error.textContent = '';
-        var password = $('loginInput').value;
-        if (!password) { error.textContent = 'Enter the admin password.'; return; }
-        $('loginButton').disabled = true;
-        api('/api/admin/login', { method: 'POST', body: { password: password } }).then(function (res) {
-            $('loginButton').disabled = false;
-            if (res.ok) {
-                $('loginInput').value = '';
-                start();
-            } else {
-                error.textContent = (res.body && res.body.error) || 'Could not sign in.';
-                $('loginInput').select();
-            }
-        }).catch(function () {
-            $('loginButton').disabled = false;
-            error.textContent = 'Could not reach the server.';
-        });
-    });
-
+    // Signs out of the account, and also clears the old admin-password cookie (scripts may have set one in this browser).
+    // Both are asked for whatever the other answers, so nothing is left signed in.
     $('logoutButton').addEventListener('click', function () {
-        // An admin who signed in as a user is signed out of the account too, or the next page load would sign them back in
-        var done = via === 'account' ? api('/api/auth/logout', { method: 'POST' }) : Promise.resolve();
-        done.then(function () { return api('/api/admin/logout', { method: 'POST' }); }).then(function () {
+        var quiet = function () { return null; };
+        var account = api('/api/auth/logout', { method: 'POST' }).catch(quiet);
+        var legacy = api('/api/admin/logout', { method: 'POST' }).catch(quiet);
+        Promise.all([account, legacy]).then(function () {
             setSignedIn(false);
-            show('login');
-            $('loginInput').focus();
+            show('signin');
         });
     });
 
     function expired() {
         setSignedIn(false);
-        show('login');
+        show('signin');
         toast('Your admin session ended. Sign in again.', true);
     }
 
@@ -348,6 +328,14 @@
         tr.appendChild(cell(user.lastLoginAt ? formatDate(user.lastLoginAt) : 'Never'));
         tr.appendChild(cell(String(user.stashCount), 'num'));
 
+        // The server's admin account is set by ADMIN_USERNAME and ADMIN_PASSWORD: nothing to press here
+        if (user.managed) {
+            var note = document.createElement('span');
+            note.className = 'muted';
+            note.textContent = 'Set in the server environment';
+            tr.appendChild(cell(note, 'actions'));
+            return tr;
+        }
         var actions = document.createElement('div');
         actions.className = 'row-actions';
         var who = ' ' + user.username;
@@ -823,10 +811,16 @@
         api('/api/admin/status').then(function (res) {
             if (!res.ok) return toast('Could not reach the server.', true);
             if (!res.body.enabled) { setSignedIn(false); return show('disabled'); }
-            if (!res.body.signedIn) { setSignedIn(false); show('login'); $('loginInput').focus(); return; }
-            via = res.body.via || 'password';
+            if (!res.body.signedIn) {
+                setSignedIn(false);
+                // Signed in to an account that is not an admin, or not signed in at all: say which
+                return api('/api/me').then(function (me) {
+                    show(me.ok && me.body && me.body.user ? 'notAdmin' : 'signin');
+                });
+            }
             setSignedIn(true);
             route();
+            return null;
         }).catch(function () { toast('Could not reach the server.', true); });
     }
 

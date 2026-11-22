@@ -440,7 +440,7 @@ test('deleting or expiring a stash removes its follow rows (the users stay); the
     ctx.controller.cleanup();
     assert.equal(followRows(ctx).length, 2);
     assert.deepEqual((await dashboard(ctx.sam)).map(s => s.slug), ['stays-around-one']);
-    assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 2);
+    assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 3); // (one more: the environment's admin account)
 });
 
 test('unfollowing takes the stash off the list only; deleting a user removes their follows and never a stash', async () => {

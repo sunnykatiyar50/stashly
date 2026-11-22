@@ -40,10 +40,10 @@
             </a>
         </nav>
         <div class="sidebar-footer">
-            <!-- An admin can also sign in as a user (to follow stashes). "Sign in" until someone is signed in to an account, then "My stashes". -->
-            <a href="/account" id="accountLink" class="nav-link admin-only hidden" title="Sign in to follow your stashes">
+            <!-- The admin's own account: My stashes (an admin is always signed in to an account here) -->
+            <a href="/account" id="accountLink" class="nav-link admin-only hidden" title="My stashes">
                 <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                <span class="label" id="accountLinkLabel">Sign in</span>
+                <span class="label" id="accountLinkLabel">My stashes</span>
             </a>
             <button type="button" id="themeButton" class="nav-link" data-theme-toggle>
                 <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -69,17 +69,21 @@
             </div>
         </section>
 
-        <section id="stateLogin" class="view hidden">
-            <form id="loginForm" class="state-card card" novalidate>
-                <h2>Admin sign in</h2>
-                <div class="field">
-                    <label for="loginInput">Admin password</label>
-                    <input type="password" id="loginInput" autocomplete="current-password" />
-                    <small class="field-error" id="loginError" role="alert"></small>
-                </div>
-                <button type="submit" id="loginButton" class="primary">Sign in</button>
-                <small class="field-hint">A user with the admin role signs in on the <a href="/account">account page</a> instead, then comes back here.</small>
-            </form>
+        <!-- There is one sign-in for everyone, on the account page. Nobody signed in is sent there and brought back here. -->
+        <section id="stateSignIn" class="view hidden">
+            <div class="state-card card">
+                <h2>Sign in to open the admin area</h2>
+                <p>Everyone signs in on the same page. The server's admin account and any user with the admin role can open this area.</p>
+                <a class="button-link primary-link" id="signInLink" href="/account?next=%2Fadmin">Sign in</a>
+            </div>
+        </section>
+
+        <section id="stateNotAdmin" class="view hidden">
+            <div class="state-card card">
+                <h2>This account is not an admin</h2>
+                <p>You are signed in, but only an admin can open this area. Ask the server's admin to give your account the admin role.</p>
+                <a class="button-link" href="/account">My stashes</a>
+            </div>
         </section>
 
         <!-- ===== Stashes ===== -->
@@ -157,7 +161,7 @@
                 </table>
                 <p id="userEmpty" class="empty-state hidden">No users yet. Add one below.</p>
             </div>
-            <p class="muted">Users sign in on the account page and follow stashes to watch them in one place. A user cannot open a password-protected stash they have not followed with its password, and the admin cannot read what is in a stash from here.</p>
+            <p class="muted">Everyone signs in on the account page, and users follow stashes to watch them in one place. A user cannot open a password-protected stash they have not followed with its password, and the admin cannot read what is in a stash from here.</p>
 
             <form id="userForm" class="card form-card users-card users-form hidden" novalidate aria-labelledby="userFormTitle">
                 <h2 id="userFormTitle">Add a user</h2>

@@ -10,6 +10,7 @@ const UserController = require('./controllers/userController');
 const { UserModel } = require('./models/userModel');
 const { UserAuth } = require('./utils/userAuth');
 const { AdminAuth } = require('./utils/adminAuth');
+const { syncAdminUser } = require('./utils/adminUser');
 const { SettingsStore } = require('./utils/settings');
 const { accessLog } = require('./utils/accessLog');
 const { createAudit } = require('./utils/auditLog');
@@ -35,6 +36,9 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
     // Accounts (only on while the admin area is): who is signed in is read before every route, and the stash controller
     // consults the signed-in user's follow list when a visitor has no cookie for a stash
     const users = new UserModel(model.db);
+    // The admin account (ADMIN_USERNAME + ADMIN_PASSWORD) is a user row like the others; make it match the environment
+    // before the first request. Throws when a regular user already has that name (app.js shows it and stops).
+    syncAdminUser({ users, config, log: line => console.log(line) });
     const userAuth = new UserAuth({ config, secret, users, now });
     const controller = new StashController({ model, events, config, secret, now, isAdmin: adminAuth.isAdmin, audit, metrics, users, userAuth });
     const userController = new UserController({ model, users, userAuth, adminAuth, config, stashes: controller, now, audit, metrics });

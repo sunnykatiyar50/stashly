@@ -11,6 +11,7 @@ const { grantRole, normalizeUsername, USERNAME_PATTERN, ROLES } = require('../mo
 const GENERIC_LOGIN_ERROR = 'That username or password is not right.';
 const NOT_ENABLED = 'Accounts are not enabled on this server.';
 const MAX_DISPLAY_NAME = 60;
+const MANAGED_MESSAGE = 'This account is set by ADMIN_USERNAME and ADMIN_PASSWORD in the server environment.';
 
 // Ids are numbers in the address; anything else is "no such user"
 const idOf = req => {
@@ -152,6 +153,8 @@ class UserController {
     // to take the account over), wrong guesses count towards the sign-in lockout, and every other session ends while
     // this one carries on.
     changePassword = async (req, res) => {
+        // The environment's admin account has the password ADMIN_PASSWORD; changing it here would be undone at the next start
+        if (req.user.managed) return res.status(409).json({ error: MANAGED_MESSAGE });
         const { currentPassword, newPassword } = req.body || {};
         const min = this.config.minPasswordLength;
         if (typeof newPassword !== 'string' || newPassword.length < min || newPassword.length > MAX_PASSWORD) {
@@ -292,6 +295,8 @@ class UserController {
             displayName: row.display_name || null,
             role: row.role,
             disabled: Boolean(row.disabled),
+            // Set in the server's environment: the page shows no buttons for it
+            managed: Boolean(row.managed),
             createdAt: row.created_at,
             lastLoginAt: row.last_login_at || null,
             stashCount: row.stash_count !== undefined ? row.stash_count : undefined,
@@ -309,6 +314,17 @@ class UserController {
         const id = idOf(req);
         const user = id ? this.users.findById(id) : null;
         if (!user) res.status(404).json({ error: 'There is no such user.' });
+        return user;
+    }
+
+    // Like target(), for the actions that change an account: the environment's admin account cannot be changed here
+    editable(req, res) {
+        const user = this.target(req, res);
+        if (!user) return null;
+        if (user.managed) {
+            res.status(409).json({ error: MANAGED_MESSAGE });
+            return null;
+        }
         return user;
     }
 
@@ -354,7 +370,7 @@ class UserController {
     };
 
     update = (req, res) => {
-        const user = this.target(req, res);
+        const user = this.editable(req, res);
         if (!user) return;
         const body = req.body || {};
         const changes = {};
@@ -383,7 +399,7 @@ class UserController {
 
     // The admin sets a new password for the user (for a forgotten one) and tells them; every session of the user ends
     resetPassword = async (req, res) => {
-        const user = this.target(req, res);
+        const user = this.editable(req, res);
         if (!user) return;
         const password = req.body && req.body.password;
         const min = this.config.minPasswordLength;
@@ -398,7 +414,7 @@ class UserController {
     };
 
     signOut = (req, res) => {
-        const user = this.target(req, res);
+        const user = this.editable(req, res);
         if (!user) return;
         this.users.bumpSession(user.id);
         this.audit('user.signed_out', { req, actor: 'admin', detail: { user: user.id } });
@@ -408,7 +424,7 @@ class UserController {
 
     // Removes the account and its follow list. The stashes it followed are not touched.
     remove = (req, res) => {
-        const user = this.target(req, res);
+        const user = this.editable(req, res);
         if (!user) return;
         if (this.isSelf(req, user)) return res.status(400).json({ error: 'You cannot delete your own account. Ask another admin.' });
         this.users.remove(user.id);
