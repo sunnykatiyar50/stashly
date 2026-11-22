@@ -80,64 +80,20 @@
         Array.prototype.forEach.call($('createForm').elements, function (el) { el.disabled = true; });
     }
 
-    // "Sign in" when nobody is signed in to an account, "My stashes" when someone is (the link only exists when the
-    // server has accounts)
+    // "Sign in" when nobody is signed in to an account, "My stashes" in the main menu when someone is (the link only
+    // exists when the server has accounts)
     function showAccountLink() {
         $('accountLink').classList.remove('hidden');
         api('/api/me').then(function (res) {
             if (res.ok && res.body && res.body.user) {
-                $('accountLinkLabel').textContent = 'My stashes';
-                $('accountLink').title = 'My stashes, signed in as ' + res.body.user.username;
-                showAccountTools();
+                // Signed in: "My stashes" joins the main menu (the same place it has on the My stashes page) and the
+                // footer's "Sign in" goes away
+                $('accountNavLink').classList.remove('hidden');
+                $('accountNavLink').title = 'My stashes, signed in as ' + res.body.user.username;
+                $('accountLink').classList.add('hidden');
             }
         }).catch(function () { /* keeps saying "Sign in" */ });
     }
-
-    // Someone signed in to an account can also follow an existing stash from here (creating one follows it already)
-    function showAccountTools() {
-        $('followForm').classList.remove('hidden');
-        $('createFollowNote').classList.remove('hidden');
-    }
-
-    $('followForm').addEventListener('submit', function (event) {
-        event.preventDefault();
-        var fStatus = $('followStatus');
-        fStatus.textContent = '';
-        fStatus.classList.remove('error');
-        $('followDone').classList.add('hidden');
-        $('followSlugError').textContent = '';
-        $('followError').textContent = '';
-        var slug = $('followSlug').value.trim();
-        var password = $('followPassword').value;
-        var link = $('followLink').value.trim();
-        // A whole read-only link carries the name too, so the name field can stay empty
-        if (!slug && !link) { $('followSlugError').textContent = 'Enter the stash name.'; $('followSlug').focus(); return; }
-        $('followButton').disabled = true;
-        api('/api/me/stashes', { method: 'POST', body: { slug: slug || undefined, password: password || undefined, link: link || undefined } }).then(function (res) {
-            $('followButton').disabled = false;
-            // The password is never left in the form, whatever the answer
-            $('followPassword').value = '';
-            if (res.status === 401 && res.body && res.body.signedIn === false) {
-                $('followForm').classList.add('hidden');
-                $('createFollowNote').classList.add('hidden');
-                $('accountLinkLabel').textContent = 'Sign in';
-                return;
-            }
-            if (res.ok) {
-                $('followSlug').value = '';
-                $('followLink').value = '';
-                fStatus.textContent = 'Following "' + res.body.slug + '"' + (res.body.role === 'view' ? ' (read-only)' : '') + '.';
-                $('followDone').classList.remove('hidden');
-            } else {
-                var message = (res.body && res.body.error) || 'Could not follow the stash.';
-                if (res.body && res.body.field === 'slug') $('followSlugError').textContent = message;
-                else $('followError').textContent = message;
-            }
-        }).catch(function () {
-            $('followButton').disabled = false;
-            $('followError').textContent = 'Could not reach the server.';
-        });
-    });
 
     // The Admin link is for someone who is already signed in as an admin (the root admin or an admin-role user).
     // Guests never see it; an admin who is not signed in yet goes to /admin directly.

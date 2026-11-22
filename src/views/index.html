@@ -32,9 +32,14 @@
                 <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 <span class="label">New stash</span>
             </a>
+            <!-- Once signed in to an account, "My stashes" is part of the main menu on every page -->
+            <a href="/account" id="accountNavLink" class="nav-link hidden" title="My stashes">
+                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <span class="label">My stashes</span>
+            </a>
         </nav>
         <div class="sidebar-footer">
-            <!-- Only when the server has accounts. "Sign in" until someone is signed in, then "My stashes". -->
+            <!-- Only when the server has accounts. "Sign in" until someone is signed in (then it moves to the main menu as "My stashes"). -->
             <a href="/account" id="accountLink" class="nav-link hidden" title="Sign in to follow your stashes">
                 <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 <span class="label" id="accountLinkLabel">Sign in</span>
@@ -71,48 +76,12 @@
                 </form>
             </div>
 
-            <!-- Only for someone signed in to an account: follow a stash that already exists, so it shows up in My stashes. -->
-            <form id="followForm" class="card form-card follow-card hidden" novalidate aria-labelledby="followTitle">
-                <div class="open-card-title">
-                    <span class="open-card-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    </span>
-                    <div>
-                        <h3 id="followTitle">Follow a stash</h3>
-                        <small class="field-hint">Add a stash that already exists to My stashes. Its password is checked once and not stored.</small>
-                    </div>
-                </div>
-                <div class="field-row">
-                    <div class="field">
-                        <label for="followSlug">Stash name</label>
-                        <input type="text" id="followSlug" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="200" />
-                        <small class="field-error" id="followSlugError" role="alert"></small>
-                    </div>
-                    <div class="field">
-                        <label for="followPassword">Password <span class="optional">if it has one</span></label>
-                        <input type="password" id="followPassword" autocomplete="off" maxlength="200" />
-                    </div>
-                </div>
-                <div class="field">
-                    <label for="followLink">Or a read-only link <span class="optional">instead of the password</span></label>
-                    <input type="text" id="followLink" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="2000" placeholder="https://.../s/name#view=..." />
-                    <small class="field-error" id="followError" role="alert"></small>
-                </div>
-                <div class="form-actions">
-                    <button type="submit" id="followButton" class="primary">Follow</button>
-                    <p id="followStatus" class="form-status" role="status"></p>
-                    <a id="followDone" class="button-link small hidden" href="/account">Go to My stashes</a>
-                </div>
-            </form>
-
             <header class="view-header">
                 <div class="view-title">
                     <h1>New stash</h1>
                     <span class="muted">A link two machines can both open to trade text, images and files.</span>
                 </div>
             </header>
-
-            <p id="createFollowNote" class="muted hidden">You are signed in, so a stash you create here is added to <a href="/account">My stashes</a> automatically.</p>
 
             <div id="adminNotice" class="card notice hidden">
                 Only admins can create stashes on this server. <a href="/account">Sign in</a> to create one.

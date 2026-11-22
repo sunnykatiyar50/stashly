@@ -478,6 +478,19 @@ audio.detail-media { max-height: none; }
 .chip.role-admin { background: var(--blue-soft); color: var(--blue); }
 .chip.status-off { background: var(--danger-soft); color: var(--danger); }
 .refresh-info { font-size: 12px; }
+/* The My stashes page: a centred column with room to breathe, not a strip packed into the top-left corner */
+#viewAccount { padding: 32px clamp(16px, 4vw, 56px) 40px; gap: 20px; }
+#viewAccount > * { width: 100%; max-width: 860px; margin-inline: auto; }
+#viewAccount .view-header { gap: 12px 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+#viewAccount .view-title h1 { font-size: 26px; }
+#viewAccount .view-title .muted { font-size: 14px; }
+#viewAccount .follow-list { max-width: 860px; gap: 14px; }
+#viewAccount .follow-item { padding: 18px 22px; gap: 14px 20px; }
+#viewAccount .follow-main { gap: 8px; }
+#viewAccount .follow-name { font-size: 17px; }
+#viewAccount .follow-sub { font-size: 13.5px; line-height: 1.5; }
+#viewAccount .empty-state { padding: 36px 16px; text-align: center; }
+#viewAccount .refresh-info { text-align: center; }
 .users-card { gap: 10px; }
 .users-card h2 { font-size: 16px; }
 .users-form .field-row { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
