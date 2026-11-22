@@ -683,3 +683,10 @@ body:not(.stash-open) .in-topbar { display: none; }
 .clip.selected .clip-copy { opacity: 0; }
 .clip:hover .clip-copy, .clip:focus-within .clip-copy, .clip-copy:focus-visible { opacity: 1; }
 @media (hover: none) { .clip-copy, .clip.selected .clip-copy { opacity: 0; } .clip:focus-within .clip-copy { opacity: 1; } }
+
+/* ===== Clip rows: every property is an icon, and pin and copy are always shown (phones have no hover) ===== */
+.clip-flag-icon { align-items: center; gap: 3px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.clip-flag-icon.clip-flag-burn { color: var(--warning-text); }
+.clip .clip-copy, .clip.selected .clip-copy { opacity: 0.7; }
+.clip .clip-copy:hover, .clip .clip-copy:focus-visible, .clip-pin.on { opacity: 1; }
+@media (hover: none) { .clip .clip-copy, .clip.selected .clip-copy { opacity: 0.85; } }
