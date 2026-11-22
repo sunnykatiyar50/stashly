@@ -179,7 +179,8 @@ Whatever the mode, files are downloaded as attachments (images show inline), and
 
 `extension/` holds a small Manifest V3 extension for Chrome, Edge and Firefox. It sends notes, links and files to a stash
 from any tab, and lists, searches and copies your notes. Each release attaches it built for that version
-(`npm run build:extension` builds it locally); see [extension/README.md](extension/README.md).
+(`npm run build:extension` builds it locally); see [extension/README.md](extension/README.md). What it and the server
+do with your data is in [PRIVACY.md](PRIVACY.md).
 
 ## Tests
 
