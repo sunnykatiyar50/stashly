@@ -413,6 +413,37 @@
         });
     });
 
+    // Create user and Backup stay out of the way until asked for: a button opens or closes each panel
+    function setPanel(toggle, panel, open, focusId) {
+        panel.classList.toggle('hidden', !open);
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open && focusId) $(focusId).focus();
+    }
+
+    $('backupToggle').addEventListener('click', function () {
+        setPanel($('backupToggle'), $('backupCard'), $('backupCard').classList.contains('hidden'), 'backupLink');
+    });
+
+    function closeUserForm() {
+        // A password is never left in the form, and neither are old messages
+        $('newUserPassword').value = '';
+        Object.keys(userFormErrors).forEach(function (key) { userFormErrors[key].textContent = ''; });
+        $('userFormStatus').textContent = '';
+        setPanel($('createUserToggle'), $('userForm'), false);
+    }
+
+    $('createUserToggle').addEventListener('click', function () {
+        if ($('userForm').classList.contains('hidden')) setPanel($('createUserToggle'), $('userForm'), true, 'newUsername');
+        else closeUserForm();
+    });
+    $('cancelUserButton').addEventListener('click', function () {
+        $('newUsername').value = '';
+        $('newDisplayName').value = '';
+        $('newUserRole').value = 'user';
+        closeUserForm();
+        $('createUserToggle').focus();
+    });
+
     var userFormErrors = { username: $('newUsernameError'), displayName: $('newDisplayNameError'), password: $('newUserPasswordError') };
 
     $('userForm').addEventListener('submit', function (event) {
@@ -441,6 +472,7 @@
                 $('newDisplayName').value = '';
                 $('newUserRole').value = 'user';
                 toast('Added ' + res.body.username + '. Tell them their password.');
+                closeUserForm();
                 loadUsers();
             } else {
                 var message = (res.body && res.body.error) || 'Could not add the user.';

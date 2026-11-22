@@ -39,7 +39,8 @@
                 <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 <span class="label" id="accountLinkLabel">Sign in</span>
             </a>
-            <a href="/admin" class="nav-link" title="Admin">
+            <!-- Only for someone who is already signed in as an admin. Guests see "Sign in" above and nothing about admin. -->
+            <a href="/admin" id="adminLink" class="nav-link hidden" title="Admin">
                 <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M2 21v-1a6 6 0 0 1 6-6h3"/><path d="M18 22s4-1.8 4-4.8v-3.4L18 12l-4 1.8v3.4c0 3 4 4.8 4 4.8z"/></svg>
                 <span class="label">Admin</span>
             </a>
@@ -78,7 +79,7 @@
             </header>
 
             <div id="adminNotice" class="card notice hidden">
-                Only the admin can create stashes on this server. <a href="/admin">Sign in as admin</a> to create one.
+                Only admins can create stashes on this server. <a href="/account">Sign in</a> to create one.
                 You can still open a stash you have the link to.
             </div>
             <div id="loginNotice" class="card notice hidden">
