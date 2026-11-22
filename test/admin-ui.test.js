@@ -34,16 +34,26 @@ test('the admin sidebar has a Sign in link to the account page, shown once the a
     assert.match(tag(html, 'accountLink'), /class="[^"]*\bhidden\b/);
 });
 
-test('following a stash lives on the New stash page, and My stashes only lists them', () => {
+test('opening a stash follows it by itself: no follow form, no extra note, and My stashes stays in the main menu', () => {
     const home = view('index.html');
-    // The follow form is on the home page, hidden until home.js sees a signed-in account
-    assert.match(tag(home, 'followForm'), /class="[^"]*\bhidden\b/);
-    assert.match(tag(home, 'createFollowNote'), /class="[^"]*\bhidden\b/);
-    assert.match(view('home.js'), /\/api\/me\/stashes/);
+    // The home page has neither the follow form nor the note under the New stash title
+    assert.doesNotMatch(home, /id="followForm"/);
+    assert.doesNotMatch(home, /createFollowNote/);
+    // Signed in, "My stashes" is in the main menu (the sidebar nav), not only in the footer
+    const nav = home.slice(home.indexOf('<nav class="sidebar-nav"'), home.indexOf('</nav>'));
+    assert.match(nav, /id="accountNavLink"/);
+    assert.match(tag(home, 'accountNavLink'), /class="[^"]*\bhidden\b/);
+    assert.match(view('home.js'), /accountNavLink/);
+    assert.ok(!view('home.js').includes('/api/me/stashes'));
 
-    // The account page has no follow form any more, and no Admin link for people who are not admins
+    // The stash page adds the stash by itself, and respects "stop following" in the same tab
+    const script = view('stash-account.js');
+    assert.ok(script.includes('followNow(true)'));
+    assert.ok(script.includes('sessionStorage'));
+
+    // The account page has no follow form, and no Admin link for people who are not admins
     const account = view('account.html');
     assert.doesNotMatch(account, /id="followForm"/);
     assert.match(tag(account, 'adminNavLink'), /class="[^"]*\bhidden\b/);
-    assert.doesNotMatch(view('account.js'), /getElementById\('followForm'\)|\$\('followForm'\)/);
+    assert.ok(!view('account.js').includes("'followForm'"));
 });
