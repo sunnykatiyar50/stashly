@@ -644,3 +644,29 @@ body:not(.stash-open) .in-topbar { display: none; }
     .chip .chip-short { display: inline-flex; align-items: center; gap: 4px; }
     .chip .chip-short svg { width: 13px; height: 13px; }
 }
+
+/* ===== Admin settings: centred on the page, roomier tabs and rows ===== */
+#viewSettings > .view-header, #viewSettings > .settings-card { width: 100%; max-width: 1000px; margin-left: auto; margin-right: auto; }
+#viewSettings { padding-top: 22px; gap: 14px; }
+#viewSettings .view-title { flex-direction: column; align-items: flex-start; gap: 4px; }
+#viewSettings .view-title h1 { font-size: 22px; }
+.settings-card { padding: 22px 26px; }
+.settings-layout { grid-template-columns: 210px minmax(0, 1fr); gap: 28px; }
+.settings-tabs { gap: 4px; padding-right: 18px; }
+.settings-tab { justify-content: flex-start; gap: 10px; padding: 11px 14px; font-size: 15px; border-radius: 8px; }
+.settings-tab-name { flex: 1; }
+.settings-tab-icon { display: inline-flex; flex: none; }
+.settings-tab-icon svg { width: 18px; height: 18px; }
+.settings-row { padding: 16px 0; gap: 8px 32px; }
+.settings-card .form-actions { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+@media (max-width: 760px) {
+    #viewSettings { padding-top: 12px; }
+    .settings-card { padding: 14px; }
+    /* Tabs go back to a row across the top (these must come after the wide-screen rules above) */
+    .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+    .settings-tabs { flex-direction: row; overflow-x: auto; padding: 0 0 10px; border-right: none; border-bottom: 1px solid var(--border); }
+    .settings-tab { width: auto; flex: none; }
+    .settings-row { grid-template-columns: 1fr; }
+    .settings-tab { padding: 9px 12px; font-size: 14px; gap: 8px; }
+    .settings-row { padding: 14px 0; }
+}
