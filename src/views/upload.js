@@ -74,6 +74,7 @@
                 xhr.withCredentials = true;
                 xhr.setRequestHeader('Content-Type', 'application/octet-stream');
                 xhr.setRequestHeader('X-File-Name', encodeURIComponent(job.name));
+                if (job.title) xhr.setRequestHeader('X-Title', encodeURIComponent(job.title));
                 // Lets the page tell its own uploads from ones that arrive from another device
                 if (options.tabId) xhr.setRequestHeader('X-Tab-Id', options.tabId);
                 xhr.upload.onprogress = function (event) {
@@ -114,7 +115,9 @@
         }
 
         return {
-            add: function (files) {
+            // extra.title (optional) is sent as the file's title, in the X-Title header
+            add: function (files, extra) {
+                var title = extra && extra.title ? String(extra.title) : '';
                 Array.prototype.forEach.call(files, function (file) {
                     var name = nameFor(file);
                     var ui = row(name, file.size);
@@ -126,7 +129,7 @@
                         fail(ui, 'The file is empty');
                         return;
                     }
-                    queue.push({ file: file, name: name, ui: ui });
+                    queue.push({ file: file, name: name, ui: ui, title: title });
                 });
                 next();
             },

@@ -181,15 +181,15 @@ class StashModel {
         );
     }
 
-    addFile(stashId, { fileName, fileType, content }, now = new Date()) {
+    addFile(stashId, { fileName, fileType, content, title = null }, now = new Date()) {
         this.db.exec('BEGIN');
         try {
             const result = this.db
                 .prepare(
-                    `INSERT INTO items (stash_id, kind, file_name, file_type, file_size, created_at, sort_order)
-                     VALUES (?, 'file', ?, ?, ?, ?, ?)`
+                    `INSERT INTO items (stash_id, kind, file_name, file_type, file_size, created_at, sort_order, title)
+                     VALUES (?, 'file', ?, ?, ?, ?, ?, ?)`
                 )
-                .run(stashId, fileName, fileType, content.length, now.toISOString(), this.nextOrder(stashId));
+                .run(stashId, fileName, fileType, content.length, now.toISOString(), this.nextOrder(stashId), title);
             const id = Number(result.lastInsertRowid);
             this.db.prepare('INSERT INTO files (item_id, content) VALUES (?, ?)').run(id, content);
             this.db.exec('COMMIT');
@@ -291,6 +291,14 @@ class StashModel {
 
     setPinned(stashId, id, pinned) {
         const changed = this.db.prepare('UPDATE items SET pinned = ? WHERE stash_id = ? AND id = ?').run(pinned ? 1 : 0, stashId, id).changes;
+        return changed ? this.getItem(stashId, id) : null;
+    }
+
+    // Gives a file a title of its own (null goes back to its name). The file and its name stay as they were.
+    setFileTitle(stashId, id, title, now = new Date()) {
+        const changed = this.db
+            .prepare(`UPDATE items SET title = ?, edited_at = ? WHERE stash_id = ? AND id = ? AND kind = 'file'`)
+            .run(title, now.toISOString(), stashId, id).changes;
         return changed ? this.getItem(stashId, id) : null;
     }
 

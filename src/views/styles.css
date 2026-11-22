@@ -714,8 +714,10 @@ body:not(.stash-open) .in-topbar { display: none; }
 
 /* ===== What the stash takes: hide what cannot be added ===== */
 .content-notes #attachButton, .content-notes #dropZone { display: none; }
-/* Files only: the drop zone (which also opens the file picker) replaces the note row */
-.content-files .composer-row, .content-files .note-options { display: none; }
+/* Files only: the drop zone (which also opens the file picker) replaces the note box; the title field stays for the next file */
+.content-files #noteInput, .content-files .composer-buttons, .content-files .note-options { display: none; }
+.content-files .composer-fields { flex: 1; }
+.content-files #titleInput { flex: 1 1 auto; width: auto; }
 .content-files .composer-extra { display: block; }
 
 /* Property icons share the line with pin and copy, to their left */

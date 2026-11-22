@@ -229,7 +229,7 @@
 
     // A note shows its title (the first 40 characters when it was not given one); a file shows its name
     function itemTitle(item) {
-        if (item.kind !== 'note') return item.fileName;
+        if (item.kind !== 'note') return item.title || item.fileName;
         return item.title || '(empty note)';
     }
 
@@ -253,7 +253,8 @@
     // The line under the title in the list: a few lines of the note, or the size of a file.
     // The note lines can be hidden with the eye button above the list.
     function itemSub(item) {
-        if (item.kind !== 'note') return window.StashlyUpload.formatSize(item.fileSize);
+        // A file with a title of its own also shows its real name
+        if (item.kind !== 'note') return (item.hasTitle ? item.fileName + ' · ' : '') + window.StashlyUpload.formatSize(item.fileSize);
         if (item.burn) return '';
         if (item.secret) return MASK;
         var text = item.text || '';
@@ -740,7 +741,7 @@
             }
             if (role() === 'full') actions.appendChild(button('Edit', 'ghost', function () { editNote(item); }));
         } else {
-            $('detailMeta').textContent = [fileKind(item), window.StashlyUpload.formatSize(item.fileSize), when].filter(Boolean).join(' · ');
+            $('detailMeta').textContent = [fileKind(item), window.StashlyUpload.formatSize(item.fileSize), when, item.editedAt ? 'edited ' + relativeTime(item.editedAt) : ''].filter(Boolean).join(' · ');
 
             var download = make('a', 'button-link primary-link');
             setLabel(download, 'Download');
@@ -813,6 +814,7 @@
         }
 
         if (role() === 'full') {
+            if (item.kind === 'file') actions.appendChild(button('Edit', 'ghost', function () { editFileTitle(item); }));
             actions.appendChild(button(item.pinned ? 'Unpin' : 'Pin', 'ghost', function () { setPinned(item, !item.pinned); }));
             actions.appendChild(button('Delete', 'danger-ghost', function () { removeItem(item); }));
         }
@@ -833,6 +835,7 @@
         var content = stashContent();
         sections.main.classList.toggle('content-notes', content === 'notes');
         sections.main.classList.toggle('content-files', content === 'files');
+        $('titleInput').placeholder = content === 'files' ? 'Title for the next file (Optional)' : 'Title (Optional)';
     }
 
     function applyRole() {
@@ -1055,6 +1058,61 @@
             else if (res.status === 401) locked();
             else toast((res.body && res.body.error) || 'Could not do that.', true);
         });
+    }
+
+    // Give a file a title of its own: the title becomes a field above the file. Empty goes back to the file's name.
+    function editFileTitle(item) {
+        state.editingId = item.id;
+        var actions = $('detailActions');
+        var body = $('detailBody');
+        actions.textContent = '';
+        var form = make('form', 'edit-form');
+        var title = make('input');
+        title.type = 'text';
+        title.maxLength = 150;
+        title.placeholder = item.fileName;
+        title.value = item.hasTitle ? item.title : '';
+        title.setAttribute('aria-label', 'Title (empty uses the file name)');
+        var hint = make('small', 'field-hint', 'Leave it empty to show the file name. The download keeps the real name.');
+        var error = make('small', 'field-error');
+        error.setAttribute('role', 'alert');
+        form.appendChild(title);
+        form.appendChild(hint);
+        form.appendChild(error);
+        body.insertBefore(form, body.firstChild);
+
+        function leave() {
+            state.editingId = null;
+            var current = findItem(item.id);
+            if (current && state.selectedId === item.id) renderDetail(current); else showSomethingElse(0);
+        }
+        var save = button('Save', 'primary', function () { form.requestSubmit(); });
+        actions.appendChild(save);
+        actions.appendChild(button('Cancel', 'ghost', leave));
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            error.textContent = '';
+            save.disabled = true;
+            api(base + '/items/' + item.id, { method: 'PUT', body: { title: title.value } }).then(function (res) {
+                save.disabled = false;
+                if (res.ok) {
+                    state.editingId = null;
+                    onItemUpdated(res.body);
+                    toast('Saved');
+                } else if (res.status === 401) {
+                    locked();
+                } else if (res.status === 404) {
+                    error.textContent = 'That file is gone.';
+                } else {
+                    error.textContent = (res.body && res.body.error) || 'Could not save.';
+                }
+            }).catch(function () { save.disabled = false; error.textContent = 'Could not reach the server.'; });
+        });
+        form.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') { event.preventDefault(); leave(); }
+        });
+        title.focus();
+        title.select();
     }
 
     // Edit a note in place: the title and text become fields, Save sends them, Cancel goes back
@@ -1929,7 +1987,15 @@
     // Upload progress shows under the composer, which is always on the page
     function addFiles(files) {
         if (stashContent() === 'notes') { toast('This stash only takes notes, not files.', true); return; }
-        uploader.add(files);
+        // A title typed in the composer goes with a single file (several files keep their own names)
+        var titleInput = $('titleInput');
+        var title = titleInput.value.trim();
+        if (title && files.length === 1) {
+            uploader.add(files, { title: title });
+            titleInput.value = '';
+        } else {
+            uploader.add(files);
+        }
     }
 
     var dropZone = $('dropZone');

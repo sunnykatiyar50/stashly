@@ -151,7 +151,7 @@ test('clearing the title goes back to the first 40 characters of the text', asyn
     assert.equal(res.body.title, 'one two three four five six');
 });
 
-test('editing refuses empty or oversized text, a long title, files, burn notes and missing items', async () => {
+test('editing refuses empty or oversized text, a long title, the content of a file, burn notes and missing items', async () => {
     const ctx = makeApp({ maxNoteBytes: 20 });
     const base = await stash(ctx);
     const note = await request(ctx.app).post(`${base}/notes`).send({ text: 'short' }).expect(201);
@@ -162,7 +162,8 @@ test('editing refuses empty or oversized text, a long title, files, burn notes a
     await request(ctx.app).put(`${base}/items/${note.body.id}`).send({ text: 'x'.repeat(21) }).expect(413);
     await request(ctx.app).put(`${base}/items/${note.body.id}`).send({ text: 'ok', title: 'x'.repeat(151) }).expect(400);
     await request(ctx.app).put(`${base}/items/${burn.body.id}`).send({ text: 'changed' }).expect(400);
-    await request(ctx.app).put(`${base}/items/${file.body.id}`).send({ text: 'changed' }).expect(404);
+    // A file's title can be changed (see files.test.js), but not its content
+    await request(ctx.app).put(`${base}/items/${file.body.id}`).send({ text: 'changed' }).expect(400);
     await request(ctx.app).put(`${base}/items/999`).send({ text: 'changed' }).expect(404);
     assert.equal((await request(ctx.app).get(base)).body.items.find(i => i.id === note.body.id).text, 'short');
 });

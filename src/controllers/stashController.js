@@ -75,9 +75,10 @@ class StashController {
         return {
             id: row.id,
             kind: row.kind,
-            // Notes: the given title, or the first words of the text when there is none
-            title: isFile ? null : row.title || generic || deriveTitle(row.text),
-            hasTitle: !isFile && Boolean(row.title),
+            // Notes: the given title, or the first words of the text when there is none.
+            // Files: the given title, or the file's name.
+            title: isFile ? row.title || row.file_name : row.title || generic || deriveTitle(row.text),
+            hasTitle: Boolean(row.title),
             text: isFile || burn ? null : row.text,
             burn,
             secret,
@@ -614,12 +615,14 @@ class StashController {
         return removed;
     }
 
-    // Edits a note's title and text in place. Burn notes cannot be edited: their text is not on the page to change.
+    // Edits a note's title and text in place, or a file's title. Burn notes cannot be edited: their text is not on
+    // the page to change.
     editNote = (req, res) => {
         const stash = req.stash;
         const id = Number(req.params.id);
         const row = Number.isInteger(id) ? this.model.getLiveItem(stash.id, id, this.now()) : null;
-        if (!row || row.kind !== 'note') return res.status(404).json({ error: 'Note not found.' });
+        if (!row) return res.status(404).json({ error: 'Item not found.' });
+        if (row.kind === 'file') return this.editFileTitle(req, res, row);
         if (row.burn) return res.status(400).json({ error: 'A burn-after-reading note cannot be edited.' });
         const raw = req.body && req.body.text;
         if (typeof raw !== 'string' || !raw.trim()) return res.status(400).json({ error: 'A note cannot be empty.', field: 'text' });
@@ -634,6 +637,18 @@ class StashController {
         this.events.publish(stash.slug, 'item-updated', item);
         res.json(item);
     };
+
+    // A file's title: { title } (empty or null goes back to the file's name). The download keeps the real name.
+    editFileTitle(req, res, row) {
+        const stash = req.stash;
+        if (req.body && req.body.text !== undefined) return res.status(400).json({ error: "A file's content cannot be edited, only its title.", field: 'text' });
+        const title = parseTitle(req.body && req.body.title);
+        if (title.error) return res.status(400).json({ error: title.error, field: 'title' });
+        const updated = this.model.setFileTitle(stash.id, row.id, title.value, this.now());
+        const item = this.presentItem(stash.slug, updated);
+        this.events.publish(stash.slug, 'item-updated', item);
+        res.json(item);
+    }
 
     setPinned = (req, res) => {
         const stash = req.stash;
@@ -712,6 +727,18 @@ class StashController {
         const detected = detectFile(fileName, content, this.config.fileTypes);
         if (detected.error) return res.status(415).json({ error: detected.error });
 
+        // An optional title, in the X-Title header (URI-encoded, like the name)
+        let rawTitle = req.get('x-title');
+        if (rawTitle !== undefined) {
+            try {
+                rawTitle = decodeURIComponent(rawTitle);
+            } catch {
+                // keep the raw header value
+            }
+        }
+        const title = parseTitle(rawTitle);
+        if (title.error) return res.status(400).json({ error: title.error, field: 'title' });
+
         const usage = this.model.usage(stash.id);
         const c = this.config;
         if (usage.items >= c.maxItemsPerStash) {
@@ -727,7 +754,7 @@ class StashController {
             return res.status(507).json({ error: 'The server is out of file space. Try again later.' });
         }
 
-        const row = this.model.addFile(stash.id, { fileName, fileType: detected.mime, content }, this.now());
+        const row = this.model.addFile(stash.id, { fileName, fileType: detected.mime, content, title: title.value }, this.now());
         const item = this.presentItem(stash.slug, row);
         this.events.publish(stash.slug, 'item-added', this.withOrigin(item, req));
         this.trim(stash);
