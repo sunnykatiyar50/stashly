@@ -25,6 +25,11 @@ class FileStore {
         return path.join(this.dir, String(Number(id)));
     }
 
+    // An image's thumbnail sits beside its file as `<id>.thumb` and always goes with it (see remove and sweep)
+    pathOfThumb(id) {
+        return `${this.pathOf(id)}.thumb`;
+    }
+
     // ---- writing ----
 
     // Reads a request body into a new file under tmp/, without holding it in memory. Resolves with
@@ -102,6 +107,20 @@ class FileStore {
         if (tmp) fs.rmSync(tmp, { force: true });
     }
 
+    // Stores an item's thumbnail. Written to tmp/ first and moved into place, so a reader never sees half of one and a
+    // replaced thumbnail is swapped in one step.
+    writeThumb(id, bytes) {
+        this.ensure();
+        const tmp = path.join(this.tmpDir, crypto.randomBytes(12).toString('hex'));
+        try {
+            fs.writeFileSync(tmp, bytes, { mode: 0o600, flag: 'wx' });
+            fs.renameSync(tmp, this.pathOfThumb(id));
+        } catch (err) {
+            fs.rmSync(tmp, { force: true });
+            throw err;
+        }
+    }
+
     // Writes a file's bytes under its item id (used when moving files out of the old database layout)
     write(id, bytes) {
         this.ensure();
@@ -116,6 +135,19 @@ class FileStore {
         } catch {
             return false;
         }
+    }
+
+    existsThumb(id) {
+        try {
+            return fs.statSync(this.pathOfThumb(id)).isFile();
+        } catch {
+            return false;
+        }
+    }
+
+    // A thumbnail is small (the controller refuses big ones), so it is read whole
+    readThumb(id) {
+        return fs.promises.readFile(this.pathOfThumb(id));
     }
 
     size(id) {
@@ -140,7 +172,10 @@ class FileStore {
     // Deletes files. Like the database (secure_delete), the bytes are overwritten with zeros first, so a deleted or
     // expired file cannot be read back from free disk space by a simple undelete.
     remove(ids) {
-        for (const id of ids) this.wipe(this.pathOf(id));
+        for (const id of ids) {
+            this.wipe(this.pathOf(id));
+            this.wipe(this.pathOfThumb(id));
+        }
     }
 
     // Overwrites a file with zeros, then removes it
@@ -167,13 +202,16 @@ class FileStore {
     }
 
     // Removes every file whose item no longer exists, and any leftover upload. `liveIds` is the set of item ids that
-    // should have a file. Returns how many files were removed.
-    sweep(liveIds) {
+    // should have a file, and `thumbIds` the ids that should have a thumbnail (by default every item with a file: a
+    // thumbnail is an orphan when its item is gone). Returns how many files were removed.
+    sweep(liveIds, thumbIds = liveIds) {
         if (!fs.existsSync(this.dir)) return 0;
         let removed = 0;
         for (const name of fs.readdirSync(this.dir)) {
             if (name === 'tmp') continue;
-            if (!/^\d+$/.test(name) || !liveIds.has(Number(name))) {
+            const thumb = /^(\d+)\.thumb$/.exec(name);
+            const keep = thumb ? thumbIds.has(Number(thumb[1])) : /^\d+$/.test(name) && liveIds.has(Number(name));
+            if (!keep) {
                 this.wipe(path.join(this.dir, name));
                 removed++;
             }
@@ -187,10 +225,34 @@ class FileStore {
         return removed;
     }
 
-    // How many files are stored (for tests and the admin)
+    // How many files are stored (for tests and the admin); thumbnails are counted apart
     count() {
         if (!fs.existsSync(this.dir)) return 0;
         return fs.readdirSync(this.dir).filter(name => /^\d+$/.test(name)).length;
+    }
+
+    countThumbs() {
+        if (!fs.existsSync(this.dir)) return 0;
+        return fs.readdirSync(this.dir).filter(name => /^\d+\.thumb$/.test(name)).length;
+    }
+
+    // The names of every stored file and thumbnail (plain files named by item id), for the backup
+    storedNames() {
+        if (!fs.existsSync(this.dir)) return [];
+        return fs.readdirSync(this.dir).filter(name => /^\d+(\.thumb)?$/.test(name) && this.isPlainFile(name));
+    }
+
+    isPlainFile(name) {
+        try {
+            return fs.statSync(path.join(this.dir, name)).isFile();
+        } catch {
+            return false;
+        }
+    }
+
+    // A stream of one of the names storedNames() gave
+    streamName(name) {
+        return fs.createReadStream(path.join(this.dir, name));
     }
 }
 

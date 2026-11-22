@@ -35,6 +35,8 @@ function loadConfig(env = process.env, overrides = {}) {
         trustProxy: env.TRUST_PROXY || '',
         maxNoteBytes: num(env.MAX_NOTE_KB, 100) * 1024,
         maxFileBytes: num(env.MAX_FILE_MB, 25) * MB,
+        // The largest thumbnail: the small preview the page makes of an uploaded image and sends along with it
+        maxThumbBytes: num(env.MAX_THUMB_KB, 200) * 1024,
         maxStashBytes: num(env.MAX_STASH_MB, 100) * MB,
         maxTotalBytes: num(env.MAX_TOTAL_MB, 2048) * MB,
         // Notes and files share this cap, so keep it above MAX_FILES_PER_STASH

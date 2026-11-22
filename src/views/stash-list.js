@@ -34,6 +34,13 @@
     function load() { return P.load.apply(null, arguments); }
     function locked() { return P.locked.apply(null, arguments); }
     function setPinned() { return P.setPinned.apply(null, arguments); }
+    function wantThumb() { return P.wantThumb.apply(null, arguments); }
+    function loadMore() { return P.loadMore.apply(null, arguments); }
+    function comesBefore() { return P.comesBefore.apply(null, arguments); }
+
+    // An image without a thumbnail is only shown in the list as itself when it is small; a big one would be
+    // downloaded in full just to draw 34 pixels
+    var SMALL_IMAGE = 1024 * 1024;
 
     // A note shows its title (the first 40 characters when it was not given one); a file shows its name
     function itemTitle(item) {
@@ -88,11 +95,17 @@
         }
 
         var lead;
-        if (item.isImage) {
+        if (item.isImage && (item.thumbUrl || item.fileSize <= SMALL_IMAGE)) {
+            // The thumbnail when there is one. A small image with none is shown as it is (as before); a big one is not
+            // loaded just for a 34 px picture, so it keeps its file icon until a thumbnail exists.
             lead = make('img', 'clip-thumb');
-            lead.src = item.url;
+            lead.src = item.thumbUrl || item.url;
             lead.alt = '';
             lead.loading = 'lazy';
+            if (item.thumbUrl) {
+                // A thumbnail that cannot be loaded (gone from the disk) falls back to the file icon
+                lead.addEventListener('error', function () { lead.replaceWith(make('span', 'file-icon', extensionOf(item.fileName))); }, { once: true });
+            }
         } else if (item.kind === 'file') {
             lead = make('span', 'file-icon', extensionOf(item.fileName));
         } else {
@@ -100,6 +113,9 @@
             lead.appendChild(svg(NOTE_ICON));
         }
         el.appendChild(lead);
+        // An image that has no thumbnail yet (sent from curl, or made before thumbnails existed) gets one made by this
+        // page the first time someone with full access sees it
+        if (item.isImage && !item.thumbUrl) wantThumb(item, lead);
 
         var text = make('span', 'clip-text');
         // A note with no title of its own is titled with its first 40 characters (worked out by the server).
@@ -188,8 +204,10 @@
         return Boolean(x && y && x.pinned === y.pinned);
     }
 
+    // The ids of the rows, top to bottom (the "Show more" button at the end is not a row)
     function rowIds() {
-        return Array.prototype.map.call($('items').children, function (child) { return child.dataset.id; }).join(',');
+        return Array.prototype.filter.call($('items').children, function (child) { return child.dataset.id; })
+            .map(function (child) { return child.dataset.id; }).join(',');
     }
 
     // Drag with a mouse, pen or finger from the handle. The row follows the pointer through the list; letting go
@@ -284,9 +302,10 @@
         var wanted = state.items.map(function (item) { return String(item.id); }).join(',');
         if (rowIds() === wanted) return;
         var list = $('items');
+        // Rows go before the "Show more" button, which stays at the end
         state.items.forEach(function (item) {
             var row = list.querySelector('.clip[data-id="' + item.id + '"]');
-            if (row) list.appendChild(row);
+            if (row) list.insertBefore(row, moreButton && moreButton.parentNode === list ? moreButton : null);
         });
     }
 
@@ -295,15 +314,93 @@
         return Boolean(f.search || f.startDate || f.endDate);
     }
 
+    // "37 clips", or while more are waiting on the server "100 of 250 clips". The total is what the server counted
+    // when the list was last read, kept up to date by the clips added and removed here and by live events since.
     function updateCounts() {
         var n = state.items.length;
-        $('itemInfo').textContent = n + (filtersActive() ? (n === 1 ? ' match' : ' matches') : n === 1 ? ' clip' : ' clips');
+        var total = state.hasMore ? Math.max(state.total, n) : n;
+        var noun = filtersActive() ? (total === 1 ? ' match' : ' matches') : total === 1 ? ' clip' : ' clips';
+        $('itemInfo').textContent = (state.hasMore && total > n ? n + ' of ' + total : String(total)) + noun;
         var empty = $('emptyState');
         empty.classList.toggle('hidden', n > 0);
         empty.textContent = filtersActive()
             ? 'No clips match your search or dates.'
             : 'Nothing here yet. Add a note or drop a file.';
         $('filterToggle').classList.toggle('active', Boolean(state.filters.startDate || state.filters.endDate));
+        updateMore();
+    }
+
+    // ---- paging: the "Show more" button at the end of the list ----
+    // It sits inside the scrolling list (after the last row) and loads the next page by itself when it scrolls into
+    // view, where the browser can tell (IntersectionObserver); clicking it, or pressing Enter on it, always works.
+    var moreButton = null;
+    var moreObserver = null;
+
+    function moreText() {
+        var left = Math.max(0, state.total - state.items.length);
+        if (state.loadingMore) return 'Loading...';
+        return left > 0 ? 'Show more (' + left + ' left)' : 'Show more';
+    }
+
+    function updateMore() {
+        var list = $('items');
+        if (!state.hasMore) {
+            if (moreButton && moreButton.parentNode) {
+                if (moreObserver) moreObserver.unobserve(moreButton);
+                moreButton.remove();
+            }
+            return;
+        }
+        if (!moreButton) {
+            moreButton = make('button', 'show-more ghost');
+            moreButton.type = 'button';
+            moreButton.addEventListener('click', function () { loadMore(); });
+            if (window.IntersectionObserver) {
+                moreObserver = new IntersectionObserver(function (entries) {
+                    if (entries.some(function (entry) { return entry.isIntersecting; })) loadMore();
+                }, { root: list, rootMargin: '0px 0px 200px 0px' });
+            }
+        }
+        moreButton.textContent = moreText();
+        moreButton.disabled = state.loadingMore;
+        if (list.lastElementChild !== moreButton) list.appendChild(moreButton);
+        // Observed afresh each time, so a list still too short to scroll after a page arrives loads the next one too
+        // (not after a failed request, or a button in view would retry at once, forever: the button still works)
+        if (moreObserver && !state.loadingMore && !state.moreFailed) { moreObserver.unobserve(moreButton); moreObserver.observe(moreButton); }
+    }
+
+    // Adds a page of clips the server sent after the ones on screen. Only these rows are built; the rows already there are
+    // left alone (so nothing is reordered or reloaded under the reader). Clips go where the list's own order puts them,
+    // which is the end for a normal page.
+    function addPage(items) {
+        var list = $('items');
+        var hadFocus = moreButton && document.activeElement === moreButton;
+        var firstNew = null;
+        var tail = document.createDocumentFragment();
+        // The rows waiting in `tail` go in just before the "Show more" button
+        function flush() { list.insertBefore(tail, moreButton && moreButton.parentNode === list ? moreButton : null); }
+        items.forEach(function (item) {
+            var last = state.items[state.items.length - 1];
+            if (!last || comesBefore(last, item)) {
+                state.items.push(item);
+                var row = buildClip(item);
+                if (!firstNew) firstNew = row;
+                tail.appendChild(row);
+                return;
+            }
+            // Out of order (it moved while paging): between the rows it belongs between, without moving any of them
+            flush();
+            var at = 0;
+            while (at < state.items.length && comesBefore(state.items[at], item)) at++;
+            state.items.splice(at, 0, item);
+            var rows = list.querySelectorAll('.clip');
+            list.insertBefore(buildClip(item), rows[at] || null);
+        });
+        flush();
+        updateCounts();
+        markSelected();
+        // Someone using the keyboard pressed the button: put them on the first new clip, not on a button that moved away
+        if (hadFocus && firstNew) firstNew.focus();
     }
 
     function markSelected() {
@@ -317,7 +414,9 @@
     function renderItems() {
         var list = $('items');
         list.textContent = '';
-        state.items.forEach(function (item) { list.appendChild(buildClip(item)); });
+        var rows = document.createDocumentFragment();
+        state.items.forEach(function (item) { rows.appendChild(buildClip(item)); });
+        list.appendChild(rows);
         updateCounts();
         markSelected();
     }
@@ -455,6 +554,8 @@
     P.updateCounts = updateCounts;
     P.markSelected = markSelected;
     P.renderItems = renderItems;
+    P.addPage = addPage;
+    P.updateMore = updateMore;
     P.sortItems = sortItems;
     P.setContentHidden = setContentHidden;
     P.listLimits = listLimits;

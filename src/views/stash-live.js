@@ -68,22 +68,41 @@
     function onItemAdded(item) {
         if (state.items.some(function (existing) { return existing.id === item.id; })) return;
         if (!matchesFilters(item)) return;
+        // One more match on the server (what "Show more (N left)" and the count are worked out from)
+        state.total++;
+        if (!placeLive(item, true)) updateCounts();
+    }
+
+    // Puts a clip arriving live into the loaded part of the list, at the place the list's own order gives it. Returns
+    // false when it does not belong there: with more pages still on the server, a clip that sorts after every clip
+    // loaded (an item brought back by Undo to a low place) is left out, because inserting it would hide the unloaded
+    // clips between; it comes with its own page.
+    function placeLive(item, isNew) {
         // Where it goes in the list's own order (pinned first, then by place, then newest). A new item has the highest
         // place, so it lands just below the pinned ones; an item brought back by Undo returns to the place it had.
         var at = 0;
         while (at < state.items.length && comesBefore(state.items[at], item)) at++;
+        if (state.hasMore && at === state.items.length && state.items.length) return false;
         state.items.splice(at, 0, item);
         var el = buildClip(item);
-        el.classList.add('new');
-        $('items').insertBefore(el, $('items').children[at] || null);
+        if (isNew) el.classList.add('new');
+        var rows = $('items').querySelectorAll('.clip');
+        $('items').insertBefore(el, rows[at] || null);
         updateCounts();
         markSelected();
+        return true;
     }
 
     function onItemUpdated(item) {
         var index = state.items.findIndex(function (existing) { return existing.id === item.id; });
-        if (index === -1) return;
-        var wasPinned = state.items[index].pinned;
+        // Not on the page: normally nothing to do. But with more pages on the server, a clip that was further down and
+        // now sorts inside what is loaded (it was just pinned) joins the list, as the server's own list now has it there.
+        if (index === -1) {
+            if (state.hasMore && matchesFilters(item)) placeLive(item, false);
+            return;
+        }
+        var before = state.items[index];
+        var wasPinned = before.pinned;
         // A live update never carries who sent it
         delete item.origin;
         state.items[index] = item;
@@ -92,8 +111,12 @@
             if (el) el.replaceWith(buildClip(item));
             markSelected();
         }
+        // A thumbnail arriving changes nothing in the open clip (it shows the full image already): redrawing it would
+        // only make the picture flash
+        var onlyThumb = item.kind === 'file' && !before.thumbUrl && Boolean(item.thumbUrl) &&
+            before.title === item.title && before.pinned === item.pinned && before.editedAt === item.editedAt;
         // The open clip shows the change, unless it is being edited right now (that would throw the typing away)
-        if (state.selectedId === item.id && state.editingId !== item.id && state.revealedId !== item.id) renderDetail(item);
+        if (!onlyThumb && state.selectedId === item.id && state.editingId !== item.id && state.revealedId !== item.id) renderDetail(item);
     }
 
     function connect() {
@@ -221,6 +244,7 @@
     P.closeStream = closeStream;
     P.localDayStart = localDayStart;
     P.matchesFilters = matchesFilters;
+    P.comesBefore = comesBefore;
     P.onItemAdded = onItemAdded;
     P.onItemUpdated = onItemUpdated;
     P.connect = connect;

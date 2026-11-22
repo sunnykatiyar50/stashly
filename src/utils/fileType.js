@@ -130,4 +130,14 @@ function detectFile(fileName, buffer, mode = 'safe') {
     return { mime: OCTET, image: false };
 }
 
-module.exports = { detectFile, cleanFileName, MODES };
+// What a thumbnail may be: JPEG, PNG or WebP, judged by its first bytes and nothing else (not the name, and not the
+// Content-Type the sender claims). SVG is never accepted: it is markup and can carry script. Returns the type or null.
+function detectThumb(buffer) {
+    if (!Buffer.isBuffer(buffer)) return null;
+    if (isJpeg(buffer)) return 'image/jpeg';
+    if (isPng(buffer)) return 'image/png';
+    if (isWebp(buffer)) return 'image/webp';
+    return null;
+}
+
+module.exports = { detectFile, detectThumb, cleanFileName, MODES };

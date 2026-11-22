@@ -8,6 +8,9 @@ const { deriveTitle } = require('./title');
 //   notes/<id>-<title>.txt   one per note
 //   files/<id>-<file name>   one per file, streamed from disk when the zip is written
 //
+// Thumbnails are not exported: they are only a small copy of an image that the zip already holds in full, and the page
+// can make them again.
+//
 // Burn-after-reading notes are never exported: reading one is what uses it up, and an export must not do that behind
 // anyone's back. They are listed in stash.json as skipped, with no title and no text.
 const NAME_CHARS = 100;

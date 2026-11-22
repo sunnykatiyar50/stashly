@@ -88,7 +88,8 @@
                     try { body = JSON.parse(xhr.responseText); } catch (e) { /* not JSON */ }
                     if (xhr.status >= 200 && xhr.status < 300) {
                         ui.el.remove();
-                        if (options.onDone) options.onDone(body);
+                        // The file is handed back too: the page makes the image's thumbnail from it, with no second download
+                        if (options.onDone) options.onDone(body, job.file);
                     } else if (xhr.status === 401 && options.onLocked) {
                         ui.el.remove();
                         options.onLocked();

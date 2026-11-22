@@ -10,7 +10,7 @@ const fileStore = new FileStore(config.filesDir);
 const db = connect(config.sqlitePath, { fileStore });
 const model = new StashModel(db, fileStore);
 // Files left behind by a crash (no matching item, or an upload that never finished) are removed
-const stray = fileStore.sweep(model.liveFileIds());
+const stray = fileStore.sweep(model.liveFileIds(), model.liveThumbIds());
 if (stray) console.log(`Removed ${stray} stray file(s) from ${config.filesDir}.`);
 const events = new StashEvents();
 const secret = config.sessionSecret || getOrCreateSecret(db);

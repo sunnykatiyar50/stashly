@@ -212,6 +212,9 @@
     function onItemDeleted(id) {
         if (state.editingId === id) state.editingId = null;
         var index = state.items.findIndex(function (item) { return item.id === id; });
+        // A clip on the page is one fewer match on the server too. One that was not loaded (further down) is not
+        // counted off: it may not have matched the search, and the next page read sets the total right.
+        if (index !== -1 && state.total > 0) state.total--;
         state.items = state.items.filter(function (item) { return item.id !== id; });
         var el = document.querySelector('.clip[data-id="' + id + '"]');
         if (el) el.remove();

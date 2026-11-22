@@ -1,7 +1,7 @@
 const { generateSlug, parseSlug } = require('../utils/slug');
 const { hashPassword, verifyPassword, MAX_PASSWORD } = require('../utils/password');
 const { signToken, verifyToken, parseCookies, generateLinkToken, hashLinkToken, linkTokenMatches } = require('../utils/token');
-const { detectFile, cleanFileName } = require('../utils/fileType');
+const { detectFile, detectThumb, cleanFileName } = require('../utils/fileType');
 const { dateRange } = require('../utils/time');
 const { parseTitle, deriveTitle } = require('../utils/title');
 const { listZip } = require('../utils/zip');
@@ -40,6 +40,17 @@ function parseLimit(value) {
     if (!Number.isInteger(n) || n < 1) return { error: `limit must be a whole number from 1 to ${MAX_LIST_LIMIT}.` };
     return { value: Math.min(n, MAX_LIST_LIMIT) };
 }
+// The optional `offset` of a listing (how many items to skip): undefined for none, or a whole number from 0, or an error
+function parseOffset(value) {
+    if (value === undefined || value === null || value === '') return { value: undefined };
+    const n = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
+    if (!Number.isSafeInteger(n) || n < 0) return { error: 'offset must be a whole number, 0 or more.' };
+    return { value: n };
+}
+
+// A drop-box link may attach a thumbnail only to an image it has just uploaded: while the image has none, and for this
+// long after the item was made. Full access may attach or replace a thumbnail at any time.
+const THUMB_DROP_WINDOW_MS = 5 * 60 * 1000;
 const RESERVED_MESSAGE = 'That name belonged to a stash that was deleted, expired or renamed recently, so it is reserved for now. Pick another.';
 
 // "bytes=START-END", "bytes=START-" or "bytes=-SUFFIX" for one range. Returns { start, end }, 'invalid', or null when
@@ -117,6 +128,8 @@ class StashController {
             fileSize: isFile ? row.file_size : null,
             isImage: isFile && row.file_type.startsWith('image/'),
             url: isFile ? `/api/stashes/${slug}/files/${row.id}` : null,
+            // A small picture for the list, when the page has made one (the bytes never travel in a listing)
+            thumbUrl: isFile && row.has_thumb ? `/api/stashes/${slug}/files/${row.id}/thumb` : null,
             createdAt: row.created_at,
         };
     }
@@ -129,6 +142,7 @@ class StashController {
             maxStashBytes: c.maxStashBytes,
             maxItemsPerStash: c.maxItemsPerStash,
             maxFilesPerStash: c.maxFilesPerStash,
+            maxThumbBytes: c.maxThumbBytes,
         };
     }
 
@@ -533,12 +547,19 @@ class StashController {
         const preview = input.preview === true || input.preview === '1' || input.preview === 'true';
         const limit = parseLimit(input.limit);
         if (limit.error) return res.status(400).json({ error: limit.error, field: 'limit' });
+        // Optional: skip the first `offset` items, to read a long list a page at a time (limit + offset)
+        const offset = parseOffset(input.offset);
+        if (offset.error) return res.status(400).json({ error: offset.error, field: 'offset' });
+        const skip = offset.value || 0;
 
         // A drop-box visitor can add but not read: they get the stash's shape and no items or counts
         const dropOnly = req.role === 'drop';
         const filters = { search, from: range.from, to: range.to, now: this.now() };
-        const rows = dropOnly ? [] : this.model.listItems(stash.id, { ...filters, limit: limit.value });
-        const total = dropOnly ? 0 : limit.value && rows.length === limit.value ? this.model.countItems(stash.id, filters) : rows.length;
+        const rows = dropOnly ? [] : this.model.listItems(stash.id, { ...filters, limit: limit.value, offset: skip });
+        // The whole list is only counted when the rows above are not already all of it (a full page, or a page that
+        // starts past the first item)
+        const counted = !dropOnly && (skip > 0 || (limit.value && rows.length === limit.value));
+        const total = dropOnly ? 0 : counted ? this.model.countItems(stash.id, filters) : rows.length;
         res.json({
             slug: stash.slug,
             role: req.role,
@@ -554,7 +575,10 @@ class StashController {
             content: contentOf(stash),
             usage: dropOnly ? { items: 0, files: 0, bytes: 0 } : this.model.usage(stash.id),
             limits: this.limits(),
+            // Every match, not just this page
             total,
+            // True when items remain after this page, so a page can offer "Show more" without doing the sums
+            hasMore: skip + rows.length < total,
             items: rows.map(row => this.presentItem(stash.slug, row, { preview })),
         });
     };
@@ -874,6 +898,68 @@ class StashController {
         pipeline(this.model.files.stream(row.id, range || null), res, () => {
             // A client that goes away part way ends the stream; nothing more to do
         });
+    };
+
+    // ---- thumbnails ----
+    // The server has no image library, so the page makes the thumbnail in the browser (a canvas) and sends it here.
+    // The server only checks what arrives: it must be small and must really be a JPEG, PNG or WebP.
+
+    // Run before the body is read, so a request that is not allowed is refused without receiving it. Full access may
+    // attach or replace a thumbnail on any image. A drop-box link has to be able to attach the thumbnail of what it
+    // just uploaded (it cannot read anything back), so it may do so only while the image has none and is under
+    // THUMB_DROP_WINDOW_MS old: it cannot overwrite or tamper with thumbnails of images it did not just add.
+    thumbTarget = (req, res, next) => {
+        const row = this.fileRow(req);
+        if (!row) return res.status(404).json({ error: 'File not found.' });
+        if (!row.file_type.startsWith('image/')) return res.status(400).json({ error: 'Only images have thumbnails.' });
+        if (req.role !== 'full') {
+            const age = this.now().getTime() - new Date(row.created_at).getTime();
+            if (row.has_thumb || age > THUMB_DROP_WINDOW_MS) {
+                return res.status(403).json({ error: 'This image already has a thumbnail, or was added too long ago for this link to give it one.', role: req.role });
+            }
+        }
+        req.fileRow = row;
+        next();
+    };
+
+    putThumb = (req, res) => {
+        const stash = req.stash;
+        const bytes = req.body;
+        if (!Buffer.isBuffer(bytes) || !bytes.length) return res.status(400).json({ error: 'Send the thumbnail image as the request body.' });
+        // express.raw has already stopped anything over the limit (413); this is the same rule for a body that slipped by
+        if (bytes.length > this.config.maxThumbBytes) {
+            return res.status(413).json({ error: `A thumbnail can be at most ${Math.round(this.config.maxThumbBytes / 1024)} KB.` });
+        }
+        // Judged by content, never by the name or the Content-Type the sender gives: an SVG called .jpg is refused
+        if (!detectThumb(bytes)) return res.status(415).json({ error: 'A thumbnail must be a JPEG, PNG or WebP image.' });
+        const row = this.model.setThumb(stash.id, req.fileRow.id, bytes);
+        if (!row) return res.status(404).json({ error: 'File not found.' });
+        const item = this.presentItem(stash.slug, row);
+        // Other open pages swap the file icon (or the full image) in their list for the new thumbnail
+        this.events.publish(stash.slug, 'item-updated', item);
+        res.json(item);
+    };
+
+    getThumb = async (req, res) => {
+        const row = this.fileRow(req);
+        if (!row || !row.has_thumb) return res.status(404).json({ error: 'No thumbnail.' });
+        let bytes = null;
+        try {
+            bytes = await this.model.files.readThumb(row.id);
+        } catch {
+            // the file has gone from the disk
+        }
+        // The type comes from the bytes (they were checked when stored); anything else is treated as no thumbnail
+        const type = detectThumb(bytes);
+        if (!type) return res.status(404).json({ error: 'No thumbnail.' });
+        res.set({
+            'Content-Type': type,
+            'Content-Disposition': `inline; filename="thumb-${row.id}"`,
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Security-Policy': "default-src 'none'; sandbox",
+            'Cache-Control': 'private, no-store',
+        });
+        res.send(bytes);
     };
 
     // The whole stash as one zip: stash.json, a text file per note and every file as it was uploaded. Burn-after-reading

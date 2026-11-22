@@ -1,6 +1,6 @@
 // All SQL lives here, so the model can be ported to another database (or merged into Message-Sandbox) in one place.
 // What an item row holds, in the order the trash table keeps it (moving a row between the two tables copies these)
-const ITEM_COLUMNS = 'id, stash_id, kind, title, text, file_name, file_type, file_size, created_at, expires_at, burn, secret, pinned, edited_at, sort_order';
+const ITEM_COLUMNS = 'id, stash_id, kind, title, text, file_name, file_type, file_size, created_at, expires_at, burn, secret, pinned, edited_at, sort_order, has_thumb';
 
 const escapeLike = value => value.replace(/[\\%_]/g, c => `\\${c}`);
 
@@ -33,10 +33,31 @@ class StashModel {
         );
     }
 
-    // Removes the bytes of deleted file items. Done after the rows are gone: a crash in between leaves a stray file
-    // that the next startup sweep removes, never a row without its file.
+    // The ids that should have a thumbnail on disk, trashed items included (a trashed image keeps its thumbnail)
+    liveThumbIds() {
+        return new Set(
+            this.db
+                .prepare("SELECT id FROM items WHERE has_thumb = 1 AND kind = 'file' UNION SELECT id FROM trash WHERE has_thumb = 1 AND kind = 'file'")
+                .all()
+                .map(row => row.id)
+        );
+    }
+
+    // Removes the bytes of deleted file items, and their thumbnails. Done after the rows are gone: a crash in between
+    // leaves a stray file that the next startup sweep removes, never a row without its file.
     dropFiles(ids) {
         if (this.files && ids.length) this.files.remove(ids);
+    }
+
+    // Attaches (or replaces) an image's thumbnail. The thumbnail is written first and the flag set after, so a crash
+    // in between leaves a stray thumbnail that the startup sweep removes, never a flag with no thumbnail. It is not an
+    // edit: edited_at stays, so it cannot cause an edit conflict. Returns the item, or null when there is no such file.
+    setThumb(stashId, id, bytes) {
+        const row = this.getItem(stashId, id);
+        if (!row || row.kind !== 'file') return null;
+        this.files.writeThumb(id, bytes);
+        this.db.prepare('UPDATE items SET has_thumb = 1 WHERE stash_id = ? AND id = ?').run(stashId, id);
+        return this.getItem(stashId, id);
     }
 
     // ---- stashes ----
@@ -248,12 +269,16 @@ class StashModel {
 
     // In list order: pinned first, then by place (new items go on top, dragging moves them). Filters: search (note text or file name), from/to (ISO instants, to is exclusive)
     // Items past their own expiry are left out, and the text of a burn-after-reading note is never searched.
-    // limit (optional) returns only the first that many.
-    listItems(stashId, { limit, ...filters } = {}) {
+    // limit (optional) returns only the first that many; offset (optional) skips that many first, to read a long list
+    // in pages. Without a limit, an offset returns everything after it.
+    listItems(stashId, { limit, offset, ...filters } = {}) {
         const { where, params } = this.itemFilter(stashId, filters);
+        const skip = offset || 0;
+        const paging = limit ? ' LIMIT ? OFFSET ?' : skip ? ' LIMIT -1 OFFSET ?' : '';
+        const values = limit ? [limit, skip] : skip ? [skip] : [];
         return this.db
-            .prepare(`SELECT * FROM items WHERE ${where} ORDER BY pinned DESC, sort_order DESC, id DESC${limit ? ' LIMIT ?' : ''}`)
-            .all(...params, ...(limit ? [limit] : []));
+            .prepare(`SELECT * FROM items WHERE ${where} ORDER BY pinned DESC, sort_order DESC, id DESC${paging}`)
+            .all(...params, ...values);
     }
 
     // How many items the same filters match, for a listing cut short by a limit

@@ -13,11 +13,13 @@
     var toast = P.toast;
     var copyText = P.copyText;
     var stashContent = P.stashContent;
+    var role = P.role;
 
     // Functions that live in the other parts of the page. Called through P when used, so the order the
     // scripts load in does not matter.
     function locked() { return P.locked.apply(null, arguments); }
     function onItemAdded() { return P.onItemAdded.apply(null, arguments); }
+    function onItemUpdated() { return P.onItemUpdated.apply(null, arguments); }
 
     $('copyLinkButton').addEventListener('click', function () {
         Promise.resolve(copyText(location.href)).then(function (ok) {
@@ -135,12 +137,86 @@
         }).catch(function () { /* the stash page below shows what is wrong */ });
     }
 
+    // ---- image thumbnails ----
+    // The server has no image library, so the page makes them: it shrinks the image on a canvas (see thumbnail.js)
+    // and sends the small picture to PUT .../files/ID/thumb. It happens after an image upload succeeds, and for an
+    // image that has none (sent from curl, or older than thumbnails) the first time someone with full access sees it.
+    // One at a time, and silent: a failure only means the image keeps its file icon (or itself, when small).
+    var thumbQueue = Promise.resolve();
+    var thumbTried = {}; // an image is tried once per page load, whatever came of it
+    var BIGGEST_LAZY = 30 * 1024 * 1024; // not worth downloading anything bigger just for a thumbnail
+
+    function maxThumbBytes() {
+        var limits = state.stash && state.stash.limits;
+        return (limits && limits.maxThumbBytes) || 200 * 1024;
+    }
+
+    function sendThumb(item, blob) {
+        return fetch(base + '/files/' + item.id + '/thumb', {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': blob.type, 'X-Tab-Id': tabId },
+            body: blob,
+        }).then(function (res) { return res.ok ? res.json() : null; });
+    }
+
+    // getBlob() gives the image's bytes (the file just uploaded, or a download of it)
+    function queueThumb(item, getBlob) {
+        if (!window.StashlyThumb || thumbTried[item.id]) return;
+        thumbTried[item.id] = true;
+        thumbQueue = thumbQueue.then(function () {
+            return Promise.resolve().then(getBlob)
+                .then(function (blob) { return blob ? window.StashlyThumb.make(blob, { maxBytes: maxThumbBytes() }) : null; })
+                .then(function (thumb) { return thumb ? sendThumb(item, thumb) : null; })
+                // The page's own list takes the item with its thumbUrl (other pages get it from the live event)
+                .then(function (updated) { if (updated) onItemUpdated(updated); })
+                .catch(function () { /* no thumbnail: nothing to tell anyone */ });
+        });
+    }
+
+    // An image upload just finished: its thumbnail comes from the file in hand
+    function uploaded(item, file) {
+        if (!item) return;
+        onItemAdded(item);
+        if (item.isImage && !item.thumbUrl && file) queueThumb(item, function () { return file; });
+    }
+
+    // A listed image with no thumbnail: made when its row is first on screen (or at once where the browser cannot tell)
+    var thumbObserver = null;
+
+    function lazyThumb(item) {
+        if (item.fileSize > BIGGEST_LAZY) return;
+        queueThumb(item, function () {
+            return fetch(item.url, { credentials: 'same-origin' }).then(function (res) {
+                if (!res.ok) throw new Error('download');
+                return res.blob();
+            });
+        });
+    }
+
+    function wantThumb(item, element) {
+        // Only full access may attach one to an image that was not just uploaded by this page
+        if (role() !== 'full' || item.thumbUrl || thumbTried[item.id]) return;
+        if (!window.IntersectionObserver) { lazyThumb(item); return; }
+        if (!thumbObserver) {
+            thumbObserver = new IntersectionObserver(function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    thumbObserver.unobserve(entry.target);
+                    if (entry.target._thumbItem) lazyThumb(entry.target._thumbItem);
+                });
+            });
+        }
+        element._thumbItem = item;
+        thumbObserver.observe(element);
+    }
+
     var uploader = window.StashlyUpload.create({
         container: $('uploads'),
         url: base + '/files',
         maxBytes: 0,
         tabId: tabId,
-        onDone: function (item) { if (item) onItemAdded(item); },
+        onDone: uploaded,
         onLocked: locked,
     });
 
@@ -165,7 +241,7 @@
             url: base + '/files',
             maxBytes: maxBytes,
             tabId: tabId,
-            onDone: function (item) { if (item) onItemAdded(item); },
+            onDone: uploaded,
             onLocked: locked,
         });
     }
@@ -227,6 +303,7 @@
 
     // What the other parts use
     P.replaceUploader = replaceUploader;
+    P.wantThumb = wantThumb;
     P.isLocalHost = isLocalHost;
     P.showQr = showQr;
     P.renderShare = renderShare;

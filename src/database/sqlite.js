@@ -126,6 +126,14 @@ const MIGRATIONS = [
         db.exec('CREATE INDEX IF NOT EXISTS idx_trash_stash ON trash (stash_id)');
         db.exec('CREATE INDEX IF NOT EXISTS idx_trash_deleted ON trash (deleted_at)');
     },
+
+    // 4: image thumbnails. A thumbnail is a small file stored next to the item's file (`<id>.thumb`, see
+    // utils/fileStore.js); has_thumb says whether one exists, so listing items never has to look at the disk. The
+    // trash keeps the flag, because a trashed image keeps its thumbnail until it is purged or restored.
+    db => {
+        addColumn(db, 'items', 'has_thumb', 'INTEGER NOT NULL DEFAULT 0');
+        addColumn(db, 'trash', 'has_thumb', 'INTEGER NOT NULL DEFAULT 0');
+    },
 ];
 
 const SCHEMA_VERSION = MIGRATIONS.length;

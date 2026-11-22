@@ -64,7 +64,8 @@ function createApp({ config, model, events, secret, now }) {
     // JSON bodies for the API. Uploads (and plain-text notes) read their own body in the routes.
     // The limit follows the live note-size setting, so it is read on each request.
     app.use('/api', (req, res, next) => {
-        if (/\/files$/.test(req.path)) return next();
+        // (a thumbnail is raw image bytes too)
+        if (/\/files(\/\d+\/thumb)?$/.test(req.path)) return next();
         express.json({ limit: `${Math.ceil((config.maxNoteBytes * 2) / 1024) + 4}kb` })(req, res, next);
     });
 

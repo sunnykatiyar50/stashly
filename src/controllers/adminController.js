@@ -119,7 +119,7 @@ class AdminController {
         res.json({ fields: this.settings.describe() });
     };
 
-    // A backup as one zip: stashly.sqlite and files/<id> for every stored file. Unzip both into the data folder to restore.
+    // A backup as one zip: stashly.sqlite and files/<id> for every stored file (plus files/<id>.thumb for thumbnails). Unzip both into the data folder to restore.
     //
     // The database is copied with VACUUM INTO, which makes a complete, consistent snapshot even while the server is
     // busy (copying the live file, or its write-ahead log, could catch it half way through a change). The snapshot
@@ -146,9 +146,10 @@ class AdminController {
             await zip.addStream('stashly.sqlite', fs.createReadStream(temp), { method: DEFLATE });
             // Done with it: remove it now, not after the files have gone out (the finally below covers the failures)
             await removeTemp(temp);
-            for (const name of fs.readdirSync(files.dir)) {
-                if (!/^\d+$/.test(name) || !files.exists(name)) continue; // only plain files named by item id
-                const source = files.stream(name);
+            // Every file, and every thumbnail (`<id>.thumb`): a restored backup then has its thumbnails too, and the
+            // startup sweep keeps them because the database says which items have one
+            for (const name of files.storedNames()) {
+                const source = files.streamName(name);
                 try {
                     await once(source, 'open', { signal: zip.signal });
                 } catch (err) {

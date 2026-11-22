@@ -327,6 +327,8 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .clip-thumb, .clip-icon, .clip > .file-icon { margin-top: 2px; }
 .clip-time { white-space: nowrap; align-self: start; padding-top: 2px; }
 .clip-list + .empty-state { margin: 12px; }
+/* "Show more" at the end of a long list: the next page loads when it scrolls into view, or when it is pressed */
+.clip-list .show-more { flex: none; align-self: center; margin: 8px 0 10px; }
 
 .detail-pane { overflow: auto; padding: 12px 14px; gap: 10px; }
 .detail { display: flex; flex-direction: column; gap: 10px; min-height: 0; }

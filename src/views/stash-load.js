@@ -103,30 +103,84 @@
         updateSessionInfo();
     }
 
-    function load(quiet) {
+    // The list loads a page at a time: the first 100 matches, then 100 more each time "Show more" is pressed (or scrolled
+    // to). The server caps one request at 200, and a refresh re-reads at most MAX_KEEP so it cannot run away.
+    var PAGE_SIZE = 100;
+    var MAX_PAGE = 200;
+    var MAX_KEEP = 2000;
+
+    // The listing request for one page. Sent in the body, not the address, so search words never end up in a proxy's
+    // access log. preview: long notes come as their first part only; the rest is fetched when a note is opened or copied.
+    function queryFor(offset, limit) {
         var f = state.filters;
-        // Sent in the body, not the address, so search words never end up in a proxy's access log
-        // preview: long notes come as their first part only; the rest is fetched when a note is opened or copied
-        var query = { tz: String(new Date().getTimezoneOffset()), preview: true };
+        var query = { tz: String(new Date().getTimezoneOffset()), preview: true, limit: limit, offset: offset };
         if (f.search) query.search = f.search;
         if (f.startDate) query.startDate = f.startDate;
         if (f.endDate) query.endDate = f.endDate;
-        return api(base + '/query', { method: 'POST', body: query }).then(function (res) {
-            if (res.status === 404) return gone();
-            if (res.status === 401) return locked();
-            if (res.status === 400) {
-                toast(res.body && res.body.error ? res.body.error : 'Check the search and dates.', true);
-                return;
-            }
-            if (!res.ok) {
+        return query;
+    }
+
+    // Reads pages from the start until `want` clips are in hand (or the server has no more). A page that repeats a clip
+    // already read (the list shifted while paging, because someone added or moved something) is counted in `dupes`
+    // and skipped, so the next offset still lands on the first clip not yet seen. A later page that fails is dropped:
+    // what was read stays, and "Show more" can try again. Resolves { error } when even the first page failed.
+    function collect(want) {
+        var out = { items: [], dupes: 0, first: null, last: null, error: null };
+        var seen = {};
+        function step() {
+            var limit = Math.min(MAX_PAGE, want - out.items.length);
+            return api(base + '/query', { method: 'POST', body: queryFor(out.items.length + out.dupes, limit) }).then(function (res) {
+                if (!res.ok) {
+                    if (!out.first) out.error = res;
+                    return out;
+                }
+                if (!out.first) out.first = res.body;
+                out.last = res.body;
+                res.body.items.forEach(function (item) {
+                    if (seen[item.id]) out.dupes++;
+                    else { seen[item.id] = true; out.items.push(item); }
+                });
+                if (res.body.hasMore && res.body.items.length && out.items.length < want) return step();
+                return out;
+            });
+        }
+        return step();
+    }
+
+    // Loads the stash and its first page. A quiet load (a live reconnect, an expiry check) keeps as many clips on the
+    // page as were there, so a long list does not shrink under someone who has scrolled down it; any other load
+    // (opening the stash, a new search or date range, Refresh) starts again at the first page.
+    function load(quiet) {
+        var gen = ++state.loadGen;
+        state.loadingMore = false;
+        state.moreFailed = false;
+        var want = quiet ? Math.min(MAX_KEEP, Math.max(PAGE_SIZE, state.items.length)) : PAGE_SIZE;
+        return collect(want).then(function (out) {
+            // A newer load (the search changed while this one was on its way) owns the page now
+            if (gen !== state.loadGen) return;
+            var res = out.error;
+            if (res) {
+                if (res.status === 404) return gone();
+                if (res.status === 401) return locked();
+                if (res.status === 400) {
+                    toast(res.body && res.body.error ? res.body.error : 'Check the search and dates.', true);
+                    return;
+                }
                 if (!quiet) toast('Could not load the stash.', true);
                 return;
             }
             var previousIndex = state.items.findIndex(function (item) { return item.id === state.selectedId; });
-            state.stash = res.body;
-            state.items = res.body.items;
+            var list = $('items');
+            var scrolled = list.scrollTop;
+            state.stash = out.first;
+            state.items = out.items;
+            state.total = out.last.total;
+            state.hasMore = out.last.hasMore;
+            state.dupes = out.dupes;
+            // Pages come in the server's order; sorting is only a guard for a list that shifted between them
+            P.sortItems();
             // Only a stash opened with full access is worth suggesting on the share page
-            if (window.StashlyRemember && res.body.role === 'full') window.StashlyRemember(slug);
+            if (window.StashlyRemember && out.first.role === 'full') window.StashlyRemember(slug);
             // The installed app reopens this stash next time it is launched (whatever the role: a link visitor too)
             if (window.StashlyLast) window.StashlyLast.set(slug);
             applyRole();
@@ -134,6 +188,8 @@
             sections.main.classList.contains('hidden') && show('main');
             updateHeader();
             renderItems();
+            // A quiet reload leaves the list where it was; a new search, date range or Refresh starts from the top
+            list.scrollTop = quiet ? scrolled : 0;
             connect();
 
             if (!state.started) {
@@ -146,6 +202,42 @@
             }
         }).catch(function () {
             if (!quiet) toast('Could not reach the server.', true);
+        });
+    }
+
+    // Adds the next page to the end of the list. Only the new rows are built: what is on screen stays as it is (rows,
+    // focus, the open clip, loaded images), and a clip that arrives out of place goes where the list's own order puts it.
+    function loadMore() {
+        if (state.loadingMore || !state.hasMore || !state.stash) return Promise.resolve();
+        var gen = state.loadGen;
+        state.loadingMore = true;
+        state.moreFailed = false;
+        P.updateCounts();
+        return api(base + '/query', { method: 'POST', body: queryFor(state.items.length + state.dupes, PAGE_SIZE) }).then(function (res) {
+            if (gen !== state.loadGen) return; // the list was replaced meanwhile (load() already reset the flag)
+            state.loadingMore = false;
+            if (res.status === 404) return gone();
+            if (res.status === 401) return locked();
+            if (!res.ok) {
+                state.moreFailed = true;
+                toast('Could not load more.', true);
+                P.updateCounts();
+                return;
+            }
+            var known = {};
+            state.items.forEach(function (item) { known[item.id] = true; });
+            // Live events can add or remove clips while paging, so a clip this page repeats is skipped
+            var fresh = res.body.items.filter(function (item) { return !known[item.id]; });
+            state.dupes += res.body.items.length - fresh.length;
+            state.total = res.body.total;
+            state.hasMore = res.body.hasMore;
+            P.addPage(fresh);
+        }).catch(function () {
+            if (gen !== state.loadGen) return;
+            state.loadingMore = false;
+            state.moreFailed = true;
+            toast('Could not reach the server.', true);
+            P.updateCounts();
         });
     }
 
@@ -243,6 +335,7 @@
     P.updateExpiry = updateExpiry;
     P.updateTimes = updateTimes;
     P.load = load;
+    P.loadMore = loadMore;
     P.gone = gone;
     P.locked = locked;
     P.applyFilters = applyFilters;

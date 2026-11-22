@@ -16,7 +16,13 @@
 
     var state = {
         stash: null,
-        items: [],
+        items: [],         // the clips loaded so far (the first page, plus any pages asked for with "Show more")
+        total: 0,          // how many clips match in all, as the server counted them (plus changes seen live since)
+        hasMore: false,    // true when the server has more matches than are loaded
+        loadingMore: false,// a "Show more" request is in flight
+        moreFailed: false, // the last "Show more" failed: it is not retried by scrolling, only by pressing the button
+        dupes: 0,         // rows a later page repeated (an item moved while paging): added to the next page's offset
+        loadGen: 0,        // counts loads, so an answer for an old search or page is thrown away
         filters: { search: '', startDate: '', endDate: '' },
         es: null,
         connectedOnce: false,

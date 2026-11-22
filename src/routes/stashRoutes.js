@@ -57,6 +57,9 @@ function createStashRoutes({ controller, config }) {
     // Built per request so the limits follow what the admin sets at runtime
     const textBody = (req, res, next) => express.text({ type: 'text/plain', limit: config.maxNoteBytes })(req, res, next);
 
+    // A thumbnail is raw image bytes whatever Content-Type is claimed; anything over the limit is refused with a 413
+    const thumbBody = (req, res, next) => express.raw({ type: () => true, limit: config.maxThumbBytes })(req, res, next);
+
     router.get('/suggest', readLimiter, c.suggest);
     router.post('/', createLimiter, c.create);
 
@@ -82,6 +85,10 @@ function createStashRoutes({ controller, config }) {
     router.get('/:slug/items/:id', readLimiter, ...read, c.getItem);
     router.get('/:slug/files/:id', readLimiter, ...read, c.getFile);
     router.get('/:slug/files/:id/contents', readLimiter, ...read, c.listArchive);
+    // An image's thumbnail, made by the page. A drop-box link may attach one to what it just uploaded (see
+    // thumbTarget); the body is raw image bytes, read only after those checks, with its own small size limit.
+    router.get('/:slug/files/:id/thumb', readLimiter, ...read, c.getThumb);
+    router.put('/:slug/files/:id/thumb', postLimiter, ...write, c.thumbTarget, thumbBody, c.putThumb);
     // Revealing deletes the note, so it is not something a read-only link may do
     router.post('/:slug/items/:id/reveal', ...full, c.reveal);
     router.delete('/:slug/items/:id', ...full, c.deleteItem);
