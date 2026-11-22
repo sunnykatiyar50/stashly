@@ -39,7 +39,8 @@ class AdminAuth {
         res.cookie(COOKIE, signToken(this.secret, 'admin', this.salt, expiresAt), {
             httpOnly: true,
             sameSite: 'strict',
-            secure: req.secure,
+            // Same rule as the stash cookies: COOKIE_SECURE=true forces it, "auto" follows the connection
+            secure: this.config.cookieSecure === 'true' ? true : this.config.cookieSecure === 'false' ? false : req.secure,
             path: '/',
             maxAge: SESSION_MS,
         });

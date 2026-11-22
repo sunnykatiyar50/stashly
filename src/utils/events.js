@@ -3,9 +3,21 @@ class StashEvents {
     constructor({ heartbeatMs = 25000 } = {}) {
         this.heartbeatMs = heartbeatMs;
         this.clients = new Map(); // slug -> Set<res>
+        this.ips = new Map(); // ip -> number of open streams
     }
 
-    subscribe(slug, req, res) {
+    // options (all optional):
+    //  verify()      called on each heartbeat; returns null to carry on, or an event name ('access-changed', 'stash-gone')
+    //                to send this one page before ending its stream
+    //  ip, maxPerIp, maxPerStash   caps on open streams (0 or missing = no cap); over a cap the request gets a 429
+    subscribe(slug, req, res, { verify, ip, maxPerStash = 0, maxPerIp = 0 } = {}) {
+        if (maxPerStash && this.count(slug) >= maxPerStash) {
+            return res.status(429).json({ error: 'Too many pages are open on this stash.' });
+        }
+        if (ip && maxPerIp && (this.ips.get(ip) || 0) >= maxPerIp) {
+            return res.status(429).json({ error: 'Too many pages are open from this address.' });
+        }
+        if (ip) this.ips.set(ip, (this.ips.get(ip) || 0) + 1);
         res.writeHead(200, {
             'Content-Type': 'text/event-stream; charset=utf-8',
             'Cache-Control': 'no-store',
@@ -21,10 +33,23 @@ class StashEvents {
         this.publish(slug, 'presence', { count: this.count(slug) });
 
         // Comments keep proxies and browsers from closing an idle stream
-        const timer = setInterval(() => res.write(': keep-alive\n\n'), this.heartbeatMs);
+        const timer = setInterval(() => {
+            const ending = verify ? verify() : null;
+            if (ending) {
+                res.write(`event: ${ending}\ndata: {}\n\n`);
+                res.end();
+                return;
+            }
+            res.write(': keep-alive\n\n');
+        }, this.heartbeatMs);
         timer.unref();
         req.on('close', () => {
             clearInterval(timer);
+            if (ip) {
+                const left = (this.ips.get(ip) || 1) - 1;
+                if (left > 0) this.ips.set(ip, left);
+                else this.ips.delete(ip);
+            }
             const set = this.clients.get(slug);
             if (set) {
                 set.delete(res);

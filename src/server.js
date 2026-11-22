@@ -20,7 +20,7 @@ function createApp({ config, model, events, secret, now }) {
     const adminController = new AdminController({
         model, events, config, adminAuth, settings, now,
         // A new password clears the wrong-password count the stash controller keeps
-        resetFailures: slug => controller.failures.delete(slug),
+        resetFailures: slug => controller.clearFailures(slug),
     });
 
     const trust = String(config.trustProxy || '').trim();

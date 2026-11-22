@@ -33,6 +33,19 @@ function createStashRoutes({ controller, config }) {
         message: { error: 'Too many wrong passwords. Try again in a few minutes.' },
     });
 
+    // Reading is limited per IP. Separately, only requests for a stash that does not exist count (every other
+    // response is skipped), with a tighter limit, so names cannot be guessed at speed.
+    const readLimiter = limiter(60 * 1000, config.rateRead, 'Too many requests, slow down.');
+    const missLimiter = rateLimit({
+        windowMs: 60 * 1000,
+        limit: config.rateNotFound,
+        standardHeaders: 'draft-8',
+        legacyHeaders: false,
+        requestWasSuccessful: (req, res) => res.statusCode !== 404,
+        skipSuccessfulRequests: true,
+        message: { error: 'Too many stashes that do not exist. Slow down.' },
+    });
+
     // Refuse an oversized upload from its Content-Length before reading any of the body
     const checkUploadSize = (req, res, next) => {
         const length = Number(req.headers['content-length']);
@@ -45,23 +58,28 @@ function createStashRoutes({ controller, config }) {
     const rawBody = (req, res, next) => express.raw({ type: () => true, limit: config.maxFileBytes })(req, res, next);
     const textBody = (req, res, next) => express.text({ type: 'text/plain', limit: config.maxNoteBytes })(req, res, next);
 
-    router.get('/suggest', c.suggest);
+    router.get('/suggest', readLimiter, c.suggest);
     router.post('/', createLimiter, c.create);
 
-    router.get('/:slug', ...anyRole, c.get);
+    // Every route below names a stash: count the ones that turn out not to exist
+    router.use('/:slug', missLimiter);
+
+    router.get('/:slug', readLimiter, ...anyRole, c.get);
     // The same listing with the search and dates in the body, so search words stay out of addresses and proxy logs
-    router.post('/:slug/query', ...anyRole, c.get);
+    router.post('/:slug/query', readLimiter, ...anyRole, c.get);
     router.post('/:slug/unlock', unlockLimiter, c.loadStash, c.unlock);
     router.post('/:slug/redeem', unlockLimiter, c.loadStash, c.redeem);
     // Always allowed: signing out must work even when the session has already ended
     router.post('/:slug/logout', c.loadStash, c.logout);
     router.post('/:slug/session', ...anyRole, c.setSession);
-    router.get('/:slug/events', ...read, c.stream);
-    router.get('/:slug/latest', ...read, c.latest);
+    router.get('/:slug/events', readLimiter, ...read, c.stream);
+    // GET never changes anything. POST also reads a burn-after-reading note, which deletes it.
+    router.get('/:slug/latest', readLimiter, ...read, c.latest);
+    router.post('/:slug/latest', readLimiter, ...read, c.latest);
     router.post('/:slug/notes', postLimiter, ...write, c.acceptsNotes, textBody, c.addNote);
     router.post('/:slug/files', uploadLimiter, ...write, c.acceptsFiles, checkUploadSize, rawBody, c.addFile);
-    router.get('/:slug/files/:id', ...read, c.getFile);
-    router.get('/:slug/files/:id/contents', ...read, c.listArchive);
+    router.get('/:slug/files/:id', readLimiter, ...read, c.getFile);
+    router.get('/:slug/files/:id/contents', readLimiter, ...read, c.listArchive);
     // Revealing deletes the note, so it is not something a read-only link may do
     router.post('/:slug/items/:id/reveal', ...full, c.reveal);
     router.delete('/:slug/items/:id', ...full, c.deleteItem);

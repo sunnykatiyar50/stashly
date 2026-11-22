@@ -124,7 +124,9 @@ test('reading the latest note with curl uses up a burn note', async () => {
         .set('X-Burn-After-Read', '1')
         .send('curl secret')
         .expect(201);
-    const first = await request(ctx.app).get(`${base}/latest`).expect(200);
+    // A GET never uses it up; a POST does
+    await request(ctx.app).get(`${base}/latest`).expect(409);
+    const first = await request(ctx.app).post(`${base}/latest`).expect(200);
     assert.equal(first.text, 'curl secret');
     await request(ctx.app).get(`${base}/latest`).expect(404);
 });

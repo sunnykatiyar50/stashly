@@ -56,6 +56,13 @@ function loadConfig(env = process.env, overrides = {}) {
         ratePost: num(env.RATE_POST, 120),
         rateUpload: num(env.RATE_UPLOAD, 40),
         rateUnlock: num(env.RATE_UNLOCK, 10),
+        // Reading is limited too (per IP, per minute). Requests for a stash that does not exist are counted
+        // separately and tighter, so names cannot be guessed quickly.
+        rateRead: num(env.RATE_READ, 600),
+        rateNotFound: num(env.RATE_NOT_FOUND, 60),
+        // Open live streams (Server-Sent Events): at most this many per stash and per IP (0 = no limit)
+        maxStreamsPerStash: num(env.MAX_STREAMS_PER_STASH, 100),
+        maxStreamsPerIp: num(env.MAX_STREAMS_PER_IP, 30),
         // A stash with no password is protected only by its name, so the name has to be long enough not to be guessed.
         // 0 turns the rule off. Stashes made before the rule are not affected.
         minOpenNameLength: num(env.MIN_OPEN_NAME_LENGTH, 10),
@@ -66,6 +73,8 @@ function loadConfig(env = process.env, overrides = {}) {
         reserveOldNamesDays: num(env.RESERVE_OLD_NAMES_DAYS, 30),
         // Wrong passwords for one stash, from anyone: after this many in the window, unlocking it is refused until
         // the window ends (a person already signed in is not affected). 0 turns it off.
+        // Counted per visitor (IP) for each stash, so a stranger cannot lock the owner out. A looser limit
+        // (STASH_UNLOCK_FAILURES x 5) still applies to the stash as a whole, against guessing from many addresses.
         stashUnlockFailures: num(env.STASH_UNLOCK_FAILURES, 10),
         stashUnlockWindowMs: num(env.STASH_UNLOCK_WINDOW_MIN, 15) * 60 * 1000,
         // How long a password-protected stash stays unlocked in a browser. The person chooses when they unlock (and can

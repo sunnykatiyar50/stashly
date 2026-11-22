@@ -17,6 +17,8 @@ const DAY = 24 * 60 * 60 * 1000;
 const MAX_REORDER = 5000;
 // The most items one listing can be asked for with `limit` (the extension asks for a few; without a limit, all come)
 const MAX_LIST_LIMIT = 200;
+// The whole stash locks after this many times the per-visitor limit of wrong passwords
+const GLOBAL_FACTOR = 5;
 
 // The optional `limit` of a listing: undefined for none, a whole number from 1 to MAX_LIST_LIMIT, or an error
 function parseLimit(value) {
@@ -60,7 +62,8 @@ class StashController {
         this.config = config;
         this.secret = secret;
         this.now = now;
-        this.failures = new Map(); // slug -> { start, count } of wrong passwords
+        this.failures = new Map(); // slug -> { start, count } of wrong passwords, from anyone
+        this.ipFailures = new Map(); // slug -> Map(ip -> { start, count }) of wrong passwords
     }
 
     // ---- presentation ----
@@ -324,31 +327,54 @@ class StashController {
         return Number.isFinite(expiresAt) && expiresAt > 0 ? new Date(expiresAt).toISOString() : null;
     }
 
-    // Wrong passwords for one stash, counted across every visitor. Held in memory, so a restart clears it.
-    lockedFor(slug) {
-        const max = this.config.stashUnlockFailures;
-        const entry = this.failures.get(slug);
+    // Wrong passwords, held in memory (a restart clears them). Two counts per stash:
+    //  - per visitor (IP): STASH_UNLOCK_FAILURES wrong passwords lock that visitor out, so a stranger cannot lock the
+    //    owner out of their own stash;
+    //  - for the whole stash: STASH_UNLOCK_FAILURES x GLOBAL_FACTOR from anyone, against guessing from many addresses.
+    // Returns the ms left on a lock in `map` (a Map of key -> { start, count }) for `key`, or 0.
+    lockLeft(map, key, max) {
+        const entry = map.get(key);
         if (!max || !entry) return 0;
         const now = this.now().getTime();
         if (now - entry.start >= this.config.stashUnlockWindowMs) {
-            this.failures.delete(slug);
+            map.delete(key);
             return 0;
         }
         return entry.count >= max ? entry.start + this.config.stashUnlockWindowMs - now : 0;
     }
 
-    noteFailure(slug) {
+    countFailure(map, key) {
         const now = this.now().getTime();
-        const entry = this.failures.get(slug);
-        if (!entry || now - entry.start >= this.config.stashUnlockWindowMs) this.failures.set(slug, { start: now, count: 1 });
+        const entry = map.get(key);
+        if (!entry || now - entry.start >= this.config.stashUnlockWindowMs) map.set(key, { start: now, count: 1 });
         else entry.count += 1;
+    }
+
+    lockedFor(slug, ip) {
+        const max = this.config.stashUnlockFailures;
+        const perIp = this.ipFailures.get(slug);
+        const own = perIp ? this.lockLeft(perIp, ip, max) : 0;
+        if (perIp && !perIp.size) this.ipFailures.delete(slug);
+        return Math.max(own, this.lockLeft(this.failures, slug, max * GLOBAL_FACTOR));
+    }
+
+    noteFailure(slug, ip) {
+        this.countFailure(this.failures, slug);
+        if (!this.ipFailures.has(slug)) this.ipFailures.set(slug, new Map());
+        this.countFailure(this.ipFailures.get(slug), ip);
+    }
+
+    // A right password, a new password or a deleted stash: forget the counts
+    clearFailures(slug) {
+        this.failures.delete(slug);
+        this.ipFailures.delete(slug);
     }
 
     unlock = async (req, res) => {
         const stash = req.stash;
         if (!stash.password_hash) return res.json({ ok: true, hasPassword: false });
         // Too many wrong passwords for this stash: refuse before even checking, so guessing gets nowhere
-        const wait = this.lockedFor(stash.slug);
+        const wait = this.lockedFor(stash.slug, req.ip);
         if (wait) {
             const minutes = Math.max(1, Math.ceil(wait / 60000));
             return res
@@ -360,10 +386,10 @@ class StashController {
         const session = this.sessionOptionFor(req.body && req.body.session);
         if (!session) return res.status(400).json({ error: 'Pick one of the listed session lengths.', field: 'session' });
         if (!(await verifyPassword(password, stash.password_hash, stash.password_salt))) {
-            this.noteFailure(stash.slug);
+            this.noteFailure(stash.slug, req.ip);
             return res.status(401).json({ error: 'That password is not right.', locked: true });
         }
-        this.failures.delete(stash.slug);
+        this.clearFailures(stash.slug);
         this.setAccessCookie(req, res, stash, 'full', session.ms);
         res.json({ ok: true, sessionEndsAt: new Date(this.now().getTime() + session.ms).toISOString() });
     };
@@ -420,10 +446,11 @@ class StashController {
 
         // A wrong-password count belongs to the stash, not the name
         const failures = this.failures.get(stash.slug);
-        if (failures) {
-            this.failures.delete(stash.slug);
-            this.failures.set(updated.slug, failures);
-        }
+        if (failures) this.failures.set(updated.slug, failures);
+        const ipFailures = this.ipFailures.get(stash.slug);
+        if (ipFailures) this.ipFailures.set(updated.slug, ipFailures);
+        this.failures.delete(stash.slug);
+        this.ipFailures.delete(stash.slug);
         for (const kind of ['full', 'view', 'drop']) res.clearCookie(this.cookieFor(stash.slug, kind), { path: '/' });
         if (updated.password_hash) this.setAccessCookie(req, res, updated, 'full', remaining, this.signedInAt(req));
         this.events.closeAll(stash.slug, 'stash-renamed', { slug: updated.slug, origin: this.withOrigin({}, req).origin });
@@ -444,7 +471,7 @@ class StashController {
         if (typeof newPassword !== 'string' || newPassword.length < min || newPassword.length > MAX_PASSWORD) {
             return res.status(400).json({ error: `The new password must be ${min} to ${MAX_PASSWORD} characters.`, field: 'newPassword' });
         }
-        const wait = this.lockedFor(stash.slug);
+        const wait = this.lockedFor(stash.slug, req.ip);
         if (wait) {
             const minutes = Math.max(1, Math.ceil(wait / 60000));
             return res
@@ -453,7 +480,7 @@ class StashController {
                 .json({ error: `Too many wrong passwords for this stash. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.` });
         }
         if (!(await verifyPassword(currentPassword, stash.password_hash, stash.password_salt))) {
-            this.noteFailure(stash.slug);
+            this.noteFailure(stash.slug, req.ip);
             return res.status(401).json({ error: 'That is not the current password.', field: 'currentPassword' });
         }
         if (newPassword === currentPassword) {
@@ -466,7 +493,7 @@ class StashController {
         const remaining = end ? Math.max(0, new Date(end).getTime() - this.now().getTime()) : this.sessionMs(null);
         const hashed = await hashPassword(newPassword);
         const updated = this.model.setPassword(stash.id, hashed.hash, hashed.salt);
-        this.failures.delete(stash.slug);
+        this.clearFailures(stash.slug);
         const ends = this.setAccessCookie(req, res, updated, 'full', remaining, this.signedInAt(req));
         this.events.closeAll(stash.slug, 'access-changed', { origin: this.withOrigin({}, req).origin });
         res.json({ ok: true, sessionEndsAt: new Date(ends).toISOString() });
@@ -820,11 +847,20 @@ class StashController {
     };
 
     latest = (req, res) => {
-        // Reading a burn note this way deletes it, so only full access gets burn notes here
+        // Reading a burn note deletes it, so only full access gets burn notes here
         const row = this.model.latestNote(req.stash.id, this.now(), { includeBurn: req.role === 'full' });
         if (!row) return res.status(404).type('text/plain').send('No notes yet.\n');
-        // Reading a burn-after-reading note this way uses it up
-        if (row.burn) this.burn(req.stash, row);
+        if (row.burn) {
+            // A GET must never change anything: a link preview, a prefetch or a retried request would use the note up.
+            // Using it up takes a POST.
+            if (req.method !== 'POST') {
+                return res
+                    .status(409)
+                    .type('text/plain; charset=utf-8')
+                    .send('The newest note burns after reading. Fetch it with POST (curl -X POST) to read it and delete it.\n');
+            }
+            this.burn(req.stash, row);
+        }
         res.type('text/plain; charset=utf-8').send(row.text);
     };
 
@@ -871,7 +907,21 @@ class StashController {
     };
 
     stream = (req, res) => {
-        this.events.subscribe(req.stash.slug, req, res);
+        const slug = req.stash.slug;
+        // Checked on every heartbeat: an expired sign-in, a revoked link or a deleted stash ends the stream instead of
+        // letting it keep receiving notes. 'view' and 'full' are the roles that may read.
+        const verify = () => {
+            const stash = this.model.findBySlug(slug);
+            if (!stash) return 'stash-gone';
+            if (stash.expires_at && stash.expires_at <= this.now().toISOString()) return 'stash-gone';
+            return ['full', 'view'].includes(this.roleOf(req, stash)) ? null : 'access-changed';
+        };
+        this.events.subscribe(slug, req, res, {
+            verify,
+            ip: req.ip,
+            maxPerStash: this.config.maxStreamsPerStash,
+            maxPerIp: this.config.maxStreamsPerIp,
+        });
     };
 
     // Called on a timer: removes stashes whose time is up and tells anyone still looking at them
@@ -883,7 +933,12 @@ class StashController {
         if (this.config.reserveOldNamesDays) this.model.purgeRetired(new Date(this.now().getTime() - this.config.reserveOldNamesDays * DAY));
         // Forget wrong-password counts whose window has passed
         const window = this.config.stashUnlockWindowMs;
-        for (const [slug, entry] of this.failures) if (this.now().getTime() - entry.start >= window) this.failures.delete(slug);
+        const nowMs = this.now().getTime();
+        for (const [slug, entry] of this.failures) if (nowMs - entry.start >= window) this.failures.delete(slug);
+        for (const [slug, perIp] of this.ipFailures) {
+            for (const [ip, entry] of perIp) if (nowMs - entry.start >= window) perIp.delete(ip);
+            if (!perIp.size) this.ipFailures.delete(slug);
+        }
         return removed;
     };
 }
