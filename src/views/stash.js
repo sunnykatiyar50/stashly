@@ -223,10 +223,11 @@
     // Each is shown as an icon, with its name on hover; the expiry also shows the time left in short ("3h 20m").
     function clipFlags(item) {
         var flags = [];
-        if (item.pinned) flags.push({ text: 'Pinned', kind: 'pinned', icon: PIN_ICON });
+        // With full access the row's own pin button (filled in) already shows it, so the icon is only for the others
+        if (item.pinned && role() !== 'full') flags.push({ text: 'Pinned', kind: 'pinned', icon: PIN_ICON });
         if (item.kind === 'note') {
             if (item.burn) flags.push({ text: 'Burns after reading', kind: 'burn', icon: FLAME_ICON });
-            if (item.secret) flags.push({ text: 'Secret', kind: 'secret', icon: LOCK_ICON });
+            if (item.secret) flags.push({ text: 'Secret', kind: 'secret', icon: EYE_OFF_ICON });
             if (item.expiresAt) flags.push({ text: expiryText(item.expiresAt), kind: 'expiry', icon: CLOCK_ICON, expires: item.expiresAt });
         }
         return flags;
@@ -283,8 +284,9 @@
         var sub = itemSub(item);
         if (sub) text.appendChild(make('span', item.kind === 'note' ? 'clip-sub clip-preview' : 'clip-sub', sub));
         var flags = clipFlags(item);
+        var flagLine = null;
         if (flags.length) {
-            var flagLine = make('span', 'clip-flags');
+            flagLine = make('span', 'clip-flags');
             flags.forEach(function (flag) {
                 var chip;
                 if (flag.icon) {
@@ -300,7 +302,6 @@
                 if (flag.expires) chip.dataset.expires = flag.expires;
                 flagLine.appendChild(chip);
             });
-            text.appendChild(flagLine);
         }
         el.appendChild(text);
 
@@ -312,7 +313,7 @@
         // Quick buttons, always shown (a phone has no hover): pin and copy
         var quick = make('span', 'clip-quick');
         if (role() === 'full') {
-            var pinLabel = item.pinned ? 'Unpin' : 'Pin to the top';
+            var pinLabel = item.pinned ? 'Pinned. Click to unpin.' : 'Pin to the top';
             var pin = make('button', 'clip-copy clip-pin ghost' + (item.pinned ? ' on' : ''));
             pin.type = 'button';
             pin.title = pinLabel;
@@ -338,6 +339,8 @@
             });
             quick.appendChild(copy);
         }
+        // The property icons sit on the same line as the buttons, just before them
+        if (flagLine) quick.insertBefore(flagLine, quick.firstChild);
         if (quick.children.length) side.appendChild(quick);
         el.appendChild(side);
 
@@ -356,7 +359,7 @@
 
     var PIN_ICON = '<svg viewBox="0 0 24 24"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z"/></svg>';
     var FLAME_ICON = '<svg viewBox="0 0 24 24"><path d="M12 22c4 0 7-2.7 7-7 0-3.5-2.2-6.2-4-8-.4 2-1.4 3.4-3 4 .3-3.3-1.2-6.4-4-9 0 4-5 6.7-5 13 0 4.3 4 7 9 7z"/></svg>';
-    var LOCK_ICON = '<svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+    var EYE_OFF_ICON = '<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
     var GRIP_ICON = '<svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>';
 
     // ---- moving clips ----
