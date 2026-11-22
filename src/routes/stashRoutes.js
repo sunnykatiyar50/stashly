@@ -58,8 +58,8 @@ function createStashRoutes({ controller, config }) {
     router.post('/:slug/session', ...anyRole, c.setSession);
     router.get('/:slug/events', ...read, c.stream);
     router.get('/:slug/latest', ...read, c.latest);
-    router.post('/:slug/notes', postLimiter, ...write, textBody, c.addNote);
-    router.post('/:slug/files', uploadLimiter, ...write, checkUploadSize, rawBody, c.addFile);
+    router.post('/:slug/notes', postLimiter, ...write, c.acceptsNotes, textBody, c.addNote);
+    router.post('/:slug/files', uploadLimiter, ...write, c.acceptsFiles, checkUploadSize, rawBody, c.addFile);
     router.get('/:slug/files/:id', ...read, c.getFile);
     router.get('/:slug/files/:id/contents', ...read, c.listArchive);
     // Revealing deletes the note, so it is not something a read-only link may do
@@ -70,6 +70,7 @@ function createStashRoutes({ controller, config }) {
     // Dragging clips into a new order; a read-only or drop-box link cannot rearrange
     router.post('/:slug/reorder', ...full, c.reorder);
     router.put('/:slug/keep-last', ...full, c.setKeepLast);
+    router.put('/:slug/content', ...full, c.setContent);
     router.post('/:slug/extend', ...full, c.extend);
     // The wrong-password limit applies here too: a stranger at an unlocked browser cannot guess the current password
     router.post('/:slug/password', unlockLimiter, ...full, c.changePassword);
