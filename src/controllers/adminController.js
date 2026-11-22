@@ -8,12 +8,17 @@ const crypto = require('crypto');
 const { once } = require('events');
 const { hashPassword, MAX_PASSWORD } = require('../utils/password');
 const { ZipWriter, STORE, DEFLATE } = require('../utils/zipWriter');
+const { noopAudit } = require('../utils/auditLog');
+const { noopMetrics } = require('../utils/metrics');
 
 // Windows can briefly hold a file that was just closed, so a few tries
 const removeTemp = temp => fs.promises.rm(temp, { force: true, maxRetries: 5, retryDelay: 50 }).catch(() => {});
 
 class AdminController {
-    constructor({ model, events, config, adminAuth, settings, now = () => new Date(), resetFailures = () => {} }) {
+    // audit and metrics: see StashController (they do nothing unless the app passes real ones)
+    constructor({ model, events, config, adminAuth, settings, now = () => new Date(), resetFailures = () => {}, audit = noopAudit, metrics = noopMetrics }) {
+        this.audit = audit;
+        this.metrics = metrics;
         this.resetFailures = resetFailures;
         this.model = model;
         this.events = events;
@@ -30,12 +35,19 @@ class AdminController {
     login = (req, res) => {
         if (!this.adminAuth.enabled) return res.status(404).json({ error: 'Admin is not enabled on this server.' });
         const password = req.body && req.body.password;
-        if (!this.adminAuth.checkPassword(password)) return res.status(401).json({ error: 'That password is not right.' });
+        if (!this.adminAuth.checkPassword(password)) {
+            this.metrics.inc('stashly_admin_logins_total', ['failure']);
+            this.audit('admin.login_failed', { req, actor: 'visitor' });
+            return res.status(401).json({ error: 'That password is not right.' });
+        }
         this.adminAuth.startSession(req, res);
+        this.metrics.inc('stashly_admin_logins_total', ['success']);
+        this.audit('admin.login_succeeded', { req, actor: 'admin' });
         res.json({ ok: true });
     };
 
     logout = (req, res) => {
+        if (this.adminAuth.isAdmin(req)) this.audit('admin.logout', { req, actor: 'admin' });
         this.adminAuth.endSession(res);
         res.json({ ok: true });
     };
@@ -73,6 +85,7 @@ class AdminController {
         const stash = this.findStash(req, res);
         if (!stash) return;
         this.model.deleteStash(stash.id, this.now());
+        this.audit('stash.deleted', { req, stash, actor: 'admin', detail: { reason: 'admin' } });
         this.events.closeAll(stash.slug, 'stash-gone', { reason: 'deleted' });
         res.json({ ok: true });
     };
@@ -99,6 +112,7 @@ class AdminController {
         const hashed = await hashPassword(password);
         this.model.setPassword(stash.id, hashed.hash, hashed.salt);
         this.resetFailures(stash.slug);
+        this.audit('stash.password_reset_by_admin', { req, stash, actor: 'admin' });
         // Open pages hold cookies for the old password: end their streams so they are asked again
         this.events.closeAll(stash.slug, 'access-changed', {});
         res.json({ ok: true, hasPassword: true });
@@ -108,14 +122,29 @@ class AdminController {
         res.json({ fields: this.settings.describe() });
     };
 
+    // The audit line names the settings that changed. Every setting is a limit or a switch (none is a secret), so
+    // the new values are fine to record too.
+    auditSettings(req, before) {
+        const after = this.settings.values();
+        const keys = Object.keys(after).filter(key => after[key] !== before[key]);
+        if (!keys.length) return;
+        const values = {};
+        for (const key of keys) values[key] = after[key];
+        this.audit('admin.settings_changed', { req, actor: 'admin', detail: { keys, values } });
+    }
+
     putSettings = (req, res) => {
+        const before = this.settings.values();
         const result = this.settings.update(req.body && req.body.values);
         if (result.errors) return res.status(400).json({ error: 'Some settings need fixing.', errors: result.errors });
+        this.auditSettings(req, before);
         res.json({ fields: this.settings.describe() });
     };
 
     resetSettings = (req, res) => {
+        const before = this.settings.values();
         this.settings.reset();
+        this.auditSettings(req, before);
         res.json({ fields: this.settings.describe() });
     };
 
@@ -161,6 +190,7 @@ class AdminController {
                 await zip.addStream(`files/${name}`, source, { method: STORE });
             }
             await zip.finish();
+            this.audit('admin.backup_downloaded', { req, actor: 'admin' });
         } catch (err) {
             // Removed before answering, so by the time the admin sees the error nothing is left on disk
             await removeTemp(temp);

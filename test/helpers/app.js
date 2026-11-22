@@ -21,7 +21,8 @@ function newFileStore() {
 
 // An app on an in-memory database with a clock the test can move
 // Pass `db` to start another app on the same database (to check that saved settings survive a restart)
-function makeApp(overrides = {}, { db = connect(':memory:'), fileStore = newFileStore() } = {}) {
+// Pass `logOut` / `auditOut` (functions that take one line) to collect the access log and audit log lines
+function makeApp(overrides = {}, { db = connect(':memory:'), fileStore = newFileStore(), logOut, auditOut } = {}) {
     // The name-length and per-stash lockout rules are off by default here so the older tests can use short names and
     // many wrong passwords; the tests for those rules switch them on.
     const config = loadConfig({}, {
@@ -35,8 +36,10 @@ function makeApp(overrides = {}, { db = connect(':memory:'), fileStore = newFile
     const model = new StashModel(db, fileStore);
     const events = new StashEvents({ heartbeatMs: 1e9 });
     const clock = { time: new Date('2026-01-15T12:00:00Z') };
-    const { app, controller, settings } = createApp({ config, model, events, secret: 'test-secret', now: () => new Date(clock.time) });
-    return { app, db, model, events, controller, settings, clock, config, fileStore };
+    const { app, controller, settings, metrics, audit } = createApp({
+        config, model, events, secret: 'test-secret', now: () => new Date(clock.time), logOut, auditOut,
+    });
+    return { app, db, model, events, controller, settings, clock, config, fileStore, metrics, audit };
 }
 
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 1)]);

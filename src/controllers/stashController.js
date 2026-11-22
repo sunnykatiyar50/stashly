@@ -10,6 +10,8 @@ const { pipeline } = require('stream');
 const { once } = require('events');
 const { ZipWriter } = require('../utils/zipWriter');
 const { planExport } = require('../utils/stashExport');
+const { noopAudit } = require('../utils/auditLog');
+const { noopMetrics } = require('../utils/metrics');
 
 // Three cookies per stash: full access (the password), or one of the two share links. The names cannot collide,
 // because the prefixes differ before the stash name starts.
@@ -79,7 +81,11 @@ const CONTENT_KINDS = ['all', 'notes', 'files'];
 const contentOf = stash => (CONTENT_KINDS.includes(stash.content) ? stash.content : 'all');
 
 class StashController {
-    constructor({ model, events, config, secret, now = () => new Date(), isAdmin = () => false }) {
+    // audit(event, { req, stash, actor, detail }) writes the audit log and metrics counts what is worth counting; both
+    // do nothing unless the app passes real ones (see utils/auditLog.js and utils/metrics.js)
+    constructor({ model, events, config, secret, now = () => new Date(), isAdmin = () => false, audit = noopAudit, metrics = noopMetrics }) {
+        this.audit = audit;
+        this.metrics = metrics;
         this.isAdmin = isAdmin;
         this.model = model;
         this.events = events;
@@ -154,6 +160,7 @@ class StashController {
         if (stash && stash.expires_at && stash.expires_at <= this.now().toISOString()) {
             this.model.deleteStash(stash.id, this.now());
             this.events.closeAll(stash.slug, 'stash-gone', { reason: 'expired' });
+            this.audit('stash.deleted', { stash, actor: 'system', detail: { reason: 'expired' } });
             return res.status(404).json({ error: 'This stash has expired or does not exist.' });
         }
         if (!stash) return res.status(404).json({ error: 'This stash has expired or does not exist.' });
@@ -291,6 +298,7 @@ class StashController {
             });
             // The creator is let in without retyping the password
             if (stash.password_hash) this.setAccessCookie(req, res, stash);
+            this.audit('stash.created', { req, stash, detail: { password: Boolean(password), ttl: ttl.key } });
             res.status(201).json({
                 slug: stash.slug,
                 url: `/s/${stash.slug}`,
@@ -381,6 +389,16 @@ class StashController {
         return end ? Math.max(0, new Date(end).getTime() - this.now().getTime()) : this.sessionMs(null);
     }
 
+    // A wrong password: counted for the lockout, in the metrics and in the audit log (with the address, never the
+    // password). The log also says when this wrong guess is the one that locks the visitor out.
+    noteFailure(req, stash, via) {
+        const wasLocked = this.lockout.locked(stash.slug, req.ip) > 0;
+        this.lockout.note(stash.slug, req.ip);
+        this.metrics.inc('stashly_unlock_failures_total');
+        this.audit('stash.unlock_failed', { req, stash, detail: { via } });
+        if (!wasLocked && this.lockout.locked(stash.slug, req.ip) > 0) this.audit('stash.locked_out', { req, stash });
+    }
+
     unlock = async (req, res) => {
         const stash = req.stash;
         if (!stash.password_hash) return res.json({ ok: true, hasPassword: false });
@@ -390,7 +408,7 @@ class StashController {
         const session = this.sessionOptionFor(req.body && req.body.session);
         if (!session) return res.status(400).json({ error: 'Pick one of the listed session lengths.', field: 'session' });
         if (!(await verifyPassword(password, stash.password_hash, stash.password_salt))) {
-            this.lockout.note(stash.slug, req.ip);
+            this.noteFailure(req, stash, 'unlock');
             return res.status(401).json({ error: 'That password is not right.', locked: true });
         }
         this.lockout.clear(stash.slug);
@@ -451,6 +469,7 @@ class StashController {
         this.lockout.rename(stash.slug, updated.slug);
         for (const kind of ['full', 'view', 'drop']) res.clearCookie(this.cookieFor(stash.slug, kind), { path: '/' });
         if (updated.password_hash) this.setAccessCookie(req, res, updated, 'full', remaining, this.signedInAt(req));
+        this.audit('stash.renamed', { req, stash: updated, detail: { from: this.audit.tag(stash.slug), to: this.audit.tag(updated.slug) } });
         this.events.closeAll(stash.slug, 'stash-renamed', { slug: updated.slug, origin: this.withOrigin({}, req).origin });
         res.json({ ok: true, slug: updated.slug, url: `/s/${updated.slug}` });
     };
@@ -471,7 +490,7 @@ class StashController {
         }
         if (this.refuseIfLocked(req, res)) return;
         if (!(await verifyPassword(currentPassword, stash.password_hash, stash.password_salt))) {
-            this.lockout.note(stash.slug, req.ip);
+            this.noteFailure(req, stash, 'password_change');
             return res.status(401).json({ error: 'That is not the current password.', field: 'currentPassword' });
         }
         if (newPassword === currentPassword) {
@@ -485,6 +504,7 @@ class StashController {
         const updated = this.model.setPassword(stash.id, hashed.hash, hashed.salt);
         this.lockout.clear(stash.slug);
         const ends = this.setAccessCookie(req, res, updated, 'full', remaining, this.signedInAt(req));
+        this.audit('stash.password_changed', { req, stash });
         this.events.closeAll(stash.slug, 'access-changed', { origin: this.withOrigin({}, req).origin });
         res.json({ ok: true, sessionEndsAt: new Date(ends).toISOString() });
     };
@@ -498,6 +518,7 @@ class StashController {
         const remaining = this.remainingSession(req, stash);
         const updated = this.model.bumpSessionVersion(stash.id);
         const ends = this.setAccessCookie(req, res, updated, 'full', remaining, this.signedInAt(req));
+        this.audit('stash.sessions_signed_out', { req, stash });
         this.events.closeAll(stash.slug, 'access-changed', { origin: this.withOrigin({}, req).origin });
         res.json({ ok: true, sessionEndsAt: new Date(ends).toISOString() });
     };
@@ -524,6 +545,7 @@ class StashController {
         }
         const token = generateLinkToken();
         this.model.setShareToken(stash.id, kind, hashLinkToken(token));
+        this.audit('stash.share_link_created', { req, stash, detail: { kind } });
         // The token is shown once. It is in the fragment (#), which browsers never send to the server.
         res.status(201).json({ kind, token, path: `/s/${stash.slug}#${kind}=${token}` });
     };
@@ -532,6 +554,7 @@ class StashController {
         const kind = req.params.kind;
         if (!['view', 'drop'].includes(kind)) return res.status(404).json({ error: 'No such link.' });
         this.model.setShareToken(req.stash.id, kind, null);
+        this.audit('stash.share_link_revoked', { req, stash: req.stash, detail: { kind } });
         res.json({ ok: true });
     };
 
@@ -845,6 +868,8 @@ class StashController {
         if (problem) return res.status(problem.status).json({ error: problem.error });
 
         const row = this.model.addFile(stash.id, { fileName, fileType: detected.mime, tmp, size, title: title.value }, this.now());
+        this.metrics.inc('stashly_uploads_total');
+        this.metrics.inc('stashly_uploaded_bytes_total', [], size);
         const item = this.presentItem(stash.slug, row);
         this.events.publish(stash.slug, 'item-added', this.withOrigin(item, req));
         this.trim(stash);
@@ -975,6 +1000,8 @@ class StashController {
         if (!plan.fits) {
             return res.status(413).json({ error: 'This stash is too large to export as one zip (the limit is 4 GB or 65535 entries).' });
         }
+        this.metrics.inc('stashly_exports_total');
+        this.audit('stash.exported', { req, stash });
         res.set({
             'Content-Type': 'application/zip',
             'Content-Disposition': `attachment; filename="${stash.slug}.zip"`,
@@ -1033,13 +1060,14 @@ class StashController {
                     .type('text/plain; charset=utf-8')
                     .send('The newest note burns after reading. Fetch it with POST (curl -X POST) to read it and delete it.\n');
             }
-            this.burn(req.stash, row);
+            this.burn(req.stash, row, req);
         }
         res.type('text/plain; charset=utf-8').send(row.text);
     };
 
     // Deletes a note that has been read and tells every open page
-    burn(stash, row) {
+    burn(stash, row, req) {
+        this.audit('item.deleted', { req, stash, detail: { kind: row.kind, reason: 'burned' } });
         // The model overwrites the text and empties the write-ahead log, so it cannot be read back from the files
         this.model.deleteItem(stash.id, row.id);
         this.events.publish(stash.slug, 'item-deleted', { id: row.id, burned: true });
@@ -1052,7 +1080,7 @@ class StashController {
         if (!row || row.kind !== 'note' || !row.burn) {
             return res.status(404).json({ error: 'That note is gone, or it does not burn after reading.' });
         }
-        this.burn(req.stash, row);
+        this.burn(req.stash, row, req);
         res.set('Cache-Control', 'no-store').json({ id: row.id, text: row.text });
     };
 
@@ -1070,6 +1098,7 @@ class StashController {
         const undoable = seconds > 0 && !row.burn && !row.secret && !expired;
         if (undoable) this.model.trashItem(stash.id, id, now);
         else this.model.deleteItem(stash.id, id);
+        this.audit('item.deleted', { req, stash, detail: { kind: row.kind, undoable } });
         this.events.publish(stash.slug, 'item-deleted', { id });
         res.json({ ok: true, undoUntil: undoable ? new Date(now.getTime() + seconds * 1000).toISOString() : null });
     };
@@ -1093,6 +1122,7 @@ class StashController {
         // "Keep the last N" is not applied here: the item would often be the oldest and vanish again at once. The next
         // new item trims the stash as usual.
         const restored = this.model.restoreItem(stash.id, id);
+        this.audit('item.restored', { req, stash, detail: { kind: restored.kind } });
         const item = this.presentItem(stash.slug, restored);
         this.events.publish(stash.slug, 'item-added', this.withOrigin(item, req));
         res.json(item);
@@ -1108,6 +1138,7 @@ class StashController {
     remove = (req, res) => {
         const stash = req.stash;
         this.model.deleteStash(stash.id, this.now());
+        this.audit('stash.deleted', { req, stash, detail: { reason: 'visitor' } });
         this.events.closeAll(stash.slug, 'stash-gone', { reason: 'deleted' });
         res.json({ ok: true });
     };
@@ -1133,7 +1164,10 @@ class StashController {
     // Called on a timer: removes stashes whose time is up and tells anyone still looking at them
     cleanup = () => {
         const removed = this.model.purgeExpired(this.now());
-        for (const slug of removed) this.events.closeAll(slug, 'stash-gone', { reason: 'expired' });
+        for (const slug of removed) {
+            this.audit('stash.deleted', { stash: slug, actor: 'system', detail: { reason: 'expired' } });
+            this.events.closeAll(slug, 'stash-gone', { reason: 'expired' });
+        }
         for (const item of this.model.purgeExpiredItems(this.now())) this.events.publish(item.slug, 'item-deleted', { id: item.id });
         // Deleted items whose undo time is up are removed for good (with undo turned off, everything waiting goes)
         this.model.purgeTrash(new Date(this.now().getTime() - this.config.undoSeconds * 1000));

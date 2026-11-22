@@ -7,18 +7,30 @@ const createStashRoutes = require('./routes/stashRoutes');
 const createAdminRoutes = require('./routes/adminRoutes');
 const { AdminAuth } = require('./utils/adminAuth');
 const { SettingsStore } = require('./utils/settings');
+const { accessLog } = require('./utils/accessLog');
+const { createAudit } = require('./utils/auditLog');
+const { Metrics } = require('./utils/metrics');
+const { checkConfig } = require('./config');
+const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
+const { version } = require('../package.json');
 
 const viewsDir = path.join(__dirname, 'views');
 
 // Builds the Express app. Kept separate from app.js so tests can create it with their own config and database.
-function createApp({ config, model, events, secret, now }) {
+// logOut and auditOut receive the access-log and audit-log lines (default: stdout); tests pass a collector.
+function createApp({ config, model, events, secret, now, logOut, auditOut }) {
     const app = express();
+    // Throws with a clear message when a logging option is not one of the allowed values
+    checkConfig(config);
     const adminAuth = new AdminAuth({ config, secret, now });
     // Applies any limits the admin saved earlier on top of the environment's values
     const settings = new SettingsStore({ model, config });
-    const controller = new StashController({ model, events, config, secret, now, isAdmin: adminAuth.isAdmin });
+    const audit = createAudit({ mode: config.auditLog, out: auditOut, secret, now });
+    const metrics = new Metrics();
+    const controller = new StashController({ model, events, config, secret, now, isAdmin: adminAuth.isAdmin, audit, metrics });
     const adminController = new AdminController({
-        model, events, config, adminAuth, settings, now,
+        model, events, config, adminAuth, settings, now, audit, metrics,
         // A new password clears the wrong-password count the stash controller keeps
         resetFailures: slug => controller.lockout.clear(slug),
     });
@@ -33,6 +45,9 @@ function createApp({ config, model, events, secret, now }) {
     }
 
     app.disable('x-powered-by');
+    // First, so every request is seen, including the ones a later middleware refuses. It writes the access log when
+    // LOG_FORMAT=json and always feeds the request metrics (which only cost a counter).
+    app.use(accessLog({ format: config.logFormat, out: logOut, secret, now, observe: entry => metrics.recordRequest(entry) }));
     app.use(
         helmet({
             contentSecurityPolicy: {
@@ -61,12 +76,55 @@ function createApp({ config, model, events, secret, now }) {
         next();
     });
 
+    // Values read from the database when /metrics is scraped: nothing here is kept between scrapes
+    const startedAt = Math.round(Date.now() / 1000 - process.uptime());
+    const gauges = () => {
+        const totals = model.totals();
+        const usage = process.memoryUsage();
+        return [
+            { name: 'stashly_stashes', help: 'Stashes that exist now.', samples: [{ value: totals.stashes }] },
+            {
+                name: 'stashly_items',
+                help: 'Items in all stashes, by kind.',
+                samples: [{ labels: { kind: 'note' }, value: totals.items - totals.files }, { labels: { kind: 'file' }, value: totals.files }],
+            },
+            { name: 'stashly_stored_bytes', help: 'Bytes of the files in all stashes.', samples: [{ value: totals.bytes }] },
+            { name: 'stashly_trashed_items', help: 'Deleted items still waiting out their undo time.', samples: [{ value: model.countTrash() }] },
+            { name: 'stashly_sse_connections', help: 'Open live-update streams.', samples: [{ value: events.connections() }] },
+            { name: 'stashly_build_info', help: 'The running version.', samples: [{ labels: { version }, value: 1 }] },
+            { name: 'stashly_process_start_time_seconds', help: 'When the server started (Unix time).', samples: [{ value: startedAt }] },
+            { name: 'stashly_process_resident_memory_bytes', help: 'Resident memory of the server process.', samples: [{ value: usage.rss }] },
+            { name: 'stashly_process_heap_used_bytes', help: 'JavaScript heap in use.', samples: [{ value: usage.heapUsed }] },
+        ];
+    };
+    // Not the stash limiters (a scraper must not be slowed by visitors), but a small one against token guessing
+    const metricsLimiter = rateLimit({
+        windowMs: 60 * 1000,
+        limit: 120,
+        standardHeaders: 'draft-8',
+        legacyHeaders: false,
+        message: { error: 'Too many requests, slow down.' },
+    });
+
     // JSON bodies for the API. Uploads (and plain-text notes) read their own body in the routes.
     // The limit follows the live note-size setting, so it is read on each request.
     app.use('/api', (req, res, next) => {
         // (a thumbnail is raw image bytes too)
         if (/\/files(\/\d+\/thumb)?$/.test(req.path)) return next();
         express.json({ limit: `${Math.ceil((config.maxNoteBytes * 2) / 1024) + 4}kb` })(req, res, next);
+    });
+
+    app.get('/metrics', metricsLimiter, (req, res) => {
+        // Off unless a token is set: a server that was never asked to publish numbers does not
+        if (!config.metricsToken) return res.status(404).json({ error: 'Not found' });
+        const match = /^Bearer (.+)$/i.exec(req.get('authorization') || '');
+        // Hashes of equal length, compared in constant time (the same way as the admin password)
+        const given = crypto.createHash('sha256').update(match ? match[1] : '').digest();
+        const expected = crypto.createHash('sha256').update(config.metricsToken).digest();
+        if (!match || !crypto.timingSafeEqual(given, expected)) {
+            return res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'A bearer token is needed.' });
+        }
+        res.set({ 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8', 'Cache-Control': 'no-store' }).send(metrics.render(gauges()));
     });
 
     app.get('/health', (req, res) => {
@@ -107,14 +165,15 @@ function createApp({ config, model, events, secret, now }) {
     app.use((err, req, res, next) => {
         const status = err.status || err.statusCode || 500;
         if (status >= 500) {
-            console.error(`Unhandled error on ${req.method} ${req.path}:`, err);
+            // The address is not logged: it can hold a stash name, which is a secret
+            console.error(`Unhandled error on ${req.method} ${req.route && typeof req.route.path === 'string' ? req.route.path : 'unmatched'}:`, err);
             return res.status(500).json({ error: 'Internal server error' });
         }
         const message = err.type === 'entity.too.large' ? 'That is too large to send.' : 'Bad request';
         res.status(status).json({ error: message });
     });
 
-    return { app, controller, adminController, settings };
+    return { app, controller, adminController, settings, metrics, audit };
 }
 
 module.exports = { createApp };

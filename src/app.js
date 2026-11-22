@@ -19,7 +19,19 @@ if (config.adminPassword && config.adminPassword.length < 12) {
     console.warn('WARNING: ADMIN_PASSWORD is shorter than 12 characters. The admin can reset any stash password, so use a long random one.');
 }
 
-const { app, controller } = createApp({ config, model, events, secret });
+if (config.metricsToken && config.metricsToken.length < 16) {
+    console.warn('WARNING: METRICS_TOKEN is shorter than 16 characters. Use a long random one.');
+}
+
+// A setting that cannot work (an unknown LOG_FORMAT...) stops here with one clear line instead of a stack trace
+let created;
+try {
+    created = createApp({ config, model, events, secret });
+} catch (err) {
+    console.error(`Stashly cannot start: ${err.message}`);
+    process.exit(1);
+}
+const { app, controller } = created;
 
 // Remove stashes whose time is up (they are also removed the moment someone opens them)
 const timer = setInterval(() => {

@@ -12,6 +12,12 @@ const num = (value, fallback) => {
 
 const flag = value => String(value).toLowerCase() === 'true';
 
+// Refuses settings that cannot work, with a message fit to show at startup
+function checkConfig(config) {
+    if (!['off', 'json'].includes(config.logFormat)) throw new Error('LOG_FORMAT must be "off" or "json".');
+    if (!['off', 'stdout'].includes(config.auditLog)) throw new Error('AUDIT_LOG must be "off" or "stdout".');
+}
+
 function loadConfig(env = process.env, overrides = {}) {
     const allowNoExpiry = flag(env.ALLOW_NO_EXPIRY);
     const adminPassword = env.ADMIN_PASSWORD || '';
@@ -49,6 +55,10 @@ function loadConfig(env = process.env, overrides = {}) {
         // The admin area is only on when a password is set
         adminPassword,
         requireAdminToCreate: Boolean(adminPassword) && flag(env.REQUIRE_ADMIN_TO_CREATE),
+        // Operating: access log (off | json), audit log (off | stdout) and the /metrics token (empty = no /metrics)
+        logFormat: (env.LOG_FORMAT || 'off').trim().toLowerCase(),
+        auditLog: (env.AUDIT_LOG || 'off').trim().toLowerCase(),
+        metricsToken: env.METRICS_TOKEN || '',
         rateAdminLogin: num(env.RATE_ADMIN_LOGIN, 10),
         ttlOptions,
         defaultTtl: '1d',
@@ -105,4 +115,4 @@ function loadConfig(env = process.env, overrides = {}) {
     };
 }
 
-module.exports = { loadConfig };
+module.exports = { loadConfig, checkConfig };

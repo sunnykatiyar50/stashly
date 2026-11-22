@@ -75,6 +75,13 @@ class StashEvents {
         this.clients.delete(slug);
     }
 
+    // Open streams on every stash (for the metrics)
+    connections() {
+        let total = 0;
+        for (const set of this.clients.values()) total += set.size;
+        return total;
+    }
+
     count(slug) {
         return this.clients.has(slug) ? this.clients.get(slug).size : 0;
     }

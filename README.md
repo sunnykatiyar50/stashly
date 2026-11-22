@@ -177,6 +177,31 @@ The text check means the content must really be text, so a renamed binary is ref
 
 Whatever the mode, files are downloaded as attachments (images show inline), and every file is served with `nosniff` and a sandboxing CSP. Unrecognised files are stored as `application/octet-stream` and text as `text/plain`, so an uploaded HTML or SVG file is never rendered or run by the server. The one exception is the PDF **Open** button, which drops the sandbox for that response only, because the browser's PDF viewer cannot run under it. No virus scanning is done in any mode.
 
+## Operating Stashly: logs and metrics
+
+Three things help you run a server. All are off by default, and none of them ever carries a **stash name, password, token, cookie, note text, file name or query string**: a stash name is the only secret of a stash without a password, so the logs name a stash by a short keyed hash instead (see below).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `LOG_FORMAT` | `off` | `json` writes one JSON line to stdout for each finished request |
+| `AUDIT_LOG` | `off` | `stdout` writes one JSON line for each change of who can reach what |
+| `METRICS_TOKEN` | empty | Turns on `GET /metrics` (Prometheus text format); callers must send `Authorization: Bearer <token>`. Use a long random value |
+
+**Access log** (`LOG_FORMAT=json`): `{"time","level":"info","msg":"request","method","route","status","ms","ip","stash","role","bytes"}`. `route` is the route *pattern* (`/api/stashes/:slug/notes`), never the real path; a request no route answered is `unmatched`, and the page's own files are `static`. `stash` is the first 10 hex characters of an HMAC-SHA-256 of the name keyed with the server's secret, so lines about one stash can be matched with each other, but the name cannot be read from them (the secret is kept in the database or set with `SESSION_SECRET`, so tags stay the same across restarts). `role` is `full`, `view`, `drop` or `none` when a stash was involved. `bytes` is the response's Content-Length when it has one. A live stream is logged when it ends. `/health` and `/metrics` are not logged.
+
+**Audit log** (`AUDIT_LOG=stdout`): `{"time","level":"audit","event","ip","stash","actor","detail"}` with `actor` `visitor`, `admin` or `system` (expiry). Events: `stash.created`, `stash.deleted` (`detail.reason`: visitor, admin or expired), `stash.renamed` (hashes of the old and new name), `stash.password_changed`, `stash.password_reset_by_admin`, `stash.sessions_signed_out`, `stash.share_link_created` / `stash.share_link_revoked` (the kind only), `stash.unlock_failed` (every wrong password, with the address), `stash.locked_out` (when the lockout trips), `item.deleted` / `item.restored` (the kind only), `stash.exported`, `admin.login_succeeded`, `admin.login_failed`, `admin.logout`, `admin.settings_changed` (the settings that changed and their new values; none is a secret) and `admin.backup_downloaded`. Send stdout to your log collector; Docker keeps it for `docker logs`.
+
+**Metrics** (`METRICS_TOKEN` set): `stashly_http_requests_total{method,route,status_class}`, `stashly_http_request_duration_seconds` (histogram by route), `stashly_stashes`, `stashly_items{kind}`, `stashly_stored_bytes`, `stashly_trashed_items`, `stashly_sse_connections`, `stashly_unlock_failures_total`, `stashly_uploads_total`, `stashly_uploaded_bytes_total`, `stashly_exports_total`, `stashly_admin_logins_total{result}`, `stashly_build_info{version}`, `stashly_process_start_time_seconds` and the process memory. Labels are route patterns and fixed words only, so a new stash never adds a series. Counters start from zero at every restart. A Prometheus job:
+
+```yaml
+scrape_configs:
+  - job_name: stashly
+    authorization: { type: Bearer, credentials: "<METRICS_TOKEN>" }
+    static_configs: [{ targets: ["stashly:3000"] }]
+```
+
+Without `METRICS_TOKEN` the address answers 404. Keep `/metrics` and the logs off the public internet where you can: the numbers say how much is stored and how busy the server is.
+
 ## Security notes
 
 - The stash name is the "key". Random 12-character names can't be guessed; short custom names can, so add a password for anything private.
@@ -217,6 +242,7 @@ Add `preview` (`true` in the body, or `?preview=1`) to a listing and notes longe
 | GET | `/api/stashes/:slug/export` | the whole stash as `<slug>.zip` (full and read-only access; burn-after-reading notes are left out) |
 | GET | `/api/stashes/:slug/events` | live stream |
 | GET | `/health`, `/api/config` | liveness; expiry options and limits |
+| GET | `/metrics` | Prometheus metrics; only when `METRICS_TOKEN` is set, with `Authorization: Bearer <token>` |
 | GET | `/api/admin/backup` | admin only: the database snapshot and all files as one zip |
 
 ## Browser extension
