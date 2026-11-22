@@ -219,13 +219,14 @@
     var MASK = '••••••••';
 
     // The properties of a clip, shown as small chips on the right of its row so they read as labels, not as content:
-    // Pinned, Burns after reading, Secret, and a countdown when the note has its own expiry
+    // Pinned, Burns after reading, Secret, and a countdown when the note has its own expiry.
+    // Pinned and Secret are shown as icons, with their name on hover.
     function clipFlags(item) {
         var flags = [];
-        if (item.pinned) flags.push({ text: 'Pinned', kind: 'pinned' });
+        if (item.pinned) flags.push({ text: 'Pinned', kind: 'pinned', icon: PIN_ICON });
         if (item.kind === 'note') {
             if (item.burn) flags.push({ text: 'Burns after reading', kind: 'burn' });
-            if (item.secret) flags.push({ text: 'Secret', kind: 'secret' });
+            if (item.secret) flags.push({ text: 'Secret', kind: 'secret', icon: LOCK_ICON });
             if (item.expiresAt) flags.push({ text: expiryText(item.expiresAt), kind: 'expiry', expires: item.expiresAt });
         }
         return flags;
@@ -285,7 +286,16 @@
         if (flags.length) {
             var flagLine = make('span', 'clip-flags');
             flags.forEach(function (flag) {
-                var chip = make('span', 'clip-flag clip-flag-' + flag.kind, flag.text);
+                var chip;
+                if (flag.icon) {
+                    chip = make('span', 'clip-flag-icon clip-flag-' + flag.kind);
+                    chip.title = flag.text;
+                    chip.setAttribute('role', 'img');
+                    chip.setAttribute('aria-label', flag.text);
+                    chip.appendChild(svg(flag.icon));
+                } else {
+                    chip = make('span', 'clip-flag clip-flag-' + flag.kind, flag.text);
+                }
                 if (flag.expires) chip.dataset.expires = flag.expires;
                 flagLine.appendChild(chip);
             });
@@ -298,7 +308,7 @@
         time.title = new Date(item.createdAt).toLocaleString();
         var side = make('span', 'clip-side');
         side.appendChild(time);
-        // Quick buttons that show when the row is hovered (always on touch screens): pin and copy
+        // Quick buttons that show only when the row is hovered (or reached with the keyboard): pin and copy
         var quick = make('span', 'clip-quick');
         if (role() === 'full') {
             var pinLabel = item.pinned ? 'Unpin' : 'Pin to the top';
@@ -344,6 +354,7 @@
     }
 
     var PIN_ICON = '<svg viewBox="0 0 24 24"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z"/></svg>';
+    var LOCK_ICON = '<svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
     var GRIP_ICON = '<svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>';
 
     // ---- moving clips ----

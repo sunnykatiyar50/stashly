@@ -670,3 +670,16 @@ body:not(.stash-open) .in-topbar { display: none; }
     .settings-tab { padding: 9px 12px; font-size: 14px; gap: 8px; }
     .settings-row { padding: 14px 0; }
 }
+
+/* ===== Clip rows: Pinned and Secret as small icons; pin and copy only on hover ===== */
+.clip-flags { align-items: center; gap: 6px; }
+.clip-flag-icon { display: inline-flex; color: var(--text-soft); cursor: help; }
+.clip-flag-icon svg { width: 12px; height: 12px; }
+.clip-flag-icon.clip-flag-pinned { color: var(--blue); }
+.clip-flag-icon.clip-flag-pinned svg { fill: currentColor; }
+.clip-quick { gap: 6px; }
+.clip-copy { padding: 3px; line-height: 0; }
+.clip-copy svg { width: 12px; height: 12px; }
+.clip.selected .clip-copy { opacity: 0; }
+.clip:hover .clip-copy, .clip:focus-within .clip-copy, .clip-copy:focus-visible { opacity: 1; }
+@media (hover: none) { .clip-copy, .clip.selected .clip-copy { opacity: 0; } .clip:focus-within .clip-copy { opacity: 1; } }
