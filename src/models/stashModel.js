@@ -252,9 +252,12 @@ class StashModel {
         );
     }
 
+    // The file's bytes as a Buffer over the same memory the driver returned: no second copy of a large file
     getFileContent(itemId) {
         const row = this.db.prepare('SELECT content FROM files WHERE item_id = ?').get(itemId);
-        return row ? Buffer.from(row.content) : null;
+        if (!row) return null;
+        const bytes = row.content;
+        return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     }
 
     deleteItem(stashId, id) {
