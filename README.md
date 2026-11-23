@@ -188,6 +188,7 @@ Most of these are changed in the admin area, under **Admin > Settings**, and app
 | **Files** | Which file types can be uploaded |
 | **Stashes** | Default expiry, stashes that never expire, how long a delete can be undone, who can create stashes, whether an admin can reset stash passwords |
 | **Rate limits** | Stashes created, notes added, files uploaded and reads, each per minute per address |
+| **Email** | The SMTP server, login, From address, the address of this server used in links, emails per hour, and a "Send test email" button |
 
 Rate limits and lockouts count per address in memory, so a restart starts the counts again.
 
@@ -207,6 +208,16 @@ Rate limits and lockouts count per address in memory, so a restart starts the co
 | `RATE_POST` | 120 | Notes and other changes one address may make a minute. Also in **Admin > Settings > Rate limits** (the environment gives the starting value). |
 | `RATE_UPLOAD` | 40 | Files one address may start uploading a minute. Also in **Admin > Settings > Rate limits** (the environment gives the starting value). |
 | `RATE_ADMIN_LOGIN` | 10 | Wrong admin passwords per address per 15 minutes. Also in **Admin > Settings > Security** as "Wrong account passwords allowed" (one setting for users and the admin). |
+| `SMTP_ENABLED` | false | Send emails (reset links, shared links) through your own mail server. Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_HOST` | (empty) | Mail server host name. Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_PORT` | 587 | Mail server port (587 for STARTTLS, 465 for SSL). Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_SECURITY` | starttls | `starttls`, `ssl` or `none` (plain text, for a trusted local relay only). Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_USER` | (empty) | Username for the mail server (leave empty if it needs none). Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_PASSWORD` | (empty) | Password for the mail server. Saved from the admin page it is stored encrypted with the server secret, so keep `SESSION_SECRET` fixed. Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_FROM` | (empty) | The From address of every email. Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_FROM_NAME` | Stashly | The name shown beside the From address. Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `EMAIL_PER_HOUR` | 100 | Most emails the server sends in an hour. Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `PUBLIC_URL` | (empty) | This server's own address (`https://stash.example.com`), used in links inside emails. Never taken from the request. Also in **Admin > Settings > Email** (the environment gives the starting value). |
 | `MAX_THUMB_KB` | 200 | Largest image thumbnail the page may send (the page makes them about 256 px wide, usually a few KB) |
 | `MAX_CHUNK_MB` | 4 | Largest piece of a resumable upload one request may carry (at least 64 KB; more than this is never buffered or written per request) |
 | `MAX_OPEN_UPLOADS` / `MAX_OPEN_UPLOADS_SERVER` | 5 / 50 | Unfinished resumable uploads one stash and the whole server may hold (`429` above that) |

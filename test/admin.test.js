@@ -168,7 +168,7 @@ test('every setting names the tab it is shown under', async () => {
     for (const key of ['rateCreate', 'ratePost', 'rateUpload', 'rateRead']) assert.equal(byKey[key], 'Rate limits', key);
     // Tabs follow the order the groups first appear in
     const order = [...new Set(res.body.fields.map(f => f.group))];
-    assert.deepEqual(order, ['Limits', 'Security', 'Files', 'Stashes', 'Rate limits']);
+    assert.deepEqual(order, ['Limits', 'Security', 'Files', 'Stashes', 'Rate limits', 'Email']);
 });
 
 test('changed limits apply at once, with no restart', async () => {
