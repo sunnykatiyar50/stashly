@@ -68,21 +68,21 @@ test('the home page does not list stashes: My stashes is one click away in the m
     assert.match(script, /accountNavLink/);
 });
 
-test('the home page has two columns: the form on the left, how it works on the right', () => {
+test('the home page uses the width: the form on top, the four steps in a row, then the tips and the command line', () => {
     const html = view('index.html');
-    const grid = html.indexOf('class="home-grid"');
-    const main = html.indexOf('class="home-main"');
-    const side = html.indexOf('class="home-side"');
-    assert.ok(grid > -1 && main > grid && side > main, 'home-grid holds home-main, then home-side');
-    // the open/create form is in the left column, how it works in the right
-    const left = html.slice(main, side);
-    assert.ok(left.includes('id="quickForm"'));
-    assert.ok(!left.includes('How it works'));
-    const right = html.slice(side);
-    assert.ok(right.includes('How it works') && right.includes('id="curlExample"'));
-    // two columns on a wide screen, one when there is no room, and the curl lines wrap so all of them show
+    const form = html.indexOf('id="quickForm"');
+    const how = html.indexOf('class="home-how"');
+    const extras = html.indexOf('class="home-extras"');
+    assert.ok(form > -1 && how > form && extras > how, 'the form, then how it works, then the extras');
+    assert.equal(html.slice(how, extras).match(/<li class="card">/g).length, 4, 'four steps, each its own card');
+    const after = html.slice(extras);
+    assert.ok(after.includes('Good to know') && after.includes('id="curlExample"'));
+    assert.doesNotMatch(html, /home-grid|home-main|home-side/);
+    // four steps across a wide screen, two then one as it narrows; the tips and curl side by side, then stacked;
+    // the curl lines wrap so all of them show
     const css = view('styles.css');
-    assert.match(css, /\.home-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.15fr\)\s*minmax\(320px,\s*1fr\)/);
-    assert.match(css, /@media \(max-width: 900px\)\s*\{\s*\.home-grid\s*\{\s*grid-template-columns:\s*1fr/);
+    assert.match(css, /\.how-steps\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+    assert.match(css, /@media \(max-width: 900px\)\s*\{\s*\.how-steps\s*\{\s*grid-template-columns:\s*repeat\(2,/);
+    assert.match(css, /\.home-extras\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
     assert.match(css, /\.how-card \.code\s*\{[^}]*white-space:\s*pre-wrap/);
 });

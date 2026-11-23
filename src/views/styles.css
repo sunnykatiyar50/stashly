@@ -254,25 +254,26 @@ body.has-account-nav #logoutButton { display: none; }
 .home-stack .view-title { flex-direction: column; align-items: center; gap: 4px; }
 .home-stack .view-title h1 { font-size: 26px; }
 .home-stack .form-card, .home-stack .notice { max-width: none; }
-/* The form and your stashes on the left, how it works on the right; one column when there is not room for both */
-.home-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, 1fr); gap: 14px; align-items: start; }
-.home-main, .home-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-/* The curl lines wrap, so the whole of them shows in the narrower column */
+/* Home: the form across the top, the four steps in a row, then the tips and the command line side by side */
 .how-card .code { white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: visible; }
-.how-card .how-list { margin-top: 4px; }
-/* How it works: numbered steps, tips, and the terminal way */
-.how-intro { margin: 2px 0 0; }
-.how-steps { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
-.how-steps li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; align-items: start; }
+.how-card h3 { font-size: 15px; }
+.how-card > .muted { margin: 4px 0 0; }
+.home-how { display: flex; flex-direction: column; gap: 12px; }
+.home-how-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.home-how-head h2 { font-size: 17px; margin: 0; }
+.home-how-head .muted { margin: 0; }
+.how-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.how-steps li { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
 .how-num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--blue); color: #fff; font-weight: 700; font-size: 13px; }
-.how-steps strong { display: block; font-size: 14px; margin-top: 3px; }
-.how-steps p { margin: 3px 0 0; color: var(--text-soft); font-size: 13.5px; line-height: 1.55; }
-.how-sub { margin: 20px 0 0; padding-top: 14px; border-top: 1px solid var(--border); font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.how-steps strong { display: block; font-size: 14px; }
+.how-steps p { margin: 4px 0 0; color: var(--text-soft); font-size: 13.5px; line-height: 1.55; }
 .how-tips { margin: 8px 0 0; padding-left: 18px; color: var(--text-soft); font-size: 13.5px; line-height: 1.6; display: flex; flex-direction: column; gap: 6px; }
-.how-card kbd { display: inline-block; padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--surface); font-family: var(--mono); font-size: 12px; line-height: 1.4; }
-.how-card p code { padding: 1px 5px; border-radius: 4px; background: var(--code-bg); font-family: var(--mono); font-size: 12.5px; }
-.how-card .how-sub + p { margin: 8px 0 0; }
-@media (max-width: 900px) { .home-grid { grid-template-columns: 1fr; } }
+.home-how kbd, .how-card kbd { display: inline-block; padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--surface); font-family: var(--mono); font-size: 12px; line-height: 1.4; }
+.home-how p code, .how-card p code { padding: 1px 5px; border-radius: 4px; background: var(--code-bg); font-family: var(--mono); font-size: 12.5px; }
+.home-extras { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+@media (max-width: 900px) { .how-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .home-extras { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 520px) { .how-steps { grid-template-columns: minmax(0, 1fr); } }
 /* "Open an existing stash" stands out from the rest of the home page: accent border, larger controls */
 .open-card { padding: 18px 20px; border: 1px solid var(--blue); border-left-width: 4px; box-shadow: 0 4px 14px var(--shadow); }
 .open-card-title { display: flex; align-items: center; gap: 12px; }
@@ -313,7 +314,6 @@ body.has-account-nav #logoutButton { display: none; }
 .form-actions { display: flex; align-items: center; gap: 10px; }
 .form-status { margin: 0; font-size: 13px; color: var(--muted); }
 .form-status.error { color: var(--danger); }
-.how-list { margin: 8px 0 0; padding-left: 18px; color: var(--text-soft); line-height: 1.7; }
 .code { display: block; margin: 8px 0 0; padding: 12px 14px; border-radius: 6px; background: var(--code-bg); font-family: var(--mono); font-size: 12.5px; line-height: 1.7; overflow-x: auto; white-space: pre; }
 
 /* ===== Stash page ===== */
