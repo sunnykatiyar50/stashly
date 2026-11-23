@@ -66,7 +66,23 @@
                     <small class="field-error" id="loginError" role="alert"></small>
                 </div>
                 <button type="submit" id="loginButton" class="primary">Sign in</button>
+                <button type="button" id="forgotLink" class="link-button hidden">Forgot your password?</button>
                 <small class="field-hint">Accounts are made by the server's admin. The admin signs in here too, with the admin username and password set on the server.</small>
+            </form>
+        </section>
+
+        <!-- Opened from the link in a reset email: /account#reset=TOKEN -->
+        <section id="stateReset" class="view hidden">
+            <form id="resetForm" class="state-card card" novalidate>
+                <h2>Choose a new password</h2>
+                <p>This signs you out everywhere. Then sign in with the new password.</p>
+                <div class="field">
+                    <label for="resetPassword">New password</label>
+                    <input type="password" id="resetPassword" autocomplete="new-password" maxlength="200" />
+                    <small class="field-error" id="resetError" role="alert"></small>
+                </div>
+                <button type="submit" id="resetButton" class="primary">Set password</button>
+                <button type="button" id="resetBack" class="link-button">Back to sign in</button>
             </form>
         </section>
 
@@ -78,6 +94,7 @@
                     <span id="roleChip" class="chip"></span>
                 </div>
                 <div class="header-actions">
+                    <button type="button" id="emailButton" class="ghost small">Email</button>
                     <button type="button" id="passwordButton" class="ghost small">Change password</button>
                     <button type="button" id="logoutButton" class="ghost small">Sign out</button>
                 </div>
@@ -106,6 +123,44 @@
             <div class="qr-actions">
                 <button type="button" id="passwordCancel" class="ghost">Cancel</button>
                 <button type="submit" id="passwordSave" class="primary">Change password</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="forgotDialog" class="qr-dialog share-dialog" aria-labelledby="forgotTitle">
+        <form id="forgotForm" class="qr-body share-body" novalidate>
+            <h2 id="forgotTitle">Reset your password</h2>
+            <p class="muted">Enter your username or the email address on your account. If we find it, we send a link to choose a new password.</p>
+            <div class="field">
+                <label for="forgotIdentifier">Username or email</label>
+                <input type="text" id="forgotIdentifier" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="254" />
+                <small class="field-error" id="forgotError" role="alert"></small>
+                <small class="field-hint" id="forgotDone" role="status"></small>
+            </div>
+            <div class="qr-actions">
+                <button type="button" id="forgotCancel" class="ghost">Close</button>
+                <button type="submit" id="forgotSend" class="primary">Send link</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="emailDialog" class="qr-dialog share-dialog" aria-labelledby="emailTitle">
+        <form id="emailForm" class="qr-body share-body" novalidate>
+            <h2 id="emailTitle">Your email address</h2>
+            <p class="muted">Used only to send you a link if you forget your password. Leave it empty to remove it.</p>
+            <div class="field">
+                <label for="emailInput">Email address</label>
+                <input type="email" id="emailInput" autocomplete="email" maxlength="254" />
+                <small class="field-error" id="emailError" role="alert"></small>
+            </div>
+            <div class="field">
+                <label for="emailPassword">Current password</label>
+                <input type="password" id="emailPassword" autocomplete="current-password" maxlength="200" />
+                <small class="field-error" id="emailPasswordError" role="alert"></small>
+            </div>
+            <div class="qr-actions">
+                <button type="button" id="emailCancel" class="ghost">Cancel</button>
+                <button type="submit" id="emailSave" class="primary">Save</button>
             </div>
         </form>
     </dialog>

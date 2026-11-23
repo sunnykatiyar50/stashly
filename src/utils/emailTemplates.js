@@ -25,4 +25,26 @@ function testEmail({ serverName = 'Stashly', url = '' } = {}) {
     return { subject: `${serverName}: test email`, ...layout('Test email', paragraphs, FOOTER) };
 }
 
-module.exports = { testEmail, escapeHtml, layout, FOOTER };
+// A link that sets a new password. minutes: how long it works. who: the account's username.
+function resetEmail({ serverName = 'Stashly', username, link, minutes, byAdmin = false }) {
+    const paragraphs = [
+        byAdmin ? `An administrator sent you a link to choose a new password for the account "${username}".` : `Someone asked to reset the password of the account "${username}".`,
+        `Open this link to choose a new one. It works once, for ${minutes} minutes:`,
+        { link },
+        'If you did not ask for this, ignore this email: nothing changes until the link is used.',
+    ];
+    return { subject: `${serverName}: reset your password`, ...layout('Reset your password', paragraphs, FOOTER) };
+}
+
+// Sent after a password was changed by a reset link, and to the old address when the email on an account changes
+function passwordChangedEmail({ serverName = 'Stashly', username }) {
+    const paragraphs = [`The password of the account "${username}" was just changed.`, 'If this was not you, ask your administrator to secure the account.'];
+    return { subject: `${serverName}: your password was changed`, ...layout('Your password was changed', paragraphs, FOOTER) };
+}
+
+function emailChangedEmail({ serverName = 'Stashly', username }) {
+    const paragraphs = [`The email address of the account "${username}" was changed, so this address no longer receives its password reset links.`, 'If this was not you, ask your administrator to secure the account.'];
+    return { subject: `${serverName}: the email address of your account changed`, ...layout('Your account email changed', paragraphs, FOOTER) };
+}
+
+module.exports = { resetEmail, passwordChangedEmail, emailChangedEmail, testEmail, escapeHtml, layout, FOOTER };

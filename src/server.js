@@ -45,7 +45,7 @@ function createApp({ config, model, events, secret, now, logOut, auditOut, mail 
     syncAdminUser({ users, config, log: line => console.log(line) });
     const userAuth = new UserAuth({ config, secret, users, now });
     const controller = new StashController({ model, events, config, secret, now, isAdmin: adminAuth.isAdmin, audit, metrics, users, userAuth });
-    const userController = new UserController({ model, users, userAuth, adminAuth, config, stashes: controller, now, audit, metrics });
+    const userController = new UserController({ model, users, userAuth, adminAuth, config, stashes: controller, mailer, secret, now, audit, metrics });
     const adminController = new AdminController({
         model, events, config, adminAuth, settings, users, mailer, now, audit, metrics,
         // A new password clears the wrong-password count the stash controller keeps

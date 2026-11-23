@@ -41,8 +41,19 @@ function createUserRoutes({ controller, config }) {
 
     router.post('/auth/login', c.enabledOnly, loginLimiter, c.login);
     router.post('/auth/logout', c.enabledOnly, c.logout);
+    // Reset by email. Every request counts (the answer is always the same), so nobody can mail-bomb an address
+    const resetLimiter = limit => rateLimit({
+        windowMs: 15 * 60 * 1000,
+        limit,
+        standardHeaders: 'draft-8',
+        legacyHeaders: false,
+        message: { error: 'Too many attempts. Try again in a few minutes.' },
+    });
+    router.post('/auth/forgot', c.enabledOnly, resetLimiter(5), c.forgot);
+    router.post('/auth/reset', c.enabledOnly, resetLimiter(10), c.reset);
     router.get('/me', c.me);
     router.post('/me/password', c.requireUser, passwordLimiter, c.changePassword);
+    router.put('/me/email', c.requireUser, passwordLimiter, c.setEmail);
     router.get('/me/stashes', c.requireUser, c.listStashes);
     router.post('/me/stashes', c.requireUser, followLimiter, missLimiter, c.follow);
     router.delete('/me/stashes/:slug', c.requireUser, c.unfollow);
