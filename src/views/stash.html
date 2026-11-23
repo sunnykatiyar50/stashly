@@ -10,6 +10,9 @@
     <link rel="apple-touch-icon" href="/icons/icon-180.png">
     <meta name="theme-color" content="#2563eb">
     <link rel="stylesheet" href="/styles.css">
+    <!-- Hold the first paint until the page's scripts have drawn it (#pageReady, after the last script), so moving
+         between pages swaps the whole page at once instead of showing it bare and filling it in. Browsers without it ignore it. -->
+    <link rel="expect" href="#pageReady" blocking="render">
     <script src="/theme.js"></script>
 </head>
 <body class="app">
@@ -417,5 +420,6 @@
     <script src="/stash-share.js"></script>
     <script src="/stash-account.js"></script>
     <script src="/stash.js"></script>
+    <div id="pageReady" hidden></div>
 </body>
 </html>
