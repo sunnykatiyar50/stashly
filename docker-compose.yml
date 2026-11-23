@@ -1,5 +1,6 @@
 # Stashly, using the prebuilt image from GitHub Container Registry.
 #
+#   cp .env.example .env     # then set SESSION_SECRET, ADMIN_PASSWORD and anything else you need
 #   docker compose up -d
 #   docker compose pull && docker compose up -d     # update to the latest image
 #   IMAGE_TAG=0.1.0 docker compose up -d             # pin a released version (see the Releases page)
@@ -9,18 +10,11 @@ services:
     image: ghcr.io/sunnykatiyar50/stashly:${IMAGE_TAG:-latest}
     ports:
       - "3000:3000"
-    environment:
-      # Set a long random value so unlock cookies survive a rebuild (otherwise one is kept in the database)
-      SESSION_SECRET: ""
-      # Turns on /admin (stash overview and a settings page for the limits)
-      ADMIN_PASSWORD: ""
-      # REQUIRE_ADMIN_TO_CREATE: "true"   # only the admin can create stashes
-      # TRUST_PROXY: "1"   # when behind one reverse proxy ("true" also means one)
-      # MAX_FILE_MB: "25"
-      # MAX_FILES_PER_STASH: "500"
-      # MAX_STASH_MB: "100"
-      # ALLOW_NO_EXPIRY: "false"
-      # FILE_TYPES: "safe"   # safe | no-programs | any (also in Admin > Settings)
+    # Settings live in .env, not here: copy .env.example to .env and fill in what you need
+    # (SESSION_SECRET and ADMIN_PASSWORD are the ones to set). The file is optional.
+    env_file:
+      - path: .env
+        required: false
     volumes:
       - stashly-data:/data
     restart: unless-stopped
