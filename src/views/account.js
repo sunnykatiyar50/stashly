@@ -232,6 +232,14 @@
             open.href = '/s/' + encodeURIComponent(stash.slug);
             actions.appendChild(open);
         }
+        if (!stash.needsPassword) {
+            var pin = make('button', 'ghost small pin-button' + (stash.pinned ? ' pinned' : ''), stash.pinned ? 'Unpin' : 'Pin');
+            pin.type = 'button';
+            pin.setAttribute('aria-pressed', String(Boolean(stash.pinned)));
+            pin.title = stash.pinned ? 'Remove from the pinned list in the left menu' : 'Show this stash in the left menu for quick switching';
+            pin.addEventListener('click', function () { pinStash(stash, !stash.pinned); });
+            actions.appendChild(pin);
+        }
         // Only stashes someone else made can be unfollowed: your own stay in your list
         if (!stash.owned) {
             var unfollow = make('button', 'ghost small', 'Unfollow');
@@ -244,10 +252,20 @@
         return li;
     }
 
+    function pinStash(stash, pinned) {
+        api('/api/me/stashes/' + encodeURIComponent(stash.slug) + '/pin', { method: pinned ? 'PUT' : 'DELETE' }).then(function (res) {
+            if (res.status === 401) return sessionEnded();
+            if (!res.ok) { toast((res.body && res.body.error) || 'Could not change that.', true); return null; }
+            loadList();
+            if (window.StashlyAccountNav) window.StashlyAccountNav.refreshPins();
+            return null;
+        });
+    }
+
     function unfollowStash(stash) {
         api('/api/me/stashes/' + encodeURIComponent(stash.slug), { method: 'DELETE' }).then(function (res) {
             if (res.status === 401) return sessionEnded();
-            if (res.ok) { toast('Stopped following "' + stash.slug + '". The stash itself is untouched.'); loadList(); }
+            if (res.ok) { toast('Stopped following "' + stash.slug + '". The stash itself is untouched.'); loadList(); if (window.StashlyAccountNav) window.StashlyAccountNav.refreshPins(); }
             else toast('Could not unfollow.', true);
             return null;
         });

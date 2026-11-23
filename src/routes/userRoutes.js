@@ -47,6 +47,8 @@ function createUserRoutes({ controller, config }) {
     router.post('/me/stashes', c.requireUser, followLimiter, missLimiter, c.follow);
     router.delete('/me/stashes/:slug', c.requireUser, c.unfollow);
     router.post('/me/stashes/:slug/seen', c.requireUser, c.seen);
+    router.put('/me/stashes/:slug/pin', c.requireUser, c.pin);
+    router.delete('/me/stashes/:slug/pin', c.requireUser, c.unpin);
 
     return router;
 }

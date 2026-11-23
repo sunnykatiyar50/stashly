@@ -17,6 +17,7 @@
     var probed = false;     // /api/me has been asked
     var following = false;  // this stash is on the signed-in user's list with a grant that works
     var seenTimer = null;
+    var pinned = false;
     var autoTried = {};     // stashes this page already tried to follow by itself, so a failure is not retried in a loop
     var SEEN_EVERY_MS = 30000;
 
@@ -36,12 +37,15 @@
         // A drop-box link has nothing to read, so there is nothing to follow
         if (!accounts || !state.stash || (r !== 'full' && r !== 'view')) {
             button.classList.add('hidden');
+            $('pinStashButton').classList.add('hidden');
             stopSeen();
             return;
         }
         api('/api/me/stashes').then(function (res) {
             if (!res.ok || !res.body) return;
-            following = res.body.stashes.some(function (s) { return s.slug === state.stash.slug && !s.needsPassword; });
+            var mine = res.body.stashes.filter(function (s) { return s.slug === state.stash.slug && !s.needsPassword; })[0];
+            following = Boolean(mine);
+            pinned = Boolean(mine && mine.pinned);
             paint();
             if (following) { startSeen(); return; }
             stopSeen();
@@ -54,7 +58,37 @@
         }).catch(function () { /* the button keeps its last look */ });
     }
 
+    // The pin button: only for a stash that is in the list. Pinned stashes show in the left menu on every page.
+    function paintPin() {
+        var pin = $('pinStashButton');
+        pin.classList.toggle('hidden', !following);
+        pin.classList.toggle('pinned', pinned);
+        pin.setAttribute('aria-pressed', String(pinned));
+        pin.querySelector('.btn-label').textContent = pinned ? 'Pinned' : 'Pin';
+        pin.title = pinned ? 'Pinned in the left menu. Press to unpin.' : 'Show this stash in the left menu for quick switching';
+    }
+
+    $('pinStashButton').addEventListener('click', function () {
+        var pin = $('pinStashButton');
+        var want = !pinned;
+        pin.disabled = true;
+        api('/api/me/stashes/' + encodeURIComponent(state.stash.slug) + '/pin', { method: want ? 'PUT' : 'DELETE' }).then(function (res) {
+            pin.disabled = false;
+            if (res.ok) {
+                pinned = want;
+                paintPin();
+                if (window.StashlyAccountNav) window.StashlyAccountNav.refreshPins();
+            } else {
+                toast((res.body && res.body.error) || 'Could not change that.', true);
+            }
+        }).catch(function () {
+            pin.disabled = false;
+            toast('Could not reach the server.', true);
+        });
+    });
+
     function paint() {
+        paintPin();
         var button = $('followStashButton');
         button.classList.remove('hidden');
         button.classList.toggle('following', following);
@@ -114,7 +148,9 @@
             button.disabled = false;
             if (res.ok) {
                 following = false;
+                pinned = false;
                 setOptedOut(slug, true);
+                if (window.StashlyAccountNav) window.StashlyAccountNav.refreshPins();
                 paint();
                 stopSeen();
                 toast('Removed from My stashes');
