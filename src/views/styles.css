@@ -295,7 +295,7 @@ body.has-account-nav #logoutButton { display: none; }
 .more-toggle.open svg { transform: rotate(180deg); }
 .more-options { border-top: 1px solid var(--border); padding-top: 14px; }
 .more-options { display: flex; flex-direction: column; gap: 18px; }
-.random-name { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; margin-top: 2px; }
+.random-name { flex: none; display: inline-flex; align-items: center; gap: 5px; }
 .random-name svg { width: 14px; height: 14px; }
 .more-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; align-items: stretch; }
 .more-col h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0; }
@@ -479,6 +479,11 @@ audio.detail-media { max-height: none; }
 .notice a { color: inherit; font-weight: 600; }
 /* The notices on the stash page span the whole width of the page, like the clip list and the content below them */
 .stash-page .notice, #resetNotice, #roleBanner { max-width: none; width: 100%; box-sizing: border-box; }
+/* A notice with something to do about it: the words, then the buttons at the end of the row (they drop under the
+   words when there is no room for both) */
+.notice-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.notice-row .notice-text { flex: 1 1 260px; }
+.notice-actions { display: inline-flex; flex-wrap: wrap; gap: 8px; }
 
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
 .stat { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; }

@@ -28,10 +28,14 @@ test('More options hides the password, expiry and open-by-link behind a toggle t
     for (const id of ['passwordInput', 'ttlSelect', 'linkInput', 'openLinkButton']) {
         assert.ok(options.indexOf(`id="${id}"`) > -1, `${id} is inside More options`);
     }
-    // "Use a random name" is right under the name box, always visible (not behind the toggle)
-    assert.ok(html.indexOf('id="regenerateButton"') > html.indexOf('id="slugInput"'));
-    assert.ok(html.indexOf('id="regenerateButton"') < html.indexOf('id="slugHint"'));
+    // "Use a random name" is a wide button, so it shares the name row with Open and Create rather than having a line
+    // to itself, and it stays always visible (not behind the toggle)
+    const nameRow = html.slice(html.indexOf('class="input-row quick-row"'), html.indexOf('id="slugHint"'));
+    for (const id of ['slugInput', 'regenerateButton', 'openButton', 'createButton']) {
+        assert.ok(nameRow.includes(`id="${id}"`), `${id} is in the name row`);
+    }
     assert.ok(html.indexOf('id="regenerateButton"') < html.indexOf('id="moreOptions"'));
+    assert.match(view('styles.css'), /\.random-name\s*\{[^}]*flex:\s*none/);
     // Password and "Delete after" share one row; the link has a row to itself
     const create = options.slice(options.indexOf('id="moreCreateTitle"'), options.indexOf('id="moreOpenTitle"'));
     assert.ok(create.includes('class="field-row"'));

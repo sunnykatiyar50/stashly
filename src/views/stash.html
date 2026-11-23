@@ -149,8 +149,15 @@
 
             <!-- Shown to someone who opened a read-only or drop-box link -->
             <div id="roleBanner" class="card notice hidden" role="status"></div>
-            <!-- Shown when an admin chose this stash's password (and nobody has changed it since) -->
-            <div id="resetNotice" class="card notice hidden" role="status"></div>
+            <!-- Shown when an admin chose this stash's password (and nobody has changed it since). Straight to the
+                 form that fixes it, and anyone who has seen it can put it away in their own browser -->
+            <div id="resetNotice" class="card notice notice-row hidden">
+                <span class="notice-text" id="resetNoticeText" role="status"></span>
+                <span class="notice-actions">
+                    <button type="button" id="resetNoticePassword" class="ghost small hidden">Change password</button>
+                    <button type="button" id="resetNoticeDismiss" class="ghost small">Dismiss</button>
+                </span>
+            </div>
 
             <!-- New clip: always here, one small row. The expand button adds a title and a bigger box. -->
             <form id="composer" class="card composer-bar" novalidate>

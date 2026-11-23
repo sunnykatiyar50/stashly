@@ -40,19 +40,31 @@
         $('titleInput').placeholder = content === 'files' ? 'Title for the next file (Optional)' : 'Title (Optional)';
     }
 
+    // Dismissing the "an admin chose this password" notice. Remembered in this browser only, per stash, and tied to the
+    // time of that one reset: an admin choosing a password again shows the notice again, and another browser or person
+    // still sees it.
+    var RESET_SEEN_PREFIX = 'sl_reset_seen_';
+
+    function dismissedResetAt() {
+        try { return localStorage.getItem(RESET_SEEN_PREFIX + slug) || ''; } catch (e) { return ''; }
+    }
+
     function applyRole() {
         var r = role();
         sections.main.classList.toggle('role-view', r === 'view');
         sections.main.classList.toggle('role-drop', r === 'drop');
         // Options has nothing for a drop-box link (it may be in the top bar, outside the section above)
         $('optionsButton').classList.toggle('hidden', r === 'drop');
-        // An admin chose this password: the people using the stash can see it happened and when
+        // An admin chose this password: everyone using the stash sees that, and when. Changing it is only offered to
+        // someone who can actually change it; everyone else is told who can.
         var reset = $('resetNotice');
         var resetAt = state.stash.passwordResetAt;
-        reset.classList.toggle('hidden', !resetAt);
-        reset.textContent = resetAt
-            ? "An admin chose this stash's password on " + new Date(resetAt).toLocaleString() + '. If you did not ask for that, change the password under Options.'
-            : '';
+        reset.classList.toggle('hidden', !resetAt || resetAt === dismissedResetAt());
+        if (resetAt) {
+            var words = "An admin chose this stash's password on " + new Date(resetAt).toLocaleString() + '.';
+            $('resetNoticeText').textContent = r === 'full' ? words : words + ' Whoever knows the password can choose a new one.';
+            $('resetNoticePassword').classList.toggle('hidden', r !== 'full');
+        }
         var banner = $('roleBanner');
         banner.classList.toggle('hidden', r === 'full');
         banner.textContent = r === 'view'
@@ -356,6 +368,15 @@
         $('startDate').value = '';
         $('endDate').value = '';
         applyFilters();
+    });
+
+    // "Dismiss" only puts the notice away here; the password stays as the admin set it until somebody changes it
+    $('resetNoticeDismiss').addEventListener('click', function () {
+        var resetAt = state.stash && state.stash.passwordResetAt;
+        if (resetAt) {
+            try { localStorage.setItem(RESET_SEEN_PREFIX + slug, resetAt); } catch (e) { /* not remembered */ }
+        }
+        $('resetNotice').classList.add('hidden');
     });
 
     $('refreshButton').addEventListener('click', function () { load(); });
