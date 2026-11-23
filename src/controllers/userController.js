@@ -7,6 +7,7 @@ const { UnlockLockout } = require('../utils/lockout');
 const { noopAudit } = require('../utils/auditLog');
 const { noopMetrics } = require('../utils/metrics');
 const { grantRole, normalizeUsername, USERNAME_PATTERN, ROLES } = require('../models/userModel');
+const MAX_PINS = 20;
 
 const GENERIC_LOGIN_ERROR = 'That username or password is not right.';
 const NOT_ENABLED = 'Accounts are not enabled on this server.';
@@ -268,6 +269,22 @@ class UserController {
         res.json({ ok: true });
     };
 
+    // Pin (PUT) or unpin (DELETE) a stash in your list. Only stashes already in the list can be pinned, and only a few.
+    pin = (req, res) => this.setPin(req, res, true);
+    unpin = (req, res) => this.setPin(req, res, false);
+
+    setPin(req, res, pinned) {
+        const stash = this.model.findBySlug(String(req.params.slug || '').toLowerCase());
+        if (stash) this.users.ensureOwnerFollows(req.user.id);
+        const row = stash ? this.users.getFollow(req.user.id, stash.id) : null;
+        if (!row) return res.status(404).json({ error: 'That stash is not in your list.' });
+        if (pinned && !row.pinned_at && this.users.countPinned(req.user.id) >= MAX_PINS) {
+            return res.status(409).json({ error: 'You can pin up to ' + MAX_PINS + ' stashes. Unpin one first.' });
+        }
+        this.users.setPinned(req.user.id, stash.id, pinned, this.now());
+        res.json({ ok: true, pinned });
+    }
+
     // The dashboard. A grant that no longer works shows only that the password is needed again: no counts, no times, so
     // nothing about a stash leaks to someone who can no longer open it. Working grants come first, newest activity first.
     listStashes = (req, res) => {
@@ -278,7 +295,7 @@ class UserController {
             const owned = row.owner_id === req.user.id;
             // The owner needs no password, so an owned stash never "needs the password again"
             const role = owned ? 'full' : grantRole(row, row);
-            if (!role) return { slug: row.slug, role: null, needsPassword: true, owned: false, addedAt: row.added_at };
+            if (!role) return { slug: row.slug, role: null, needsPassword: true, owned: false, addedAt: row.added_at, pinned: Boolean(row.pinned_at) };
             return {
                 slug: row.slug,
                 owned,
@@ -291,11 +308,15 @@ class UserController {
                 latestAt: row.latest_at || null,
                 expiresAt: row.expires_at || null,
                 addedAt: row.added_at,
+                pinned: Boolean(row.pinned_at),
             };
         });
+        const pinnedAt = new Map(rows.map(row => [row.slug, row.pinned_at || '']));
         const key = row => row.latestAt || row.addedAt;
         out.sort((a, b) => {
-            // Your own stashes first, then the ones you follow that still open, then the ones that need the password
+            // Pinned ones first (the one pinned first on top), then your own stashes, then the ones you follow that still open, then the ones that need the password
+            if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+            if (a.pinned) return pinnedAt.get(a.slug) < pinnedAt.get(b.slug) ? -1 : 1;
             if (Boolean(a.owned) !== Boolean(b.owned)) return a.owned ? -1 : 1;
             if (a.needsPassword !== b.needsPassword) return a.needsPassword ? 1 : -1;
             return key(a) < key(b) ? 1 : key(a) > key(b) ? -1 : 0;

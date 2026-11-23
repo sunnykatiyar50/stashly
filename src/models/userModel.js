@@ -188,6 +188,17 @@ class UserModel {
         return this.db.prepare('UPDATE user_stashes SET last_seen_at = ? WHERE user_id = ? AND stash_id = ?').run(now.toISOString(), userId, stashId).changes > 0;
     }
 
+    countPinned(userId) {
+        return this.db.prepare('SELECT COUNT(*) AS n FROM user_stashes WHERE user_id = ? AND pinned_at IS NOT NULL').get(userId).n;
+    }
+
+    // Pins or unpins a stash that is in the user's list. False when it is not in the list.
+    setPinned(userId, stashId, pinned, now = new Date()) {
+        return this.db
+            .prepare('UPDATE user_stashes SET pinned_at = ? WHERE user_id = ? AND stash_id = ?')
+            .run(pinned ? now.toISOString() : null, userId, stashId).changes > 0;
+    }
+
     // The user's followed stashes with their counts, for the dashboard. A stash whose time is up is left out (the cleanup
     // job removes it within a minute). Counts follow the same rule as the stash listing: an item past its own expiry is
     // not counted. Burn-after-reading notes count as items (only that they exist, never their text).
@@ -195,7 +206,7 @@ class UserModel {
         const at = now.toISOString();
         return this.db
             .prepare(
-                `SELECT us.stash_id, us.added_at, us.last_seen_at, us.grant_role, us.grant_salt, us.grant_version, us.grant_view_hash,
+                `SELECT us.stash_id, us.pinned_at, us.added_at, us.last_seen_at, us.grant_role, us.grant_salt, us.grant_version, us.grant_view_hash,
                         s.slug, s.owner_id, s.password_hash, s.password_salt, s.session_version, s.view_token_hash, s.expires_at,
                         (SELECT COUNT(*) FROM items i WHERE i.stash_id = s.id AND (i.expires_at IS NULL OR i.expires_at > ?)) AS items,
                         (SELECT COUNT(*) FROM items i WHERE i.stash_id = s.id AND i.kind = 'file' AND (i.expires_at IS NULL OR i.expires_at > ?)) AS files,

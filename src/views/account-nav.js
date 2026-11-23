@@ -92,7 +92,68 @@
         parts.who.title = 'Signed in as ' + info.name + (info.sub ? ' (' + info.sub + ')' : '');
     }
 
+    // ---- pinned stashes: quick links under the main menu, on every page ----
+    // Drawn with DOM calls (no markup parsing)
+    function pinIcon() {
+        var ns = 'http://www.w3.org/2000/svg';
+        var svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        ['M12 17v5', 'M9 3h6l-1 7 4 3v2H6v-2l4-3z'].forEach(function (d) {
+            var path = document.createElementNS(ns, 'path');
+            path.setAttribute('d', d);
+            svg.appendChild(path);
+        });
+        return svg;
+    }
+    var pinBox = null;
+
+    function drawPins(stashes) {
+        var nav = document.querySelector('.sidebar-nav');
+        if (!nav) return;
+        var pinned = stashes.filter(function (s) { return s.pinned && !s.needsPassword; });
+        if (!pinned.length) { if (pinBox) { pinBox.remove(); pinBox = null; } return; }
+        if (!pinBox) {
+            pinBox = document.createElement('div');
+            pinBox.className = 'nav-pins';
+            pinBox.setAttribute('role', 'group');
+            pinBox.setAttribute('aria-label', 'Pinned stashes');
+            nav.appendChild(pinBox);
+        }
+        pinBox.textContent = '';
+        var heading = document.createElement('div');
+        heading.className = 'nav-pins-title label';
+        heading.textContent = 'Pinned';
+        pinBox.appendChild(heading);
+        var here = location.pathname.split('/')[1] === 's' ? decodeURIComponent(location.pathname.split('/')[2] || '').toLowerCase() : '';
+        pinned.forEach(function (stash) {
+            var link = document.createElement('a');
+            link.className = 'nav-link nav-pin' + (stash.slug === here ? ' active' : '');
+            link.href = '/s/' + encodeURIComponent(stash.slug);
+            link.title = stash.slug + (stash.newItems ? ' (' + stash.newItems + ' new)' : '');
+            link.appendChild(pinIcon());
+            var label = document.createElement('span');
+            label.className = 'label';
+            label.textContent = stash.slug;
+            link.appendChild(label);
+            if (stash.newItems > 0) {
+                var badge = document.createElement('span');
+                badge.className = 'nav-badge label';
+                badge.textContent = String(stash.newItems);
+                link.appendChild(badge);
+            }
+            pinBox.appendChild(link);
+        });
+    }
+
+    function refreshPins() {
+        return fetch('/api/me/stashes', { credentials: 'same-origin' })
+            .then(function (res) { return res.ok ? res.json() : null; })
+            .then(function (body) { if (body && body.stashes) drawPins(body.stashes); else drawPins([]); })
+            .catch(function () { /* keeps what it shows */ });
+    }
+
     function clear() {
+        if (pinBox) { pinBox.remove(); pinBox = null; }
         if (block) block.remove();
         block = null;
         document.body.classList.remove('has-account-nav');
@@ -106,6 +167,7 @@
                     var info = describe(body.user);
                     remember(info);
                     paint(info);
+                    refreshPins();
                 } else {
                     remember(null);
                     clear();
@@ -133,7 +195,7 @@
         });
     }
 
-    window.StashlyAccountNav = { refresh: refresh };
+    window.StashlyAccountNav = { refresh: refresh, refreshPins: refreshPins };
     var known = remembered();
     if (known) paint(known);
     refresh();
