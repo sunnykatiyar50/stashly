@@ -59,6 +59,7 @@ function createAdminRoutes({ controller, users, adminAuth, config }) {
     router.post('/users', admin, userLimiter, users.create);
     router.patch('/users/:id', admin, userLimiter, users.update);
     router.post('/users/:id/password', admin, userLimiter, users.resetPassword);
+    router.post('/users/:id/email-reset', admin, userLimiter, users.emailReset);
     router.post('/users/:id/sign-out', admin, userLimiter, users.signOut);
     router.delete('/users/:id', admin, userLimiter, users.remove);
 

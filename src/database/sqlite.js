@@ -224,6 +224,13 @@ const MIGRATIONS = [
         const columns = db.prepare('PRAGMA table_info(user_stashes)').all().map(column => column.name);
         if (!columns.includes('pinned_at')) db.exec('ALTER TABLE user_stashes ADD COLUMN pinned_at TEXT');
     },
+
+    // 10: an optional email address on a user, lowercase, used only to send them password reset links and notices.
+    // Not unique: two accounts may share one address (a family inbox).
+    db => {
+        const columns = db.prepare('PRAGMA table_info(users)').all().map(column => column.name);
+        if (!columns.includes('email')) db.exec('ALTER TABLE users ADD COLUMN email TEXT');
+    },
 ];
 
 const SCHEMA_VERSION = MIGRATIONS.length;

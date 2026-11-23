@@ -41,6 +41,11 @@ class UserModel {
         return this.db.prepare('SELECT * FROM users WHERE username = ?').get(username) || null;
     }
 
+    // Accounts that have this address (lowercase), enabled ones only, at most 3
+    findByEmail(email) {
+        return this.db.prepare('SELECT * FROM users WHERE email = ? AND disabled = 0 AND managed = 0 ORDER BY id LIMIT 3').all(email);
+    }
+
     count() {
         return this.db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
     }
@@ -56,7 +61,7 @@ class UserModel {
     list() {
         return this.db
             .prepare(
-                `SELECT u.id, u.username, u.display_name, u.role, u.disabled, u.managed, u.created_at, u.created_by, u.last_login_at,
+                `SELECT u.id, u.username, u.display_name, u.email, u.role, u.disabled, u.managed, u.created_at, u.created_by, u.last_login_at,
                         (SELECT COUNT(*) FROM user_stashes us WHERE us.user_id = u.id) AS stash_count
                  FROM users u ORDER BY u.username`
             )
@@ -64,14 +69,14 @@ class UserModel {
     }
 
     // Throws an error with code DUPLICATE when the username is taken
-    create({ username, displayName = null, hash, salt, role, createdBy = null, managed = false, now = new Date() }) {
+    create({ username, displayName = null, email = null, hash, salt, role, createdBy = null, managed = false, now = new Date() }) {
         try {
             const result = this.db
                 .prepare(
-                    `INSERT INTO users (username, display_name, password_hash, password_salt, role, managed, created_at, created_by)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+                    `INSERT INTO users (username, display_name, email, password_hash, password_salt, role, managed, created_at, created_by)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
                 )
-                .run(username, displayName, hash, salt, role, managed ? 1 : 0, now.toISOString(), createdBy);
+                .run(username, displayName, email, hash, salt, role, managed ? 1 : 0, now.toISOString(), createdBy);
             return this.findById(Number(result.lastInsertRowid));
         } catch (err) {
             if (/UNIQUE/i.test(String(err.message))) {
@@ -95,6 +100,10 @@ class UserModel {
             sets.push('disabled = ?');
             params.push(changes.disabled ? 1 : 0);
             if (changes.disabled && changes.role === undefined) sets.push('session_version = session_version + 1');
+        }
+        if (changes.email !== undefined) {
+            sets.push('email = ?');
+            params.push(changes.email);
         }
         if (changes.displayName !== undefined) {
             sets.push('display_name = ?');

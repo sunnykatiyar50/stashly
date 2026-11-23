@@ -415,6 +415,12 @@
             shown.textContent = user.displayName;
             name.appendChild(shown);
         }
+        if (user.email) {
+            var mail = document.createElement('span');
+            mail.className = 'muted';
+            mail.textContent = user.email;
+            name.appendChild(mail);
+        }
         tr.appendChild(cell(name));
         tr.appendChild(cell(chip(user.role === 'admin' ? 'Admin' : 'User', user.role === 'admin' ? 'role-admin' : '')));
         tr.appendChild(cell(chip(user.disabled ? 'Disabled' : 'Active', user.disabled ? 'status-off' : '')));
@@ -449,10 +455,12 @@
                 },
             },
             { label: 'Reset password', ariaLabel: 'Reset password of' + who, onClick: function () { openUserPassword(user); } },
+            { label: user.email ? 'Change email' : 'Add email', ariaLabel: 'Edit the email of' + who, onClick: function () { openUserEmail(user); } },
+            ].concat(user.email ? [{ label: 'Email a reset link', ariaLabel: 'Email a reset link to' + who, onClick: function () { emailResetLink(user); } }] : [], [
             { label: 'Sign out everywhere', ariaLabel: 'Sign out' + who + ' everywhere', onClick: function () { signOutUser(user); } },
             null,
             { label: 'Delete', danger: true, ariaLabel: 'Delete' + who, onClick: function () { deleteUser(user); } },
-        ], 'More actions for' + who));
+        ]), 'More actions for' + who));
         tr.appendChild(cell(actions, 'actions'));
         return tr;
     }
@@ -520,6 +528,45 @@
         });
     });
 
+    // ---- a user's email address, and emailing them a reset link ----
+
+    var userEmailDialog = $('userEmailDialog');
+    var userEmailTarget = null;
+
+    function openUserEmail(user) {
+        userEmailTarget = user;
+        $('userEmailTitle').textContent = 'Email address of ' + user.username;
+        $('userEmailInput').value = user.email || '';
+        $('userEmailError').textContent = '';
+        if (typeof userEmailDialog.showModal === 'function') userEmailDialog.showModal(); else userEmailDialog.setAttribute('open', '');
+        $('userEmailInput').focus();
+    }
+
+    $('userEmailCancel').addEventListener('click', function () { userEmailDialog.close(); });
+    userEmailDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
+    $('userEmailForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        $('userEmailError').textContent = '';
+        $('userEmailSave').disabled = true;
+        api('/api/admin/users/' + encodeURIComponent(userEmailTarget.id), { method: 'PATCH', body: { email: $('userEmailInput').value.trim() } }).then(function (res) {
+            $('userEmailSave').disabled = false;
+            if (userStatus(res)) { userEmailDialog.close(); return; }
+            if (res.ok) { userEmailDialog.close(); toast('Email saved for ' + userEmailTarget.username + '.'); loadUsers(); }
+            else $('userEmailError').textContent = (res.body && res.body.error) || 'Could not save the email.';
+        }).catch(function () {
+            $('userEmailSave').disabled = false;
+            $('userEmailError').textContent = 'Could not reach the server.';
+        });
+    });
+
+    function emailResetLink(user) {
+        api('/api/admin/users/' + encodeURIComponent(user.id) + '/email-reset', { method: 'POST' }).then(function (res) {
+            if (userStatus(res)) return;
+            if (res.ok) toast('Reset link sent to ' + user.email + '. It works once, for an hour.');
+            else toast(((res.body && res.body.error) || 'Could not send the email.') + (res.body && res.body.detail ? ' The mail server said: ' + res.body.detail : ''), true);
+        }).catch(function () { toast('Could not reach the server.', true); });
+    }
+
     // Create user and Backup stay out of the way until asked for: a button opens or closes each panel
     function setPanel(toggle, panel, open, focusId) {
         panel.classList.toggle('hidden', !open);
@@ -551,7 +598,7 @@
         $('createUserToggle').focus();
     });
 
-    var userFormErrors = { username: $('newUsernameError'), displayName: $('newDisplayNameError'), password: $('newUserPasswordError') };
+    var userFormErrors = { username: $('newUsernameError'), displayName: $('newDisplayNameError'), email: $('newUserEmailError'), password: $('newUserPasswordError') };
 
     $('userForm').addEventListener('submit', function (event) {
         event.preventDefault();
@@ -568,7 +615,7 @@
         var displayName = $('newDisplayName').value.trim();
         api('/api/admin/users', {
             method: 'POST',
-            body: { username: username, displayName: displayName || undefined, password: password, role: $('newUserRole').value },
+            body: { username: username, displayName: displayName || undefined, email: $('newUserEmail').value.trim() || undefined, password: password, role: $('newUserRole').value },
         }).then(function (res) {
             $('createUserButton').disabled = false;
             // Cleared whatever the answer: a password is never left in the form
@@ -577,6 +624,7 @@
             if (res.ok) {
                 $('newUsername').value = '';
                 $('newDisplayName').value = '';
+                $('newUserEmail').value = '';
                 $('newUserRole').value = 'user';
                 toast('Added ' + res.body.username + '. Tell them their password.');
                 closeUserForm();
