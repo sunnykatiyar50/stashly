@@ -12,6 +12,7 @@ const { UserAuth } = require('./utils/userAuth');
 const { AdminAuth } = require('./utils/adminAuth');
 const { syncAdminUser } = require('./utils/adminUser');
 const { SettingsStore } = require('./utils/settings');
+const { gzipAssets, revalidate } = require('./utils/staticAssets');
 const { accessLog } = require('./utils/accessLog');
 const { createAudit } = require('./utils/auditLog');
 const { Metrics } = require('./utils/metrics');
@@ -191,7 +192,9 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
     app.get('/admin', (req, res) => res.sendFile(path.join(viewsDir, 'admin.html')));
     // Sign in, and the stashes you follow
     app.get('/account', (req, res) => res.sendFile(path.join(viewsDir, 'account.html')));
-    app.use(express.static(viewsDir, { index: 'index.html' }));
+    // The page's scripts, styles and icons: compressed, and revalidated instead of re-downloaded on every click
+    app.use(gzipAssets(viewsDir));
+    app.use(express.static(viewsDir, { index: 'index.html', setHeaders: revalidate }));
 
     // Malformed JSON and oversized bodies come through here as 4xx errors from the body parsers
     // eslint-disable-next-line no-unused-vars

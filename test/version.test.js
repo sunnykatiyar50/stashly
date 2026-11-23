@@ -16,7 +16,7 @@ test('the public config says which release is running, taken from package.json',
 test('the sidebar script shows that version at the bottom of the menu, and it hides when the menu is collapsed', () => {
     const script = fs.readFileSync(path.join(__dirname, '..', 'src', 'views', 'shell.js'), 'utf8');
     assert.ok(script.includes('/api/config'));
-    assert.ok(script.includes('config.version'));
+    assert.ok(script.includes('res.body.version'));
     // The label carries the "label" class, which the collapsed sidebar already hides
     assert.ok(script.includes("'app-version label'"));
     const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'views', 'styles.css'), 'utf8');
