@@ -267,6 +267,12 @@
     var shared = firstMe;
     window.StashlyAccountNav = { refresh: refresh, refreshPins: refreshPins, firstMe: function () { return shared; } };
     var known = remembered();
-    if (known) paint(known);
+    if (known) {
+        paint(known);
+        // The pinned stashes seen last time are drawn at once too, so the menu does not grow after the page appears;
+        // the server's answer (with the new-item counts) replaces them a moment later
+        var pins = rememberedPins();
+        if (pins.length) drawPins(pins.map(function (slug) { return { slug: slug, pinned: true }; }));
+    }
     refresh();
 })();

@@ -881,3 +881,12 @@ body:not(.stash-open) .in-topbar { display: none; }
 .settings-section h2 { font-size: 16px; }
 .settings-section form { display: flex; flex-direction: column; gap: 14px; }
 .settings-actions { display: flex; justify-content: flex-start; }
+
+/* ===== Moving between pages =====
+   A short crossfade from one page to the next (same-origin navigations, where the browser supports it). The sidebar
+   has its own name, so it stays put while only the content changes. Off for people who ask for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+    @view-transition { navigation: auto; }
+    .sidebar { view-transition-name: sidebar; }
+    ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 120ms; }
+}

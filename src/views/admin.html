@@ -7,6 +7,9 @@
     <title>Admin · Stashly</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/styles.css">
+    <!-- Hold the first paint until the page's scripts have drawn it (#pageReady, after the last script), so moving
+         between pages swaps the whole page at once instead of showing it bare and filling it in. Browsers without it ignore it. -->
+    <link rel="expect" href="#pageReady" blocking="render">
     <script src="/theme.js"></script>
 </head>
 <body class="app">
@@ -268,5 +271,6 @@
     <script src="/shell.js"></script>
     <script src="/account-nav.js"></script>
     <script src="/admin.js"></script>
+    <div id="pageReady" hidden></div>
 </body>
 </html>
