@@ -123,7 +123,7 @@
 
     function show(name) {
         Object.keys(sections).forEach(function (key) { sections[key].classList.toggle('hidden', key !== name); });
-        // Options and Log out may sit in the top bar on a phone; they only show while the stash itself is open
+        // Options and Close may sit in the top bar on a phone; they only show while the stash itself is open
         document.body.classList.toggle('stash-open', name === 'main');
     }
 

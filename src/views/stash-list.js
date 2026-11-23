@@ -430,7 +430,7 @@
         });
     }
 
-    // On a phone, Options and Log out move up into the top bar (next to Admin and Theme), so the row under the
+    // On a phone, Options and Close move up into the top bar (next to Admin and Theme), so the row under the
     // stash name holds only the everyday buttons. On a wider screen they go back to the end of that row.
     (function placeTopButtons() {
         var phone = window.matchMedia('(max-width: 760px)');

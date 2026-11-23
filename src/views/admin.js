@@ -47,6 +47,7 @@
             el.classList.toggle('hidden', !value);
         });
         if (value) showAccountState();
+        if (window.StashlyAccountNav) window.StashlyAccountNav.refresh();
     }
 
     // The sidebar link to the user account page says "My stashes" when an account is already signed in, "Sign in" otherwise

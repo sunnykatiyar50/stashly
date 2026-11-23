@@ -315,6 +315,7 @@
     // The left menu adds (or drops) the Admin section for whoever is signed in now, without a reload
     function refreshAdminNav() {
         if (window.StashlyAdminNav) window.StashlyAdminNav.refresh();
+        if (window.StashlyAccountNav) window.StashlyAccountNav.refresh();
     }
 
     function start(justSignedIn) {
