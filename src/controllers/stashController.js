@@ -201,6 +201,8 @@ class StashController {
     // password change, "sign out other devices" or a replaced read-only link, exactly as a cookie does. A cookie that
     // gives more than the follow wins.
     access(req, stash, user = req.user) {
+        // The owner of a stash (the signed-in user who created it) always has full access, password or not
+        if (this.ownedBy(user, stash)) return { role: 'full', token: null };
         if (!stash.password_hash) return { role: 'full', token: null };
         const cookies = parseCookies(req.headers.cookie);
         const now = this.now().getTime();
@@ -215,6 +217,15 @@ class StashController {
         }
         if (granted) return { role: granted, token: null };
         return { role: null, token: null };
+    }
+
+    // Whether this user made this stash. A stash made by a guest (or whose owner was deleted) has no owner.
+    ownedBy(user, stash) {
+        return Boolean(user && stash && stash.owner_id && stash.owner_id === user.id);
+    }
+
+    isOwner(req, stash = req.stash) {
+        return this.ownedBy(req.user, stash);
     }
 
     // What the user's follow of this stash lets them do right now ('full', 'view' or null)
@@ -348,11 +359,13 @@ class StashController {
                 passwordHash: hashed.hash,
                 passwordSalt: hashed.salt,
                 ttlMs: ttl.ms,
+                // A signed-in user owns what they create; a guest's stash has no owner
+                ownerId: req.user ? req.user.id : null,
                 now: this.now(),
             });
             // The creator is let in without retyping the password
             if (stash.password_hash) this.setAccessCookie(req, res, stash);
-            this.audit('stash.created', { req, stash, detail: { password: Boolean(password), ttl: ttl.key } });
+            this.audit('stash.created', { req, stash, detail: { password: Boolean(password), ttl: ttl.key, owned: Boolean(req.user) } });
             // A signed-in user follows what they create: it shows up on their page without typing the password again
             if (req.user && this.users) {
                 this.users.follow(req.user.id, stash.id, { role: 'full', salt: stash.password_salt, version: stash.session_version || 0, viewHash: null }, this.now());
@@ -547,12 +560,17 @@ class StashController {
         if (typeof newPassword !== 'string' || newPassword.length < min || newPassword.length > MAX_PASSWORD) {
             return res.status(400).json({ error: `The new password must be ${min} to ${MAX_PASSWORD} characters.`, field: 'newPassword' });
         }
-        if (this.refuseIfLocked(req, res)) return;
-        if (!(await verifyPassword(currentPassword, stash.password_hash, stash.password_salt))) {
-            this.noteFailure(req, stash, 'password_change');
-            return res.status(401).json({ error: 'That is not the current password.', field: 'currentPassword' });
+        // The owner is signed in to their account, which is proof enough: they may set a new password without the old one
+        // (they never had to type it to get in). Everyone else proves they know it.
+        const owner = this.isOwner(req, stash);
+        if (!owner) {
+            if (this.refuseIfLocked(req, res)) return;
+            if (!(await verifyPassword(currentPassword, stash.password_hash, stash.password_salt))) {
+                this.noteFailure(req, stash, 'password_change');
+                return res.status(401).json({ error: 'That is not the current password.', field: 'currentPassword' });
+            }
         }
-        if (newPassword === currentPassword) {
+        if (typeof currentPassword === 'string' && newPassword === currentPassword) {
             return res.status(400).json({ error: 'The new password is the same as the current one.', field: 'newPassword' });
         }
 
@@ -648,6 +666,10 @@ class StashController {
             slug: stash.slug,
             role: req.role,
             hasPassword: Boolean(stash.password_hash),
+            // Whether the signed-in visitor made this stash (it is then always in their list, and they need no password)
+            owned: this.isOwner(req, stash),
+            // When an admin last chose this stash's password, so the people using it can see it happened
+            passwordResetAt: req.role === 'drop' ? null : stash.password_reset_at || null,
             createdAt: stash.created_at,
             expiresAt: stash.expires_at,
             // Only someone with full access sees which share links exist

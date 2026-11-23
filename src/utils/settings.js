@@ -85,6 +85,11 @@ const FIELDS = {
         help: 'Visitors can still open and use stashes they have the link to.',
         read: c => c.requireAdminToCreate, write: (c, v) => { c.requireAdminToCreate = v; },
     },
+    adminCanResetStashPasswords: {
+        group: 'Stashes', label: 'Admin can reset passwords of stashes', type: 'bool',
+        help: 'Lets an admin choose a new password for a stash that no signed-in user made (and so get into it). Stashes with an owner can never be reset by an admin. Turn it off and the admin can only delete or extend such a stash.',
+        read: c => c.adminCanResetStashPasswords, write: (c, v) => { c.adminCanResetStashPasswords = v; },
+    },
     requireLoginToCreate: {
         group: 'Stashes', label: 'Only signed-in users can create stashes', type: 'bool',
         help: 'Users the admin made, and admins, can create stashes; anyone else can still open and use stashes they have the link to. "Only the admin" above wins when both are on.',

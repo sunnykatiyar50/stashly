@@ -166,7 +166,10 @@
     $('changePasswordToggle').addEventListener('click', function (event) {
         passwordForm.classList.remove('hidden');
         event.currentTarget.classList.add('hidden');
-        $('currentPasswordInput').focus();
+        // The owner is signed in to their account, which is proof enough: they need not type the old password
+        var owned = Boolean(state.stash && state.stash.owned);
+        $('currentPasswordInput').classList.toggle('hidden', owned);
+        (owned ? $('newPasswordInput') : $('currentPasswordInput')).focus();
     });
 
     $('changePasswordCancel').addEventListener('click', closePasswordForm);
@@ -177,12 +180,13 @@
         error.textContent = '';
         var current = $('currentPasswordInput').value;
         var next = $('newPasswordInput').value;
-        if (!current) { error.textContent = 'Enter the current password.'; $('currentPasswordInput').focus(); return; }
+        var owned = Boolean(state.stash && state.stash.owned);
+        if (!owned && !current) { error.textContent = 'Enter the current password.'; $('currentPasswordInput').focus(); return; }
         var minPassword = state.minPassword || 10;
         if (next.length < minPassword) { error.textContent = 'The new password must be at least ' + minPassword + ' characters.'; $('newPasswordInput').focus(); return; }
         if (next !== $('repeatPasswordInput').value) { error.textContent = 'The two new passwords do not match.'; $('repeatPasswordInput').focus(); return; }
         $('changePasswordSave').disabled = true;
-        api(base + '/password', { method: 'POST', body: { currentPassword: current, newPassword: next } }).then(function (res) {
+        api(base + '/password', { method: 'POST', body: owned ? { newPassword: next } : { currentPassword: current, newPassword: next } }).then(function (res) {
             $('changePasswordSave').disabled = false;
             if (res.ok) {
                 state.stash.sessionEndsAt = res.body.sessionEndsAt;

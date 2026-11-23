@@ -168,6 +168,12 @@
             name.appendChild(lock);
         }
         tr.appendChild(cell(name));
+        // Who made it: a signed-in user (an admin cannot reset the password of their stash), or a guest
+        var ownerCell = cell(stash.owner || 'Guest', stash.owner ? 'owner-cell' : 'owner-cell muted');
+        ownerCell.title = stash.owner
+            ? 'Made by ' + stash.owner + '. The owner can change its password; an admin cannot reset it.'
+            : 'Made by a guest, so it has no owner.';
+        tr.appendChild(ownerCell);
         tr.appendChild(cell(String(stash.items), 'num'));
         tr.appendChild(cell(String(stash.files), 'num'));
         tr.appendChild(cell(formatSize(stash.bytes), 'num'));
@@ -186,12 +192,15 @@
             extend.addEventListener('click', function () { extendStash(stash); });
             actions.appendChild(extend);
         }
-        var pw = document.createElement('button');
-        pw.type = 'button';
-        pw.className = 'ghost small';
-        pw.textContent = stash.hasPassword ? 'Change password' : 'Set password';
-        pw.addEventListener('click', function () { openPasswordDialog(stash); });
-        actions.appendChild(pw);
+        // Not offered for a stash with an owner, nor when the server has switched resetting off
+        if (stash.canResetPassword) {
+            var pw = document.createElement('button');
+            pw.type = 'button';
+            pw.className = 'ghost small';
+            pw.textContent = stash.hasPassword ? 'Change password' : 'Set password';
+            pw.addEventListener('click', function () { openPasswordDialog(stash); });
+            actions.appendChild(pw);
+        }
         var del = document.createElement('button');
         del.type = 'button';
         del.className = 'danger-ghost small';

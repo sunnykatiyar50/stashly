@@ -169,6 +169,17 @@ class UserModel {
             .run(userId, stashId, at, at, grant.role, grant.salt || null, grant.version || 0, grant.viewHash || null);
     }
 
+    // A user's own stashes are always in their list: this adds a row for any that has none (created before the list
+    // existed, or whose row was lost), so the new-items counts work the same for them as for followed stashes
+    ensureOwnerFollows(userId) {
+        this.db
+            .prepare(
+                `INSERT OR IGNORE INTO user_stashes (user_id, stash_id, added_at, last_seen_at, grant_role)
+                 SELECT s.owner_id, s.id, s.created_at, s.created_at, 'full' FROM stashes s WHERE s.owner_id = ?`
+            )
+            .run(userId);
+    }
+
     unfollow(userId, stashId) {
         return this.db.prepare('DELETE FROM user_stashes WHERE user_id = ? AND stash_id = ?').run(userId, stashId).changes > 0;
     }
@@ -185,7 +196,7 @@ class UserModel {
         return this.db
             .prepare(
                 `SELECT us.stash_id, us.added_at, us.last_seen_at, us.grant_role, us.grant_salt, us.grant_version, us.grant_view_hash,
-                        s.slug, s.password_hash, s.password_salt, s.session_version, s.view_token_hash, s.expires_at,
+                        s.slug, s.owner_id, s.password_hash, s.password_salt, s.session_version, s.view_token_hash, s.expires_at,
                         (SELECT COUNT(*) FROM items i WHERE i.stash_id = s.id AND (i.expires_at IS NULL OR i.expires_at > ?)) AS items,
                         (SELECT COUNT(*) FROM items i WHERE i.stash_id = s.id AND i.kind = 'file' AND (i.expires_at IS NULL OR i.expires_at > ?)) AS files,
                         (SELECT COUNT(*) FROM items i WHERE i.stash_id = s.id AND i.created_at > us.last_seen_at AND (i.expires_at IS NULL OR i.expires_at > ?)) AS new_items,

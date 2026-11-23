@@ -205,6 +205,17 @@ const MIGRATIONS = [
             db.exec('ALTER TABLE users ADD COLUMN managed INTEGER NOT NULL DEFAULT 0');
         }
     },
+
+    // 8: who made a stash (a signed-in user; no owner means a guest made it), and when an admin last reset its
+    // password. Existing stashes have no owner. If a user is deleted their stashes become guest stashes, not deleted.
+    db => {
+        const columns = db.prepare('PRAGMA table_info(stashes)').all().map(column => column.name);
+        if (!columns.includes('owner_id')) {
+            db.exec('ALTER TABLE stashes ADD COLUMN owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL');
+        }
+        if (!columns.includes('password_reset_at')) db.exec('ALTER TABLE stashes ADD COLUMN password_reset_at TEXT');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_stashes_owner ON stashes (owner_id)');
+    },
 ];
 
 const SCHEMA_VERSION = MIGRATIONS.length;

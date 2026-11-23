@@ -134,16 +134,17 @@ class StashModel {
 
     // ---- stashes ----
 
-    createStash({ slug, passwordHash = null, passwordSalt = null, ttlMs = null, now = new Date() }) {
+    // ownerId: the signed-in user who made it, or null for a guest
+    createStash({ slug, passwordHash = null, passwordSalt = null, ttlMs = null, ownerId = null, now = new Date() }) {
         const createdAt = now.toISOString();
         const expiresAt = ttlMs ? new Date(now.getTime() + ttlMs).toISOString() : null;
         try {
             const result = this.db
                 .prepare(
-                    `INSERT INTO stashes (slug, password_hash, password_salt, ttl_ms, created_at, expires_at)
-                     VALUES (?, ?, ?, ?, ?, ?)`
+                    `INSERT INTO stashes (slug, password_hash, password_salt, ttl_ms, created_at, expires_at, owner_id)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)`
                 )
-                .run(slug, passwordHash, passwordSalt, ttlMs, createdAt, expiresAt);
+                .run(slug, passwordHash, passwordSalt, ttlMs, createdAt, expiresAt, ownerId);
             return this.getStashById(Number(result.lastInsertRowid));
         } catch (err) {
             if (/UNIQUE/i.test(String(err.message))) {
@@ -185,10 +186,12 @@ class StashModel {
 
     // A new password (a new salt too, which signs everyone out). The read-only and drop-box links are cancelled
     // with it, since they were given out under the old password.
-    setPassword(id, hash, salt) {
+    // resetAt: set (an ISO time) only when an admin chose the password, so the stash can say so. Anyone who knows the
+    // password changing it clears the mark.
+    setPassword(id, hash, salt, resetAt = null) {
         this.db
-            .prepare('UPDATE stashes SET password_hash = ?, password_salt = ?, view_token_hash = NULL, drop_token_hash = NULL WHERE id = ?')
-            .run(hash, salt, id);
+            .prepare('UPDATE stashes SET password_hash = ?, password_salt = ?, view_token_hash = NULL, drop_token_hash = NULL, password_reset_at = ? WHERE id = ?')
+            .run(hash, salt, resetAt, id);
         return this.getStashById(id);
     }
 
@@ -577,7 +580,8 @@ class StashModel {
         const params = search ? [`%${escapeLike(search.toLowerCase())}%`] : [];
         return this.db
             .prepare(
-                `SELECT s.id, s.slug, s.ttl_ms, s.created_at, s.expires_at,
+                `SELECT s.id, s.slug, s.ttl_ms, s.created_at, s.expires_at, s.owner_id,
+                        (SELECT username FROM users WHERE id = s.owner_id) AS owner,
                         CASE WHEN s.password_hash IS NULL THEN 0 ELSE 1 END AS has_password,
                         COUNT(i.id) AS items,
                         COALESCE(SUM(CASE WHEN i.kind = 'file' THEN 1 ELSE 0 END), 0) AS files,

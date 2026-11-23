@@ -672,7 +672,8 @@ test('the audit log and the access log record account events and never a passwor
     await request(ctx.app).post('/api/auth/login').send({ username: 'secret.user.name', password: PASSWORD }).expect(429);
     ctx.clock.time = new Date(ctx.clock.time.getTime() + 16 * 60 * 1000);
     const agent = await signIn(ctx, 'secret.user.name');
-    await agent.post('/api/stashes').send({ slug: 'audit-stash-name', password: 'stash secret pw' }).expect(201);
+    // made by a guest, so the user follows it with the password (and can unfollow it: only stashes someone else made can be)
+    await request(ctx.app).post('/api/stashes').send({ slug: 'audit-stash-name', password: 'stash secret pw' }).expect(201);
     await agent.post('/api/me/stashes').send({ slug: 'audit-stash-name', password: 'stash secret pw' }).expect(200);
     await agent.delete('/api/me/stashes/audit-stash-name').expect(200);
     await agent.post('/api/me/password').send({ currentPassword: PASSWORD, newPassword: 'changed secret pw' }).expect(200);

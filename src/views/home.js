@@ -135,7 +135,8 @@
                 meta.appendChild(make('span', 'chip warn', 'Needs the password again'));
             } else {
                 if (stash.newItems > 0) meta.appendChild(make('span', 'chip new-chip', stash.newItems + ' new'));
-                if (stash.role === 'view') meta.appendChild(make('span', 'chip', 'Read-only'));
+                if (stash.owned) meta.appendChild(make('span', 'chip owner-chip', 'Yours'));
+                else if (stash.role === 'view') meta.appendChild(make('span', 'chip', 'Read-only'));
                 meta.appendChild(make('span', 'muted', stash.latestAt ? relativeTime(stash.latestAt) : 'no activity yet'));
             }
             link.appendChild(meta);

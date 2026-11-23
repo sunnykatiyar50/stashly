@@ -59,9 +59,13 @@
         button.classList.remove('hidden');
         button.classList.toggle('following', following);
         button.setAttribute('aria-pressed', String(following));
-        var word = following ? 'Following' : 'Follow';
+        // A stash you made is always in your list: nothing to press
+        var owned = Boolean(state.stash && state.stash.owned);
+        button.disabled = owned;
+        var word = owned ? 'Yours' : following ? 'Following' : 'Follow';
         button.querySelector('.btn-label').textContent = word;
-        button.setAttribute('aria-label', following ? 'Following this stash. Press to stop following.' : 'Follow this stash in My stashes');
+        button.setAttribute('aria-label', owned ? 'You made this stash, so it is always in My stashes.' : following ? 'Following this stash. Press to stop following.' : 'Follow this stash in My stashes');
+        if (owned) { button.title = 'You made this stash, so it is always in your My stashes list.'; return; }
         button.title = following
             ? 'This stash is on your My stashes page, added when you opened it. Press to remove it (the stash itself is not touched).'
             : 'Add this stash to your My stashes page' + (role() === 'view' ? ' (read-only, as with this link)' : '');

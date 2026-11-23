@@ -242,7 +242,7 @@ test('audit lines carry the event, address, stash tag and actor, and nothing abo
         assert.ok(e.ip);
     }
     assert.equal(events[0].stash, tag('audit-one'));
-    assert.deepEqual(events[0].detail, { password: true, ttl: '8h' });
+    assert.deepEqual(events[0].detail, { password: true, ttl: '8h', owned: false });
     assert.deepEqual(events[1].detail, { kind: 'note', undoable: true });
     assert.deepEqual(events[3].detail, { kind: 'file', undoable: true });
     assert.deepEqual(events[5].detail, { kind: 'drop' });
