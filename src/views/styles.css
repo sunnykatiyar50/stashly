@@ -243,13 +243,13 @@ body.has-account-nav #logoutButton { display: none; }
 
 /* ===== Forms ===== */
 /* The home page: one centred column. Auto margins centre it in the free space, top and sides. */
-.home-stack { width: min(1040px, 100%); margin: auto; display: flex; flex-direction: column; gap: 14px; padding: 8px 0; }
+.home-stack { width: min(1120px, 100%); margin: auto; display: flex; flex-direction: column; gap: 14px; padding: 8px 0; }
 .home-stack .view-header { justify-content: center; text-align: center; }
 .home-stack .view-title { flex-direction: column; align-items: center; gap: 4px; }
 .home-stack .view-title h1 { font-size: 26px; }
 .home-stack .form-card, .home-stack .notice { max-width: none; }
 /* The form and your stashes on the left, how it works on the right; one column when there is not room for both */
-.home-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr); gap: 14px; align-items: start; }
+.home-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, 1fr); gap: 14px; align-items: start; }
 .home-main, .home-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 /* The curl lines wrap, so the whole of them shows in the narrower column */
 .how-card .code { white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: visible; }
@@ -275,18 +275,12 @@ body.has-account-nav #logoutButton { display: none; }
 .more-toggle svg { width: 16px; height: 16px; transition: transform 0.15s; }
 .more-toggle.open svg { transform: rotate(180deg); }
 .more-options { border-top: 1px solid var(--border); padding-top: 14px; }
-.more-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px 24px; }
+.more-options { display: flex; flex-direction: column; gap: 18px; }
+.random-name { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; margin-top: 2px; }
+.random-name svg { width: 14px; height: 14px; }
 .more-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; align-items: stretch; }
 .more-col h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0; }
 .more-col button { align-self: flex-start; }
-.my-stashes-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.my-stashes-head h3 { margin: 0; }
-.home-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.home-stash { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); text-decoration: none; background: var(--surface-alt); }
-.home-stash:hover { border-color: var(--blue); background: var(--blue-soft); }
-.home-stash.stale { border-style: dashed; }
-.home-stash-name { font-weight: 600; overflow-wrap: anywhere; }
-.home-stash-meta { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; }
 .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .field label { font-weight: 600; font-size: 13px; }
 .field .optional { font-weight: 400; color: var(--muted); }
@@ -579,7 +573,6 @@ audio.detail-media { max-height: none; }
     .view { overflow: visible; padding: 12px; }
     .toolbar input[type="search"] { width: 100%; }
     .field-row { grid-template-columns: 1fr; }
-    .more-grid { grid-template-columns: 1fr; }
     .settings-row { grid-template-columns: 1fr; }
     .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
     .settings-tabs { flex-direction: row; overflow-x: auto; padding: 0 0 8px; border-right: none; border-bottom: 1px solid var(--border); }

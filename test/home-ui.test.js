@@ -25,9 +25,19 @@ test('More options hides the password, expiry and open-by-link behind a toggle t
     assert.match(tag(html, 'moreToggle'), /aria-controls="moreOptions"/);
     assert.match(tag(html, 'moreOptions'), /class="[^"]*\bhidden\b/);
     const options = html.slice(html.indexOf('id="moreOptions"'));
-    for (const id of ['passwordInput', 'ttlSelect', 'regenerateButton', 'linkInput', 'openLinkButton']) {
+    for (const id of ['passwordInput', 'ttlSelect', 'linkInput', 'openLinkButton']) {
         assert.ok(options.indexOf(`id="${id}"`) > -1, `${id} is inside More options`);
     }
+    // "Use a random name" is right under the name box, always visible (not behind the toggle)
+    assert.ok(html.indexOf('id="regenerateButton"') > html.indexOf('id="slugInput"'));
+    assert.ok(html.indexOf('id="regenerateButton"') < html.indexOf('id="slugHint"'));
+    assert.ok(html.indexOf('id="regenerateButton"') < html.indexOf('id="moreOptions"'));
+    // Password and "Delete after" share one row; the link has a row to itself
+    const create = options.slice(options.indexOf('id="moreCreateTitle"'), options.indexOf('id="moreOpenTitle"'));
+    assert.ok(create.includes('class="field-row"'));
+    assert.ok(create.indexOf('id="passwordInput"') < create.indexOf('id="ttlSelect"'));
+    const open = options.slice(options.indexOf('id="moreOpenTitle"'));
+    assert.ok(open.includes('id="linkInput"') && !open.includes('id="ttlSelect"') && !open.includes('id="passwordInput"'));
     // It is not drawn open on the first paint, and the choice is remembered in the browser
     assert.ok(view('home.js').includes('sl_home_more'));
 });
@@ -47,33 +57,32 @@ test('typing a name that is not a stash offers to create it; a name that is open
     assert.ok(script.includes('addressOf('));
 });
 
-test('a signed-in account sees the stashes it follows on the home page, and a guest does not', () => {
+test('the home page does not list stashes: My stashes is one click away in the menu', () => {
     const html = view('index.html');
-    assert.match(tag(html, 'myStashes'), /class="[^"]*\bhidden\b/);
-    assert.ok(html.includes('href="/account"') && html.includes('See all'));
+    assert.doesNotMatch(html, /id="myStashes"|id="homeStashList"/);
     const script = view('home.js');
-    // Only asked for after /api/me says someone is signed in
-    assert.ok(script.lastIndexOf('loadMyStashes()') > script.indexOf("api('/api/me')"));
-    assert.ok(script.includes('/api/me/stashes'));
-    // Names go in as text, never as markup
+    assert.ok(!script.includes('/api/me/stashes'));
     assert.doesNotMatch(script, /innerHTML/);
+    // the menu entry for My stashes is still there for someone signed in
+    assert.match(tag(html, 'accountNavLink'), /class="[^"]*\bhidden\b/);
+    assert.match(script, /accountNavLink/);
 });
 
-test('the home page has two columns: the form and your stashes on the left, how it works on the right', () => {
+test('the home page has two columns: the form on the left, how it works on the right', () => {
     const html = view('index.html');
     const grid = html.indexOf('class="home-grid"');
     const main = html.indexOf('class="home-main"');
     const side = html.indexOf('class="home-side"');
     assert.ok(grid > -1 && main > grid && side > main, 'home-grid holds home-main, then home-side');
-    // the open/create form and the followed stashes are in the left column, how it works in the right
+    // the open/create form is in the left column, how it works in the right
     const left = html.slice(main, side);
-    assert.ok(left.includes('id="quickForm"') && left.includes('id="myStashes"'));
+    assert.ok(left.includes('id="quickForm"'));
     assert.ok(!left.includes('How it works'));
     const right = html.slice(side);
     assert.ok(right.includes('How it works') && right.includes('id="curlExample"'));
     // two columns on a wide screen, one when there is no room, and the curl lines wrap so all of them show
     const css = view('styles.css');
-    assert.match(css, /\.home-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.55fr\)\s*minmax\(280px,\s*1fr\)/);
+    assert.match(css, /\.home-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.15fr\)\s*minmax\(320px,\s*1fr\)/);
     assert.match(css, /@media \(max-width: 900px\)\s*\{\s*\.home-grid\s*\{\s*grid-template-columns:\s*1fr/);
     assert.match(css, /\.how-card \.code\s*\{[^}]*white-space:\s*pre-wrap/);
 });

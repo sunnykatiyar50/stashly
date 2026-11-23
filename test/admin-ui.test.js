@@ -61,8 +61,8 @@ test('opening a stash follows it by itself: no follow form, no extra note, and M
     assert.match(nav, /id="accountNavLink"/);
     assert.match(tag(home, 'accountNavLink'), /class="[^"]*\bhidden\b/);
     assert.match(view('home.js'), /accountNavLink/);
-    // ...but it does list the stashes the signed-in account follows, for a one-click open (the full list is on My stashes)
-    assert.ok(view('home.js').includes('/api/me/stashes'));
+    // The home page does not list stashes: My stashes is in the menu
+    assert.ok(!view('home.js').includes('/api/me/stashes'));
 
     // The stash page adds the stash by itself, and respects "stop following" in the same tab
     const script = view('stash-account.js');
