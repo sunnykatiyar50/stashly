@@ -641,21 +641,49 @@ class StashController {
     };
 
     get = (req, res) => {
-        const stash = req.stash;
         // The page sends its search in the body (POST .../query), so the words never appear in an address that a
         // proxy logs; GET with ?search= still works for scripts
-        const input = req.method === 'POST' ? req.body || {} : req.query;
+        const out = this.listing(req, req.method === 'POST' ? req.body || {} : req.query);
+        res.status(out.status).json(out.body);
+    };
+
+    // The first page of a stash, to send inside the stash page itself (see the /s/:slug route), or null when it is not
+    // sent that way. Only for a visitor who proves they know the stash beyond its name: an unlocked password stash
+    // (cookie or follow), its owner, or someone who follows it. For anyone else (a stash with no password reached by
+    // its name alone, a locked one, one that does not exist) nothing is added, so the page says nothing about the name
+    // that the API's own rate limits for guessing do not already cover, and the page asks the API as before.
+    initialPage(req, slug) {
+        const stash = this.model.findBySlug(String(slug || '').toLowerCase());
+        if (!stash || (stash.expires_at && stash.expires_at <= this.now().toISOString())) return null;
+        const { role, token } = this.access(req, stash);
+        if (!role) return null;
+        const known = Boolean(stash.password_hash) || this.ownedBy(req.user, stash) || Boolean(req.user && this.users && this.users.getFollow(req.user.id, stash.id));
+        if (!known) return null;
+        req.stash = stash;
+        req.role = role;
+        req.signIn = token;
+        // The same request the page makes for its first page (stash-load.js queryFor)
+        const out = this.listing(req, { preview: true, limit: 100, offset: 0, fullFirst: true });
+        return out.status === 200 ? out.body : null;
+    }
+
+    // A stash's listing for this visitor as { status, body }: one page of items (or all of them) with the stash's details
+    listing(req, input) {
+        const stash = req.stash;
         const range = dateRange(input);
-        if (range.error) return res.status(400).json({ error: range.error });
+        if (range.error) return { status: 400, body: { error: range.error } };
         const search = typeof input.search === 'string' ? input.search.trim().slice(0, 200) : '';
         // Optional: only the first `limit` items (pinned, then newest), with `total` still counting every match
         const preview = input.preview === true || input.preview === '1' || input.preview === 'true';
         const limit = parseLimit(input.limit);
-        if (limit.error) return res.status(400).json({ error: limit.error, field: 'limit' });
+        if (limit.error) return { status: 400, body: { error: limit.error, field: 'limit' } };
         // Optional: skip the first `offset` items, to read a long list a page at a time (limit + offset)
         const offset = parseOffset(input.offset);
-        if (offset.error) return res.status(400).json({ error: offset.error, field: 'offset' });
+        if (offset.error) return { status: 400, body: { error: offset.error, field: 'offset' } };
         const skip = offset.value || 0;
+        // Optional, with a preview: the first item of the first page comes in full. The page opens that one straight
+        // away, so a long note does not cost a second request.
+        const fullFirst = preview && skip === 0 && (input.fullFirst === true || input.fullFirst === '1' || input.fullFirst === 'true');
 
         // A drop-box visitor can add but not read: they get the stash's shape and no items or counts
         const dropOnly = req.role === 'drop';
@@ -665,7 +693,7 @@ class StashController {
         // starts past the first item)
         const counted = !dropOnly && (skip > 0 || (limit.value && rows.length === limit.value));
         const total = dropOnly ? 0 : counted ? this.model.countItems(stash.id, filters) : rows.length;
-        res.json({
+        return { status: 200, body: {
             slug: stash.slug,
             role: req.role,
             hasPassword: Boolean(stash.password_hash),
@@ -688,9 +716,9 @@ class StashController {
             total,
             // True when items remain after this page, so a page can offer "Show more" without doing the sums
             hasMore: skip + rows.length < total,
-            items: rows.map(row => this.presentItem(stash.slug, row, { preview })),
-        });
-    };
+            items: rows.map((row, i) => this.presentItem(stash.slug, row, { preview: preview && !(fullFirst && i === 0) })),
+        } };
+    }
 
     // One item in full: the way to get the whole text of a note that a preview listing cut short
     getItem = (req, res) => {
