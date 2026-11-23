@@ -133,15 +133,17 @@
         var stash = state.stash;
         if (!stash) return;
         var end = stash.hasPassword && stash.sessionEndsAt;
-        $('logoutButton').title = end ? 'Log out of this stash. You are signed out ' + untilText(end) + ' anyway.' : 'Leave this stash';
+        $('logoutButton').title = end
+            ? 'Close this stash and forget its password in this browser. It would lock itself ' + untilText(end) + ' anyway.'
+            : 'Close this stash';
         $('sessionInfo').textContent = end ? 'Signed in until ' + new Date(end).toLocaleString() + ' (' + untilText(end) + ').' : '';
         // The sign-in ran out while the page was open: ask for the password again
         if (end && new Date(end).getTime() <= Date.now()) load(true);
     }
 
-    // "Log out" clears this browser's sign-in for the stash and goes home. An open stash has nothing to clear: Exit just goes home.
+    // "Close" clears this browser's sign-in for the stash and goes home. An open stash has nothing to clear: Close just goes home.
     function leaveStash() {
-        // Logging out or exiting is leaving on purpose: the installed app should start at home next time
+        // Closing a stash is leaving on purpose: the installed app should start at home next time
         if (window.StashlyLast) window.StashlyLast.clear(slug);
         if (!state.stash || !state.stash.hasPassword) { location.href = '/'; return; }
         api(base + '/logout', { method: 'POST' }).then(function () { location.href = '/'; }).catch(function () { location.href = '/'; });

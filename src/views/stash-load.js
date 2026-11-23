@@ -51,8 +51,9 @@
         banner.textContent = r === 'view'
             ? 'You opened a read-only link. You can read and copy, but not add or delete anything.'
             : r === 'drop' ? 'You opened a drop-box link. You can add notes and files here, but you cannot see what is in the stash.' : '';
-        // Log out of a password-protected stash, or just leave an open one
-        var leaveWord = state.stash.hasPassword ? 'Log out' : 'Exit';
+        // Closing a stash leaves it, and on a password-protected one also forgets the password in this browser.
+        // (Signing out of an account is a different thing, in the left menu.)
+        var leaveWord = 'Close';
         $('logoutButton').querySelector('.btn-label').textContent = leaveWord;
         $('logoutButton').setAttribute('aria-label', leaveWord);
         updateSessionInfo();
