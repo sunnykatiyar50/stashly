@@ -167,15 +167,13 @@
             lock.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
             name.appendChild(lock);
         }
+        tr.appendChild(cell(name));
         // Who made it: a signed-in user (an admin cannot reset the password of their stash), or a guest
-        var madeBy = document.createElement('span');
-        madeBy.className = 'chip' + (stash.owner ? ' owner-chip' : '');
-        madeBy.textContent = stash.owner ? 'Owner: ' + stash.owner : 'Guest';
-        madeBy.title = stash.owner
+        var ownerCell = cell(stash.owner || 'Guest', stash.owner ? 'owner-cell' : 'owner-cell muted');
+        ownerCell.title = stash.owner
             ? 'Made by ' + stash.owner + '. The owner can change its password; an admin cannot reset it.'
             : 'Made by a guest, so it has no owner.';
-        name.appendChild(madeBy);
-        tr.appendChild(cell(name));
+        tr.appendChild(ownerCell);
         tr.appendChild(cell(String(stash.items), 'num'));
         tr.appendChild(cell(String(stash.files), 'num'));
         tr.appendChild(cell(formatSize(stash.bytes), 'num'));
