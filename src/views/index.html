@@ -143,12 +143,49 @@
               <aside class="home-side" aria-label="How it works">
             <div class="card form-card how-card">
                 <h3>How it works</h3>
-                <ol class="how-list">
-                    <li>Create a stash and open its link on both machines.</li>
-                    <li>Add a note, drop a file, or paste a screenshot on one machine.</li>
-                    <li>It shows up on the other machine straight away, ready to copy or download.</li>
+                <p class="muted how-intro">Move text, images and files between computers that can't reach each other. No account needed.</p>
+                <ol class="how-steps">
+                    <li>
+                        <span class="how-num" aria-hidden="true">1</span>
+                        <div>
+                            <strong>Open or create a stash</strong>
+                            <p>Type a name on the left and press <b>Open</b>. If it does not exist yet you can create it. Leave the box empty for a random name.</p>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="how-num" aria-hidden="true">2</span>
+                        <div>
+                            <strong>Open the same link on your other machine</strong>
+                            <p>Use the stash's address (<code>/s/name</code>), or press <b>QR code</b> in the stash to open it on a phone.</p>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="how-num" aria-hidden="true">3</span>
+                        <div>
+                            <strong>Add a note, a file or a screenshot</strong>
+                            <p>Type in the note box, use the paperclip, drag files onto the page, or paste a screenshot with <kbd>Ctrl</kbd> + <kbd>V</kbd>.</p>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="how-num" aria-hidden="true">4</span>
+                        <div>
+                            <strong>Copy it on the other side</strong>
+                            <p>It appears straight away, with no refresh. Press <b>Copy latest</b> (<kbd>Alt</kbd> + <kbd>C</kbd>) for the newest note, or download a file.</p>
+                        </div>
+                    </li>
                 </ol>
-                <p class="muted">No browser on a machine? Use curl:</p>
+
+                <h4 class="how-sub">Good to know</h4>
+                <ul class="how-tips">
+                    <li><b>Private?</b> Open <i>More options</i> and set a password. Then share a read-only or drop-box link from the stash.</li>
+                    <li><b>Temporary.</b> A stash and everything in it is deleted when its time is up (1 hour to 30 days). You can extend it.</li>
+                    <li><b>Sensitive note?</b> Choose <i>Burn after reading</i> to show it once, or <i>Secret</i> to hide it as dots.</li>
+                    <li><b>Mistake?</b> Deleted items can be undone for a couple of minutes.</li>
+                    <li><b>Have an account?</b> Your stashes are under <i>My stashes</i> in the menu.</li>
+                </ul>
+
+                <h4 class="how-sub">No browser on a machine?</h4>
+                <p class="muted">Use curl from a terminal. Replace <code>NAME</code> with your stash:</p>
                 <code class="code" id="curlExample"></code>
             </div>
               </aside>

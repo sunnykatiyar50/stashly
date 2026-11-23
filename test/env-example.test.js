@@ -37,7 +37,8 @@ const IN_SETTINGS = [
 const example = fs.readFileSync(path.join(root, '.env.example'), 'utf8');
 // A variable is "in" the file when it has a line, commented out or not
 const inExample = new Set([...example.matchAll(/^#?\s*([A-Z][A-Z0-9_]+)=/gm)].map(match => match[1]));
-const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+// The variable tables live in docs/configuration.md
+const readme = fs.readFileSync(path.join(root, 'docs', 'configuration.md'), 'utf8');
 
 test('every variable the server reads is in .env.example or is a starting value for a setting on the admin page', () => {
     const missing = [...read].filter(name => !inExample.has(name) && !IN_SETTINGS.includes(name));
@@ -56,14 +57,14 @@ test('.env.example only names variables the server reads', () => {
     assert.deepEqual(unknown, [], `not read by the server: ${unknown.join(' ')}`);
 });
 
-test('every variable that has a setting is a real setting, and is documented in the README as one', () => {
+test('every variable that has a setting is a real setting, and is documented in docs/configuration.md as one', () => {
     for (const name of IN_SETTINGS) {
         assert.ok(read.has(name), `${name} is read by the server`);
         const row = readme.split('\n').find(line => line.startsWith(`| \`${name}\` |`));
-        assert.ok(row, `${name} has a README row`);
-        assert.ok(row.includes('Admin > Settings'), `${name}'s README row points to Admin > Settings`);
+        assert.ok(row, `${name} has a row in docs/configuration.md`);
+        assert.ok(row.includes('Admin > Settings'), `${name}'s configuration row points to Admin > Settings`);
     }
-    // the settings page has a setting for each group the README names
+    // the settings page has a setting for each group the configuration doc names
     const groups = new Set(Object.values(FIELDS).map(field => field.group));
     for (const group of ['Limits', 'Security', 'Files', 'Stashes', 'Rate limits', 'Email']) assert.ok(groups.has(group), group);
 });

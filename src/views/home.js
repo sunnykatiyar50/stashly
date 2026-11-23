@@ -298,7 +298,11 @@
     passwordInput.addEventListener('input', function () { errors.password.textContent = ''; updateHint(); });
 
     $('curlExample').textContent =
-        'curl -d "text to share" -H "Content-Type: text/plain" ' + location.origin + '/api/stashes/NAME/notes\n' +
+        '# send a note\n' +
+        'curl -d "text to share" -H "Content-Type: text/plain" ' + location.origin + '/api/stashes/NAME/notes\n\n' +
+        '# send a file\n' +
+        'curl -X POST ' + location.origin + '/api/stashes/NAME/files -H "X-File-Name: report.pdf" -H "Content-Type: application/octet-stream" --data-binary @report.pdf\n\n' +
+        '# read the newest note\n' +
         'curl ' + location.origin + '/api/stashes/NAME/latest';
 
     loadConfig();
