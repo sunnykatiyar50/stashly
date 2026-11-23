@@ -40,7 +40,8 @@ test('the installed app starts through the launch address, and the home page loa
     assert.ok(manifest.start_url.startsWith(manifest.scope));
 
     // The launch address is the home page, and launch.js comes before the page's own scripts (in the head)
-    const page = (await request(app).get('/?source=pwa').expect(200)).text;
+    // (the asset addresses carry ?v=<hash>; dropped here, the check is about the address)
+    const page = (await request(app).get('/?source=pwa').expect(200)).text.replace(/\?v=[0-9a-f]+"/g, '"');
     const head = page.slice(0, page.indexOf('</head>'));
     assert.match(head, /<script src="\/launch\.js"><\/script>/);
     const js = await request(app).get('/launch.js').expect(200);
@@ -49,7 +50,7 @@ test('the installed app starts through the launch address, and the home page loa
 
 test('the stash page remembers the last stash, and forgets it on logout, exit or when it is gone', async () => {
     const { app } = makeApp();
-    const html = (await request(app).get('/s/anything').expect(200)).text;
+    const html = (await request(app).get('/s/anything').expect(200)).text.replace(/\?v=[0-9a-f]+"/g, '"');
     assert.match(html, /<script src="\/pwa\.js"><\/script>/);
     const pwa = (await request(app).get('/pwa.js').expect(200)).text;
     assert.match(pwa, /sl_last_stash/);

@@ -50,9 +50,10 @@ test('the share page is served, with or without shared content in the address', 
 test('the pages link the manifest and load the app script', async () => {
     const { app } = makeApp();
     for (const url of ['/', '/s/any-name', '/share']) {
-        const res = await request(app).get(url).expect(200);
-        assert.match(res.text, /rel="manifest" href="\/manifest\.webmanifest"/, url);
-        assert.match(res.text, /src="\/pwa\.js"/, url);
+        // (the asset addresses carry ?v=<hash>; dropped here, the check is about the address)
+        const text = (await request(app).get(url).expect(200)).text.replace(/\?v=[0-9a-f]+"/g, '"');
+        assert.match(text, /rel="manifest" href="\/manifest\.webmanifest"/, url);
+        assert.match(text, /src="\/pwa\.js"/, url);
     }
 });
 

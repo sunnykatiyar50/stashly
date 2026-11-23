@@ -13,7 +13,7 @@ const { AdminAuth } = require('./utils/adminAuth');
 const { syncAdminUser } = require('./utils/adminUser');
 const { SettingsStore } = require('./utils/settings');
 const { Mailer } = require('./utils/mailer');
-const { gzipAssets, revalidate } = require('./utils/staticAssets');
+const { gzipAssets, revalidate, pages, inlineJson, cacheControlFor } = require('./utils/staticAssets');
 const { accessLog } = require('./utils/accessLog');
 const { createAudit } = require('./utils/auditLog');
 const { Metrics } = require('./utils/metrics');
@@ -176,12 +176,20 @@ function createApp({ config, model, events, secret, now, logOut, auditOut, mail 
     );
 
     // The QR code library, served from node_modules (the page's CSP only allows scripts from this server)
-    app.get('/vendor/qrcode.js', (req, res) => res.sendFile(require.resolve('qrcode-generator')));
+    const qrcodeFile = require.resolve('qrcode-generator');
+    app.get('/vendor/qrcode.js', (req, res) => res.set('Cache-Control', cacheControlFor(req)).sendFile(qrcodeFile));
 
-    // The stash page is one HTML file; the script reads the name from the URL
-    app.get('/s/:slug', (req, res) => res.sendFile(path.join(viewsDir, 'stash.html')));
+    // The HTML pages, with each script and style address versioned (see pages() in staticAssets.js)
+    const page = pages(viewsDir, { '/vendor/qrcode.js': qrcodeFile });
+
+    // The stash page is one HTML file; the script reads the name from the URL. When this visitor may read the stash,
+    // its first page of items comes inside the page, so opening a stash costs one round trip instead of two.
+    app.get('/s/:slug', page.send('stash.html', (html, req) => {
+        const first = controller.initialPage(req, req.params.slug);
+        return html.replace('<!-- initial-page -->', first ? `<script type="application/json" id="initialPage">${inlineJson(first)}</script>` : '');
+    }));
     // Where the phone's share sheet sends what was shared (the manifest's share target)
-    app.get('/share', (req, res) => res.sendFile(path.join(viewsDir, 'share.html')));
+    app.get('/share', page.send('share.html'));
     // The share sheet POSTs what was shared, so it never lands in an address that proxies log or browsers keep in
     // their history. It is handed to the page in the fragment (#), which is never sent to a server, and the page
     // clears it from the address as soon as it has read it.
@@ -192,11 +200,13 @@ function createApp({ config, model, events, secret, now, logOut, auditOut, mail 
         const fragment = params.toString();
         res.redirect(303, fragment ? `/share#${fragment}` : '/share');
     });
-    app.get('/admin', (req, res) => res.sendFile(path.join(viewsDir, 'admin.html')));
+    app.get('/admin', page.send('admin.html'));
     // Sign in, and the stashes you follow
-    app.get('/account', (req, res) => res.sendFile(path.join(viewsDir, 'account.html')));
+    app.get('/account', page.send('account.html'));
     // Your own details and settings
-    app.get('/settings', (req, res) => res.sendFile(path.join(viewsDir, 'settings.html')));
+    app.get('/settings', page.send('settings.html'));
+    // The home page
+    app.get(['/', '/index.html'], page.send('index.html'));
     // The page's scripts, styles and icons: compressed, and revalidated instead of re-downloaded on every click
     app.use(gzipAssets(viewsDir));
     app.use(express.static(viewsDir, { index: 'index.html', setHeaders: revalidate }));

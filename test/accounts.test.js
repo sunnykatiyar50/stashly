@@ -70,12 +70,14 @@ test('with ADMIN_PASSWORD set, accounts are on and /api/me says nobody is signed
 test('the account page is served, with no inline script or style (the content policy allows neither)', async () => {
     const ctx = makeApp({ adminPassword: ADMIN });
     const res = await request(ctx.app).get('/account').expect(200);
+    // The pages version their asset addresses (?v=<hash>); the checks below are about the addresses themselves
+    const text = res.text.replace(/\?v=[0-9a-f]+"/g, '"');
     assert.match(res.headers['content-type'], /html/);
     assert.match(res.headers['content-security-policy'], /script-src 'self'/);
-    assert.match(res.text, /id="loginForm"/);
-    assert.match(res.text, /src="\/account\.js"/);
-    assert.doesNotMatch(res.text, /<script(?![^>]*\bsrc=)[^>]*>/i);
-    assert.doesNotMatch(res.text, /<style|\sstyle=|\sonclick=|\sonsubmit=/i);
+    assert.match(text, /id="loginForm"/);
+    assert.match(text, /src="\/account\.js"/);
+    assert.doesNotMatch(text, /<script(?![^>]*\bsrc=)[^>]*>/i);
+    assert.doesNotMatch(text, /<style|\sstyle=|\sonclick=|\sonsubmit=/i);
     await request(ctx.app).get('/account.js').expect(200);
 });
 
@@ -736,7 +738,9 @@ test('the admin status of the page tells how the admin is signed in, and "via" i
 
 test('the pages carry the account parts: Users in admin, the Follow button on a stash, the sign-in link on home; none with inline code', async () => {
     const ctx = makeApp({ adminPassword: ADMIN });
-    const admin = (await request(ctx.app).get('/admin').expect(200)).text;
+    // The pages version their asset addresses (?v=<hash>); the checks below are about the addresses themselves
+    const unversion = html => html.replace(/\?v=[0-9a-f]+"/g, '"');
+    const admin = unversion((await request(ctx.app).get('/admin').expect(200)).text);
     assert.match(admin, /id="viewUsers"/);
     assert.match(admin, /id="userForm"/);
     assert.match(admin, /id="userPasswordDialog"/);
@@ -744,13 +748,13 @@ test('the pages carry the account parts: Users in admin, the Follow button on a 
     assert.match(admin, /<option value="user">User<\/option>\s*<option value="admin">Admin<\/option>/);
     assert.doesNotMatch(admin, /member/i);
 
-    const stash = (await request(ctx.app).get('/s/any-name').expect(200)).text;
+    const stash = unversion((await request(ctx.app).get('/s/any-name').expect(200)).text);
     assert.match(stash, /id="followStashButton"/);
     const scripts = [...stash.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]);
     assert.ok(scripts.indexOf('/stash-account.js') > 0 && scripts.indexOf('/stash-account.js') < scripts.indexOf('/stash.js'));
     assert.equal(scripts[scripts.length - 1], '/stash.js');
 
-    const home = (await request(ctx.app).get('/').expect(200)).text;
+    const home = unversion((await request(ctx.app).get('/').expect(200)).text);
     assert.match(home, /id="accountLink"/);
     assert.match(home, /id="loginNotice"/);
 

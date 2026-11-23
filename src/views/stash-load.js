@@ -119,11 +119,25 @@
     var MAX_PAGE = 200;
     var MAX_KEEP = 2000;
 
+    // The first page, when the server put it inside the page (it does for a visitor it knows may read the stash): the
+    // first load uses it instead of asking, which saves a round trip. Used once. A share link in the address (#view=...)
+    // changes who this visitor is, so then the page asks as before.
+    var initialPage = (function () {
+        var el = document.getElementById('initialPage');
+        if (!el) return null;
+        var data = null;
+        try { data = JSON.parse(el.textContent); } catch (e) { data = null; }
+        el.remove();
+        return location.hash || !data || !Array.isArray(data.items) ? null : data;
+    })();
+
     // The listing request for one page. Sent in the body, not the address, so search words never end up in a proxy's
     // access log. preview: long notes come as their first part only; the rest is fetched when a note is opened or copied.
     function queryFor(offset, limit) {
         var f = state.filters;
         var query = { tz: String(new Date().getTimezoneOffset()), preview: true, limit: limit, offset: offset };
+        // The first item of the list is opened at once, so it comes in full
+        if (offset === 0) query.fullFirst = true;
         if (f.search) query.search = f.search;
         if (f.startDate) query.startDate = f.startDate;
         if (f.endDate) query.endDate = f.endDate;
@@ -139,7 +153,15 @@
         var seen = {};
         function step() {
             var limit = Math.min(MAX_PAGE, want - out.items.length);
-            return api(base + '/query', { method: 'POST', body: queryFor(out.items.length + out.dupes, limit) }).then(function (res) {
+            var f = state.filters;
+            var inline = initialPage;
+            initialPage = null;
+            // The page's own first page fits only the first load: from the top, no search or dates, the usual size
+            var usable = inline && !out.items.length && !out.dupes && limit === PAGE_SIZE && !f.search && !f.startDate && !f.endDate;
+            var request = usable
+                ? Promise.resolve({ ok: true, status: 200, body: inline })
+                : api(base + '/query', { method: 'POST', body: queryFor(out.items.length + out.dupes, limit) });
+            return request.then(function (res) {
                 if (!res.ok) {
                     if (!out.first) out.error = res;
                     return out;
