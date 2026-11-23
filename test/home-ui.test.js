@@ -58,3 +58,22 @@ test('a signed-in account sees the stashes it follows on the home page, and a gu
     // Names go in as text, never as markup
     assert.doesNotMatch(script, /innerHTML/);
 });
+
+test('the home page has two columns: the form and your stashes on the left, how it works on the right', () => {
+    const html = view('index.html');
+    const grid = html.indexOf('class="home-grid"');
+    const main = html.indexOf('class="home-main"');
+    const side = html.indexOf('class="home-side"');
+    assert.ok(grid > -1 && main > grid && side > main, 'home-grid holds home-main, then home-side');
+    // the open/create form and the followed stashes are in the left column, how it works in the right
+    const left = html.slice(main, side);
+    assert.ok(left.includes('id="quickForm"') && left.includes('id="myStashes"'));
+    assert.ok(!left.includes('How it works'));
+    const right = html.slice(side);
+    assert.ok(right.includes('How it works') && right.includes('id="curlExample"'));
+    // two columns on a wide screen, one when there is no room, and the curl lines wrap so all of them show
+    const css = view('styles.css');
+    assert.match(css, /\.home-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.55fr\)\s*minmax\(280px,\s*1fr\)/);
+    assert.match(css, /@media \(max-width: 900px\)\s*\{\s*\.home-grid\s*\{\s*grid-template-columns:\s*1fr/);
+    assert.match(css, /\.how-card \.code\s*\{[^}]*white-space:\s*pre-wrap/);
+});
