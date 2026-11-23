@@ -467,6 +467,8 @@ audio.detail-media { max-height: none; }
 /* ===== Notices, admin ===== */
 .notice { max-width: 640px; background: var(--warning-bg); color: var(--warning-text); border-color: transparent; }
 .notice a { color: inherit; font-weight: 600; }
+/* The notices on the stash page span the whole width of the page, like the clip list and the content below them */
+.stash-page .notice, #resetNotice, #roleBanner { max-width: none; width: 100%; box-sizing: border-box; }
 
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
 .stat { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; }
