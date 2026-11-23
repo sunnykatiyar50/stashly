@@ -110,3 +110,24 @@ test('the QR code library is served to the stash page', async () => {
     assert.match(page.text, /\/vendor\/qrcode\.js/);
     assert.match(page.text, /id="qrButton"/);
 });
+
+test('"exists" tells whether a stash is there, and nothing else', async () => {
+    const { app } = makeApp();
+    await request(app).post('/api/stashes').send({ slug: 'open-one-123' }).expect(201);
+    await request(app).post('/api/stashes').send({ slug: 'locked-one-123', password: 'secret-password' }).expect(201);
+
+    const open = await request(app).get('/api/stashes/open-one-123/exists').expect(200);
+    assert.deepEqual(open.body, { exists: true, locked: false });
+    const locked = await request(app).get('/api/stashes/locked-one-123/exists').expect(200);
+    assert.deepEqual(locked.body, { exists: true, locked: true });
+    // names are not case sensitive, and a missing stash is a 404 with no details
+    await request(app).get('/api/stashes/OPEN-ONE-123/exists').expect(200);
+    const missing = await request(app).get('/api/stashes/nothing-here-123/exists').expect(404);
+    assert.deepEqual(missing.body, { exists: false });
+});
+
+test('asking whether stashes exist is limited like every other route that names a stash', async () => {
+    const { app } = makeApp({ rateNotFound: 3 });
+    for (let i = 0; i < 3; i++) await request(app).get(`/api/stashes/missing-${i}-name/exists`).expect(404);
+    await request(app).get('/api/stashes/missing-3-name/exists').expect(429);
+});

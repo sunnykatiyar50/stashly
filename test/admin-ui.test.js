@@ -28,11 +28,11 @@ test('the admin section of the left menu is added by one shared script, only for
     assert.ok(view('account.js').includes('StashlyAdminNav.refresh'));
 });
 
-test('the admin page uses the same menu: New stash, My stashes, then an Admin section', () => {
+test('the admin page uses the same menu: Home, My stashes, then an Admin section', () => {
     const html = view('admin.html');
     const nav = html.slice(html.indexOf('<nav class="sidebar-nav"'), html.indexOf('</nav>'));
     const at = text => nav.indexOf(text);
-    assert.ok(at('title="New stash"') > -1 && at('id="accountLink"') > at('title="New stash"'));
+    assert.ok(at('title="Home"') > -1 && at('id="accountLink"') > at('title="Home"'));
     assert.ok(at('nav-section-label') > at('id="accountLink"'));
     assert.ok(at('data-view="stashes"') > at('nav-section-label'));
     assert.ok(at('data-view="settings"') > at('data-view="users"'));
@@ -53,7 +53,7 @@ test('the admin page keeps Create user and Backup behind buttons', () => {
 
 test('opening a stash follows it by itself: no follow form, no extra note, and My stashes stays in the main menu', () => {
     const home = view('index.html');
-    // The home page has neither the follow form nor the note under the New stash title
+    // The home page has neither the follow form nor the note under the title
     assert.doesNotMatch(home, /id="followForm"/);
     assert.doesNotMatch(home, /createFollowNote/);
     // Signed in, "My stashes" is in the main menu (the sidebar nav), not only in the footer
@@ -61,7 +61,8 @@ test('opening a stash follows it by itself: no follow form, no extra note, and M
     assert.match(nav, /id="accountNavLink"/);
     assert.match(tag(home, 'accountNavLink'), /class="[^"]*\bhidden\b/);
     assert.match(view('home.js'), /accountNavLink/);
-    assert.ok(!view('home.js').includes('/api/me/stashes'));
+    // ...but it does list the stashes the signed-in account follows, for a one-click open (the full list is on My stashes)
+    assert.ok(view('home.js').includes('/api/me/stashes'));
 
     // The stash page adds the stash by itself, and respects "stop following" in the same tab
     const script = view('stash-account.js');
