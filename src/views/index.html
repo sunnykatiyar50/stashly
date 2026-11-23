@@ -70,6 +70,9 @@
                 You can still open a stash you have the link to.
             </div>
 
+            <!-- Two columns: the form (and your stashes) on the left, how it works on the right. One column on a narrow screen. -->
+            <div class="home-grid">
+              <div class="home-main">
             <form id="quickForm" class="card form-card quick-card" novalidate>
                 <div class="field">
                     <label for="slugInput">Stash name</label>
@@ -142,8 +145,10 @@
                 <ul id="homeStashList" class="home-list" aria-label="Stashes you follow"></ul>
                 <p id="homeStashEmpty" class="muted hidden">You are not following any stash yet. Open one above and it is added here.</p>
             </section>
+              </div>
 
-            <div class="card form-card">
+              <aside class="home-side" aria-label="How it works">
+            <div class="card form-card how-card">
                 <h3>How it works</h3>
                 <ol class="how-list">
                     <li>Create a stash and open its link on both machines.</li>
@@ -152,6 +157,8 @@
                 </ol>
                 <p class="muted">No browser on a machine? Use curl:</p>
                 <code class="code" id="curlExample"></code>
+            </div>
+              </aside>
             </div>
           </div>
         </section>

@@ -243,11 +243,18 @@ body.has-account-nav #logoutButton { display: none; }
 
 /* ===== Forms ===== */
 /* The home page: one centred column. Auto margins centre it in the free space, top and sides. */
-.home-stack { width: min(600px, 100%); margin: auto; display: flex; flex-direction: column; gap: 14px; padding: 8px 0; }
+.home-stack { width: min(1040px, 100%); margin: auto; display: flex; flex-direction: column; gap: 14px; padding: 8px 0; }
 .home-stack .view-header { justify-content: center; text-align: center; }
 .home-stack .view-title { flex-direction: column; align-items: center; gap: 4px; }
 .home-stack .view-title h1 { font-size: 26px; }
 .home-stack .form-card, .home-stack .notice { max-width: none; }
+/* The form and your stashes on the left, how it works on the right; one column when there is not room for both */
+.home-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr); gap: 14px; align-items: start; }
+.home-main, .home-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* The curl lines wrap, so the whole of them shows in the narrower column */
+.how-card .code { white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: visible; }
+.how-card .how-list { margin-top: 4px; }
+@media (max-width: 900px) { .home-grid { grid-template-columns: 1fr; } }
 /* "Open an existing stash" stands out from the rest of the home page: accent border, larger controls */
 .open-card { padding: 18px 20px; border: 1px solid var(--blue); border-left-width: 4px; box-shadow: 0 4px 14px var(--shadow); }
 .open-card-title { display: flex; align-items: center; gap: 12px; }
@@ -268,7 +275,7 @@ body.has-account-nav #logoutButton { display: none; }
 .more-toggle svg { width: 16px; height: 16px; transition: transform 0.15s; }
 .more-toggle.open svg { transform: rotate(180deg); }
 .more-options { border-top: 1px solid var(--border); padding-top: 14px; }
-.more-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 24px; }
+.more-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px 24px; }
 .more-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; align-items: stretch; }
 .more-col h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0; }
 .more-col button { align-self: flex-start; }
