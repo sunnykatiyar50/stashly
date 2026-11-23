@@ -784,6 +784,9 @@ body:not(.stash-open) .in-topbar { display: none; }
 .settings-tab-name { flex: 1; }
 .settings-tab-icon { display: inline-flex; flex: none; }
 .settings-tab-icon svg { width: 18px; height: 18px; }
+/* Only My account (not an admin): no tab list, the panel takes the whole card */
+.settings-layout.single { grid-template-columns: minmax(0, 1fr); }
+.settings-layout.single .settings-tabs { display: none; }
 .settings-row { padding: 16px 0; gap: 8px 32px; }
 .settings-card .form-actions { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
 @media (max-width: 760px) {

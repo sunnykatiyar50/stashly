@@ -839,9 +839,13 @@ test('the settings page is linked from the menu and from My stashes, which no lo
     const path = require('node:path');
     const view = name => fs.readFileSync(path.join(__dirname, '..', 'src', 'views', name), 'utf8');
     assert.ok(view('account-nav.js').includes("settings.href = '/settings'"));
-    assert.ok(view('account.html').includes('href="/settings"'));
+    assert.doesNotMatch(view('account.html'), /href="\/settings"/);
     assert.doesNotMatch(view('account.html'), /id="(emailDialog|passwordDialog)"/);
     const page = view('settings.html');
     for (const id of ['profileForm', 'profileName', 'profileUsername', 'profileEmail', 'passwordForm']) assert.ok(page.includes(`id="${id}"`), id);
     assert.ok(page.includes('src="/settings.js"'));
+    // One settings page for everyone: an admin's server settings are tabs on it, not a second page in the admin area
+    for (const id of ['settingsForm', 'settingsFields', 'saveSettingsButton', 'resetSettingsButton']) assert.ok(page.includes(`id="${id}"`), id);
+    assert.ok(view('settings.js').includes('/api/admin/settings'));
+    assert.doesNotMatch(view('admin.html'), /id="settingsForm"/);
 });

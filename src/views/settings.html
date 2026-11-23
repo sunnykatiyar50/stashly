@@ -69,63 +69,77 @@
                 </div>
             </header>
 
-            <!-- The server's own admin account is set in the server's environment, so there is nothing to change here for it -->
-            <p id="managedNote" class="muted hidden">This account is set by <code>ADMIN_USERNAME</code> and <code>ADMIN_PASSWORD</code> in the server's environment, so its details are changed there.</p>
+            <div class="card form-card settings-card">
+                <!-- The server settings' inputs join this form through their form attribute, so My account can keep its own forms -->
+                <form id="settingsForm" novalidate hidden></form>
+                <div id="settingsFields"></div>
+                <div class="form-actions hidden" id="settingsActions">
+                    <button type="submit" form="settingsForm" id="saveSettingsButton" class="primary">Save changes</button>
+                    <button type="button" id="resetSettingsButton" class="danger-ghost">Reset to defaults</button>
+                    <p id="settingsStatus" class="form-status" role="status"></p>
+                </div>
+            </div>
+            <!-- My account: settings.js moves this into its tab -->
+            <div id="accountStash" hidden>
+                <div id="accountContent" class="settings-stack">
+                    <section id="managedNote" class="card settings-section hidden" aria-labelledby="managedTitle">
+                        <h2 id="managedTitle">Managed by the server</h2>
+                        <p class="muted">This account is set by <code>ADMIN_USERNAME</code> and <code>ADMIN_PASSWORD</code> in the server's environment, so its details are changed there.</p>
+                    </section>
+                    <!-- New sections go here as their own card: <section class="card settings-section"> with an h2 and its form -->
+                    <section class="card settings-section" id="profileSection" aria-labelledby="profileTitle">
+                        <h2 id="profileTitle">Your details</h2>
+                        <form id="profileForm" novalidate>
+                            <div class="field">
+                                <label for="profileName">Name <span class="optional">(optional)</span></label>
+                                <input type="text" id="profileName" autocomplete="name" maxlength="60" />
+                                <small class="field-hint">Shown next to your username in the menu.</small>
+                                <small class="field-error" id="profileNameError" role="alert"></small>
+                            </div>
+                            <div class="field">
+                                <label for="profileUsername">Username</label>
+                                <input type="text" id="profileUsername" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="40" />
+                                <small class="field-hint">3 to 40 letters, numbers, dots, dashes or underscores. You sign in with it.</small>
+                                <small class="field-error" id="profileUsernameError" role="alert"></small>
+                            </div>
+                            <div class="field">
+                                <label for="profileEmail">Email address <span class="optional">(optional)</span></label>
+                                <input type="email" id="profileEmail" autocomplete="email" maxlength="254" />
+                                <small class="field-hint">Used only to send you a link if you forget your password. Leave it empty to remove it.</small>
+                                <small class="field-error" id="profileEmailError" role="alert"></small>
+                            </div>
+                            <div class="field hidden" id="profilePasswordField">
+                                <label for="profilePassword">Current password</label>
+                                <input type="password" id="profilePassword" autocomplete="current-password" maxlength="200" />
+                                <small class="field-hint">Needed to change your username or email.</small>
+                                <small class="field-error" id="profilePasswordError" role="alert"></small>
+                            </div>
+                            <div class="settings-actions">
+                                <button type="submit" id="profileSave" class="primary">Save details</button>
+                            </div>
+                        </form>
+                    </section>
 
-            <div class="settings-stack">
-                <!-- New sections go here as their own card: <section class="card settings-section"> with an h2 and its form -->
-                <section class="card settings-section" id="profileSection" aria-labelledby="profileTitle">
-                    <h2 id="profileTitle">Your details</h2>
-                    <form id="profileForm" novalidate>
-                        <div class="field">
-                            <label for="profileName">Name <span class="optional">(optional)</span></label>
-                            <input type="text" id="profileName" autocomplete="name" maxlength="60" />
-                            <small class="field-hint">Shown next to your username in the menu.</small>
-                            <small class="field-error" id="profileNameError" role="alert"></small>
-                        </div>
-                        <div class="field">
-                            <label for="profileUsername">Username</label>
-                            <input type="text" id="profileUsername" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="40" />
-                            <small class="field-hint">3 to 40 letters, numbers, dots, dashes or underscores. You sign in with it.</small>
-                            <small class="field-error" id="profileUsernameError" role="alert"></small>
-                        </div>
-                        <div class="field">
-                            <label for="profileEmail">Email address <span class="optional">(optional)</span></label>
-                            <input type="email" id="profileEmail" autocomplete="email" maxlength="254" />
-                            <small class="field-hint">Used only to send you a link if you forget your password. Leave it empty to remove it.</small>
-                            <small class="field-error" id="profileEmailError" role="alert"></small>
-                        </div>
-                        <div class="field hidden" id="profilePasswordField">
-                            <label for="profilePassword">Current password</label>
-                            <input type="password" id="profilePassword" autocomplete="current-password" maxlength="200" />
-                            <small class="field-hint">Needed to change your username or email.</small>
-                            <small class="field-error" id="profilePasswordError" role="alert"></small>
-                        </div>
-                        <div class="settings-actions">
-                            <button type="submit" id="profileSave" class="primary">Save details</button>
-                        </div>
-                    </form>
-                </section>
-
-                <section class="card settings-section" id="passwordSection" aria-labelledby="passwordTitle">
-                    <h2 id="passwordTitle">Password</h2>
-                    <form id="passwordForm" novalidate>
-                        <p class="muted">Every other browser you are signed in on is signed out.</p>
-                        <div class="field">
-                            <label for="currentPassword">Current password</label>
-                            <input type="password" id="currentPassword" autocomplete="current-password" maxlength="200" />
-                            <small class="field-error" id="currentPasswordError" role="alert"></small>
-                        </div>
-                        <div class="field">
-                            <label for="newPassword">New password</label>
-                            <input type="password" id="newPassword" autocomplete="new-password" maxlength="200" />
-                            <small class="field-error" id="newPasswordError" role="alert"></small>
-                        </div>
-                        <div class="settings-actions">
-                            <button type="submit" id="passwordSave" class="primary">Change password</button>
-                        </div>
-                    </form>
-                </section>
+                    <section class="card settings-section" id="passwordSection" aria-labelledby="passwordTitle">
+                        <h2 id="passwordTitle">Password</h2>
+                        <form id="passwordForm" novalidate>
+                            <p class="muted">Every other browser you are signed in on is signed out.</p>
+                            <div class="field">
+                                <label for="currentPassword">Current password</label>
+                                <input type="password" id="currentPassword" autocomplete="current-password" maxlength="200" />
+                                <small class="field-error" id="currentPasswordError" role="alert"></small>
+                            </div>
+                            <div class="field">
+                                <label for="newPassword">New password</label>
+                                <input type="password" id="newPassword" autocomplete="new-password" maxlength="200" />
+                                <small class="field-error" id="newPasswordError" role="alert"></small>
+                            </div>
+                            <div class="settings-actions">
+                                <button type="submit" id="passwordSave" class="primary">Change password</button>
+                            </div>
+                        </form>
+                    </section>
+                </div>
             </div>
         </section>
     </main>

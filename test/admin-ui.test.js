@@ -12,7 +12,9 @@ test('the admin section of the left menu is added by one shared script, only for
     // Asks who is signed in, and only an admin gets the section
     assert.ok(script.includes('/api/admin/status'));
     assert.match(script, /body\.enabled && body\.signedIn/);
-    for (const link of ['/admin#/stashes', '/admin#/users', '/admin#/settings']) assert.ok(script.includes(link), link);
+    for (const link of ['/admin#/stashes', '/admin#/users']) assert.ok(script.includes(link), link);
+    // Settings is one page for everyone (linked under the account), not part of the Admin section
+    assert.ok(!script.includes('/admin#/settings'));
     // Pages that sign people in or out can refresh it without a reload
     assert.ok(script.includes('StashlyAdminNav'));
 
@@ -35,7 +37,8 @@ test('the admin page uses the same menu: Home, My stashes, then an Admin section
     assert.ok(at('title="Home"') > -1 && at('id="accountLink"') > at('title="Home"'));
     assert.ok(at('nav-section-label') > at('id="accountLink"'));
     assert.ok(at('data-view="stashes"') > at('nav-section-label'));
-    assert.ok(at('data-view="settings"') > at('data-view="users"'));
+    assert.ok(at('data-view="users"') > at('data-view="stashes"'));
+    assert.equal(at('data-view="settings"'), -1);
     // My stashes is in the menu, not tucked into the footer
     const footer = html.slice(html.indexOf('<div class="sidebar-footer">'), html.indexOf('</aside>'));
     assert.ok(!footer.includes('id="accountLink"'));
