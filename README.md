@@ -113,6 +113,8 @@ Stashly works without accounts, and most people never need one: anyone can creat
 - **Following a stash**: on **My stashes** (`/account`) a signed-in user adds a stash by its name plus its password, or a read-only link (the whole address works), and Stashly checks it once; the password is never stored. A stash with no password is followed by its name. The stash page has a **Follow** button for the same thing, using the access the browser already has (a read-only link follows as read-only; a drop-box link cannot be followed, there is nothing to read). A user who **creates** a stash while signed in follows it automatically. Following a stash again updates the grant (a password upgrades a read-only follow, a link downgrades it) without a duplicate.
 - **How a follow gives access**: when a signed-in user opens a stash they have no cookie for, a follow acts as the access they proved: **full** or **read-only**, so they can open it, add, pin or delete (full) or only read and copy (read-only) with nothing to unlock. The follow stores a snapshot of what it was given (the stash's password salt and sign-in version, and for a read-only follow the hash of the link). **A follow ends the moment a cookie would**: changing the stash password, **Sign out other devices**, the admin setting a password, and cancelling or replacing the read-only link all stop it working, and the stash shows on the dashboard as "Needs the password again" (nothing else about it is shown) until the user follows it again. The person who changed the password or signed out the others keeps their own follow, like their cookie. Renaming a stash keeps follows with full access (the stash keeps its identity) and ends read-only ones (the link is cancelled); deleting or expiring a stash removes its follows. A stash with no password stays open to anyone with its name, followed or not. Following is rate limited like unlocking: wrong passwords and links count towards the **same** per-stash lockout as the unlock form, and requests for names that do not exist are limited like everywhere else, so the follow form is no cheaper way to guess a password or a name.
 - **The dashboard** (`/account`, `GET /api/me/stashes`): each followed stash with its name, a lock for password stashes, access (full or read-only), the number of items and files, how many are **new** since the user last opened it, the time of the latest activity, and when it expires, newest activity first, refreshing every 20 seconds while the tab is visible and again when it comes back (paused while hidden). Burn-after-reading notes count as items but their text is never shown. The stash page marks the stash as seen when it opens and every 30 seconds while it stays open (`POST /api/me/stashes/NAME/seen`); the dashboard itself never marks anything seen.
+- **Email and password reset**: a user can have an email address (the admin sets it when creating the user or later, or the user sets it under **My stashes > Email**, with their current password). With email set up under **Admin > Settings > Email** *and* its **public address** filled in, the sign-in page shows **Forgot your password?**: the person types a username or an email address and, if an account matches, gets a link that sets a new password. The answer is always the same, so it cannot be used to find out who has an account; at most one link per account every 5 minutes and 5 requests per address per 15 minutes. The link works once, for an hour, and stops working if the password or the email changes; it lives in the `#` part of the address, so it is not sent to servers or logs, and it always points at the public address you set, never at the address of the request. Using it signs the user out everywhere and sends a "your password was changed" notice; changing an address notifies the old one. An admin can also pick **Email a reset link** in a user's menu. The `ADMIN_USERNAME` account is set from the environment and has no reset by email.
+- **Pinned stashes**: **Pin** a stash in **My stashes** (or with the **Pin** button on the stash page) and it is listed under **Pinned** in the left menu on every page, for quick switching, and comes first in My stashes. Up to 20 pins per user; pins are private to the account, only store the stash name (never a password), and go away when you unfollow the stash.
 - **Owners**: a stash made by a signed-in user is **owned** by them; a stash made by a guest has no owner. Every stash you own is always in **My stashes**, first, marked **Yours**, with no Unfollow, and you open it with no password and no read-only link needed, so nothing can lock you out of it (a password change, even one by someone else, never makes it "need the password again"). The owner may set a new password without the old one. Only stashes someone else (or a guest) made can be followed and unfollowed. Stashes made before owners existed have no owner and count as guest stashes. If an owner's account is deleted, their stashes become guest stashes: they stay, and their password still opens them.
 - **Admins and passwords**: an admin cannot choose a new password for a stash that has an owner (they can still extend or delete it). For a guest's stash an admin can set a new password, which signs everyone out, cancels share links, and shows everyone using the stash "An admin chose this stash's password on <date>" until someone who knows the password changes it. Set `ADMIN_CAN_RESET_STASH_PASSWORDS=false` (or turn it off in Admin > Settings) to remove the admin's reset for every stash; the admin can then only extend or delete. The admin list shows who made each stash (an owner's name, or Guest).
 - **Who may create stashes**: anyone, as before. `REQUIRE_LOGIN_TO_CREATE` (or Admin > Settings > Stashes > "Only signed-in users can create stashes") limits creating to signed-in users and admins; `REQUIRE_ADMIN_TO_CREATE` keeps its meaning and now allows the `ADMIN_PASSWORD` admin and users with the admin role. Both are off by default, and "only the admin" wins when both are on. Whatever the setting, opening and using a stash needs no login.
@@ -177,44 +179,74 @@ curl -s -X POST http://HOST:3000/api/stashes/NAME/uploads/ID/complete
 
 ## Limits (all configurable)
 
-Set these as environment variables (or in `.env`, see [.env.example](.env.example)) and restart to apply. With the admin area on, you can also change them from the admin Settings page, without a restart.
+Most of these are changed in the admin area, under **Admin > Settings**, and apply at once with no restart. `.env` only needs what has to be set before the server starts (the admin password, the secret, the address and storage, logging); the variables below that say "Also in Admin > Settings" can still be given in the environment, as the **starting value**: a value saved from the Settings page wins over the environment until you press **Reset to defaults**, which goes back to the environment's values. The others (marked in [.env.example](.env.example), some of them commented out as advanced) are read when the server starts.
+
+**What the Settings page covers**, in its tabs:
+
+| Tab | Settings |
+|---|---|
+| **Limits** | Largest note and file, files and items per stash, file space per stash and on the server, number of stashes |
+| **Security** | Shortest stash password and shortest open name, days a given-up name stays reserved, how long account sign-ins last, wrong account passwords allowed, wrong stash passwords before a lockout and how long it lasts |
+| **Files** | Which file types can be uploaded |
+| **Stashes** | Default expiry, stashes that never expire, how long a delete can be undone, who can create stashes, whether an admin can reset stash passwords |
+| **Rate limits** | Stashes created, notes added, files uploaded and reads, each per minute per address |
+| **Email** | The SMTP server, login, From address, the address of this server used in links, emails per hour, and a "Send test email" button |
+
+Rate limits and lockouts count per address in memory, so a restart starts the counts again.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MAX_NOTE_KB` | 100 | Largest single note |
-| `MAX_FILE_MB` | 25 | Largest single file |
-| `MAX_FILES_PER_STASH` | 500 | Files in one stash |
-| `MAX_ITEMS_PER_STASH` | 1000 | Notes and files in one stash (keep above the file limit) |
-| `MAX_STASH_MB` | 100 | Total file size in one stash |
-| `MAX_TOTAL_MB` | 2048 | Total file size on the whole server |
-| `MAX_STASHES` | 1000 | Stashes on the whole server |
+| `MAX_NOTE_KB` | 100 | Largest single note Also in **Admin > Settings > Limits** (the environment gives the starting value). |
+| `MAX_FILE_MB` | 25 | Largest single file Also in **Admin > Settings > Limits** (the environment gives the starting value). |
+| `MAX_FILES_PER_STASH` | 500 | Files in one stash Also in **Admin > Settings > Limits** (the environment gives the starting value). |
+| `MAX_ITEMS_PER_STASH` | 1000 | Notes and files in one stash (keep above the file limit) Also in **Admin > Settings > Limits** (the environment gives the starting value). |
+| `MAX_STASH_MB` | 100 | Total file size in one stash Also in **Admin > Settings > Limits** (the environment gives the starting value). |
+| `MAX_TOTAL_MB` | 2048 | Total file size on the whole server Also in **Admin > Settings > Limits** (the environment gives the starting value). |
+| `MAX_STASHES` | 1000 | Stashes on the whole server Also in **Admin > Settings > Limits** (the environment gives the starting value). |
+| `FILE_TYPES` | safe | Which files can be uploaded: `safe`, `no-programs` or `any` (see File types). Also in **Admin > Settings > Files** (the environment gives the starting value). |
+| `ALLOW_NO_EXPIRY` | false | Allow stashes that never expire. Also in **Admin > Settings > Stashes** (the environment gives the starting value). |
+| `REQUIRE_ADMIN_TO_CREATE` | false | Only the admin can create stashes (needs `ADMIN_PASSWORD`). Also in **Admin > Settings > Stashes** (the environment gives the starting value). |
+| `RATE_CREATE` | 20 | Stashes one address may create a minute. Also in **Admin > Settings > Rate limits** (the environment gives the starting value). |
+| `RATE_POST` | 120 | Notes and other changes one address may make a minute. Also in **Admin > Settings > Rate limits** (the environment gives the starting value). |
+| `RATE_UPLOAD` | 40 | Files one address may start uploading a minute. Also in **Admin > Settings > Rate limits** (the environment gives the starting value). |
+| `RATE_ADMIN_LOGIN` | 10 | Wrong admin passwords per address per 15 minutes. Also in **Admin > Settings > Security** as "Wrong account passwords allowed" (one setting for users and the admin). |
+| `SMTP_ENABLED` | false | Send emails (reset links, shared links) through your own mail server. Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_HOST` | (empty) | Mail server host name. Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_PORT` | 587 | Mail server port (587 for STARTTLS, 465 for SSL). Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_SECURITY` | starttls | `starttls`, `ssl` or `none` (plain text, for a trusted local relay only). Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_USER` | (empty) | Username for the mail server (leave empty if it needs none). Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_PASSWORD` | (empty) | Password for the mail server. Saved from the admin page it is stored encrypted with the server secret, so keep `SESSION_SECRET` fixed. Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_FROM` | (empty) | The From address of every email. Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `SMTP_FROM_NAME` | Stashly | The name shown beside the From address. Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `EMAIL_PER_HOUR` | 100 | Most emails the server sends in an hour. Also in **Admin > Settings > Email** (the environment gives the starting value). |
+| `PUBLIC_URL` | (empty) | This server's own address (`https://stash.example.com`), used in links inside emails. Never taken from the request. Also in **Admin > Settings > Email** (the environment gives the starting value). |
 | `MAX_THUMB_KB` | 200 | Largest image thumbnail the page may send (the page makes them about 256 px wide, usually a few KB) |
 | `MAX_CHUNK_MB` | 4 | Largest piece of a resumable upload one request may carry (at least 64 KB; more than this is never buffered or written per request) |
 | `MAX_OPEN_UPLOADS` / `MAX_OPEN_UPLOADS_SERVER` | 5 / 50 | Unfinished resumable uploads one stash and the whole server may hold (`429` above that) |
 | `UPLOAD_IDLE_HOURS` | 24 | An unfinished resumable upload that gets no new piece for this long is removed by the cleanup job |
 | `RATE_CHUNK` | 6000 | Pieces of resumable uploads per address per minute (starting an upload uses `RATE_UPLOAD`) |
-| `UNDO_SECONDS` | 120 | How long a person's delete of a note or file can be undone (0 to 3600; 0 = off, deletes are immediate). Items waiting in the trash are not counted by the limits above, but a trashed file still takes disk space until it is purged |
+| `UNDO_SECONDS` | 120 | How long a person's delete of a note or file can be undone (0 to 3600; 0 = off, deletes are immediate). Items waiting in the trash are not counted by the limits above, but a trashed file still takes disk space until it is purged Also in **Admin > Settings > Stashes** (the environment gives the starting value). |
 
 ### Passwords, lockout and cookies
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MIN_OPEN_NAME_LENGTH` | 10 | Shortest stash name allowed without a password (0 = off) |
-| `MIN_PASSWORD_LENGTH` | 10 | Shortest stash password, when one is set or changed (4 to 200) |
-| `RESERVE_OLD_NAMES_DAYS` | 30 | Days a deleted, expired or renamed stash's name stays unavailable to new stashes (0 = off) |
-| `STASH_UNLOCK_FAILURES` | 10 | Wrong passwords for one stash from one address before that address is refused; the whole stash is refused at 5 times this, from anyone (0 = off) |
-| `RATE_READ` | 600 | Reads (listing, files, `latest`, live streams) per address per minute |
+| `MIN_OPEN_NAME_LENGTH` | 10 | Shortest stash name allowed without a password (0 = off) Also in **Admin > Settings > Security** (the environment gives the starting value). |
+| `MIN_PASSWORD_LENGTH` | 10 | Shortest stash password, when one is set or changed (4 to 200) Also in **Admin > Settings > Security** (the environment gives the starting value). |
+| `RESERVE_OLD_NAMES_DAYS` | 30 | Days a deleted, expired or renamed stash's name stays unavailable to new stashes (0 = off) Also in **Admin > Settings > Security** (the environment gives the starting value). |
+| `STASH_UNLOCK_FAILURES` | 10 | Wrong passwords for one stash from one address before that address is refused; the whole stash is refused at 5 times this, from anyone (0 = off) Also in **Admin > Settings > Security** (the environment gives the starting value). |
+| `RATE_READ` | 600 | Reads (listing, files, `latest`, live streams) per address per minute Also in **Admin > Settings > Rate limits** (the environment gives the starting value). |
 | `RATE_NOT_FOUND` | 60 | Requests for stashes that do not exist, per address per minute (slows name guessing) |
 | `MAX_STREAMS_PER_STASH` / `MAX_STREAMS_PER_IP` | 100 / 30 | Open live streams (0 = no limit) |
-| `STASH_UNLOCK_WINDOW_MIN` | 15 | How long that refusal lasts, in minutes |
+| `STASH_UNLOCK_WINDOW_MIN` | 15 | How long that refusal lasts, in minutes Also in **Admin > Settings > Security** (the environment gives the starting value). |
 | `COOKIE_SECURE` | auto | `auto` marks cookies Secure when the connection is HTTPS; `true` always (use it behind a TLS proxy you did not set `TRUST_PROXY` for) |
 | `FILES_DIR` | `files` next to the database | Where uploaded files are stored (one plain file each). **Back up the database and this folder together.** Older databases that kept files inside SQLite are moved here automatically at the first start |
 | `RATE_UNLOCK` | 10 | Wrong passwords per address per 15 minutes |
 | `ADMIN_USERNAME` | `admin` | The admin account that `ADMIN_PASSWORD` belongs to: 3 to 40 letters, numbers, dots, dashes or underscores, stored lowercase (an invalid value stops the start). Created at startup with the `admin` role; everyone, the admin included, signs in on the account page. Only used while `ADMIN_PASSWORD` is set. Use a long `ADMIN_PASSWORD`: the name is easy to guess |
-| `USER_SESSION_DAYS` | 7 | How long a user stays signed in on one browser (1 to 90). Needs `ADMIN_PASSWORD` |
+| `USER_SESSION_DAYS` | 7 | How long a user stays signed in on one browser (1 to 90). Needs `ADMIN_PASSWORD` Also in **Admin > Settings > Security** (the environment gives the starting value). |
 | `REQUIRE_LOGIN_TO_CREATE` | false | Only signed-in users and admins can create stashes (needs `ADMIN_PASSWORD`; also in Admin > Settings) |
-| `ADMIN_CAN_RESET_STASH_PASSWORDS` | true | Whether an admin may choose a new password for a stash that has no owner (a guest made it). Never possible for a stash a signed-in user owns. `false` removes the reset for every stash |
-| `RATE_USER_LOGIN` | 10 | Wrong account passwords per address per 15 minutes |
+| `ADMIN_CAN_RESET_STASH_PASSWORDS` | true | Whether an admin may choose a new password for a stash that has no owner (a guest made it). Never possible for a stash a signed-in user owns. `false` removes the reset for every stash Also in **Admin > Settings > Stashes** (the environment gives the starting value). |
+| `RATE_USER_LOGIN` | 10 | Wrong account passwords per address per 15 minutes Also in **Admin > Settings > Security** (the environment gives the starting value). |
 
 The per-stash lockout is on top of the per-address limit, so guessing from many addresses gets nowhere either. The cost: someone who knows a stash's name can deliberately lock new unlocks for a while by guessing wrong. A person who is already unlocked, or who has a share link, is not affected, and the count lives in memory, so a restart clears it. Cookies are always `HttpOnly` and `SameSite=Strict`, and responses carry a content security policy, `no-store`, and a permissions policy that turns off camera, microphone, location and similar features Stashly never uses.
 

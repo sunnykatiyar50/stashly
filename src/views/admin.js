@@ -415,6 +415,12 @@
             shown.textContent = user.displayName;
             name.appendChild(shown);
         }
+        if (user.email) {
+            var mail = document.createElement('span');
+            mail.className = 'muted';
+            mail.textContent = user.email;
+            name.appendChild(mail);
+        }
         tr.appendChild(cell(name));
         tr.appendChild(cell(chip(user.role === 'admin' ? 'Admin' : 'User', user.role === 'admin' ? 'role-admin' : '')));
         tr.appendChild(cell(chip(user.disabled ? 'Disabled' : 'Active', user.disabled ? 'status-off' : '')));
@@ -449,10 +455,12 @@
                 },
             },
             { label: 'Reset password', ariaLabel: 'Reset password of' + who, onClick: function () { openUserPassword(user); } },
+            { label: user.email ? 'Change email' : 'Add email', ariaLabel: 'Edit the email of' + who, onClick: function () { openUserEmail(user); } },
+            ].concat(user.email ? [{ label: 'Email a reset link', ariaLabel: 'Email a reset link to' + who, onClick: function () { emailResetLink(user); } }] : [], [
             { label: 'Sign out everywhere', ariaLabel: 'Sign out' + who + ' everywhere', onClick: function () { signOutUser(user); } },
             null,
             { label: 'Delete', danger: true, ariaLabel: 'Delete' + who, onClick: function () { deleteUser(user); } },
-        ], 'More actions for' + who));
+        ]), 'More actions for' + who));
         tr.appendChild(cell(actions, 'actions'));
         return tr;
     }
@@ -520,6 +528,45 @@
         });
     });
 
+    // ---- a user's email address, and emailing them a reset link ----
+
+    var userEmailDialog = $('userEmailDialog');
+    var userEmailTarget = null;
+
+    function openUserEmail(user) {
+        userEmailTarget = user;
+        $('userEmailTitle').textContent = 'Email address of ' + user.username;
+        $('userEmailInput').value = user.email || '';
+        $('userEmailError').textContent = '';
+        if (typeof userEmailDialog.showModal === 'function') userEmailDialog.showModal(); else userEmailDialog.setAttribute('open', '');
+        $('userEmailInput').focus();
+    }
+
+    $('userEmailCancel').addEventListener('click', function () { userEmailDialog.close(); });
+    userEmailDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
+    $('userEmailForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        $('userEmailError').textContent = '';
+        $('userEmailSave').disabled = true;
+        api('/api/admin/users/' + encodeURIComponent(userEmailTarget.id), { method: 'PATCH', body: { email: $('userEmailInput').value.trim() } }).then(function (res) {
+            $('userEmailSave').disabled = false;
+            if (userStatus(res)) { userEmailDialog.close(); return; }
+            if (res.ok) { userEmailDialog.close(); toast('Email saved for ' + userEmailTarget.username + '.'); loadUsers(); }
+            else $('userEmailError').textContent = (res.body && res.body.error) || 'Could not save the email.';
+        }).catch(function () {
+            $('userEmailSave').disabled = false;
+            $('userEmailError').textContent = 'Could not reach the server.';
+        });
+    });
+
+    function emailResetLink(user) {
+        api('/api/admin/users/' + encodeURIComponent(user.id) + '/email-reset', { method: 'POST' }).then(function (res) {
+            if (userStatus(res)) return;
+            if (res.ok) toast('Reset link sent to ' + user.email + '. It works once, for an hour.');
+            else toast(((res.body && res.body.error) || 'Could not send the email.') + (res.body && res.body.detail ? ' The mail server said: ' + res.body.detail : ''), true);
+        }).catch(function () { toast('Could not reach the server.', true); });
+    }
+
     // Create user and Backup stay out of the way until asked for: a button opens or closes each panel
     function setPanel(toggle, panel, open, focusId) {
         panel.classList.toggle('hidden', !open);
@@ -551,7 +598,7 @@
         $('createUserToggle').focus();
     });
 
-    var userFormErrors = { username: $('newUsernameError'), displayName: $('newDisplayNameError'), password: $('newUserPasswordError') };
+    var userFormErrors = { username: $('newUsernameError'), displayName: $('newDisplayNameError'), email: $('newUserEmailError'), password: $('newUserPasswordError') };
 
     $('userForm').addEventListener('submit', function (event) {
         event.preventDefault();
@@ -568,7 +615,7 @@
         var displayName = $('newDisplayName').value.trim();
         api('/api/admin/users', {
             method: 'POST',
-            body: { username: username, displayName: displayName || undefined, password: password, role: $('newUserRole').value },
+            body: { username: username, displayName: displayName || undefined, email: $('newUserEmail').value.trim() || undefined, password: password, role: $('newUserRole').value },
         }).then(function (res) {
             $('createUserButton').disabled = false;
             // Cleared whatever the answer: a password is never left in the form
@@ -577,6 +624,7 @@
             if (res.ok) {
                 $('newUsername').value = '';
                 $('newDisplayName').value = '';
+                $('newUserEmail').value = '';
                 $('newUserRole').value = 'user';
                 toast('Added ' + res.body.username + '. Tell them their password.');
                 closeUserForm();
@@ -682,6 +730,8 @@
         Security: '<svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
         Files: '<svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/></svg>',
         Stashes: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>',
+        'Rate limits': '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>',
+        Email: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg>',
         other: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg>'
     };
 
@@ -740,9 +790,68 @@
             panel.tabIndex = 0;
             layout.appendChild(panel);
             group.fields.forEach(function (field) { panel.appendChild(settingRow(field)); });
+            if (group.name === 'Email') panel.appendChild(emailTestBox());
         });
         setTabOrientation();
         selectGroup(activeGroup, false);
+    }
+
+    // "Send a test email": uses the settings as they are saved, and shows what the mail server said when it fails
+    function emailTestBox() {
+        var box = document.createElement('div');
+        box.className = 'email-test';
+        var title = document.createElement('h3');
+        title.textContent = 'Send a test email';
+        var hint = document.createElement('small');
+        hint.className = 'field-hint';
+        hint.textContent = 'Save your changes first: the test uses what is saved.';
+        var row = document.createElement('div');
+        row.className = 'input-row';
+        var input = document.createElement('input');
+        input.type = 'email';
+        input.id = 'testEmailTo';
+        input.autocomplete = 'email';
+        input.placeholder = 'you@example.com';
+        input.setAttribute('aria-label', 'Send the test email to');
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.id = 'testEmailButton';
+        button.className = 'ghost';
+        button.textContent = 'Send test';
+        var result = document.createElement('p');
+        result.id = 'testEmailResult';
+        result.className = 'form-status';
+        result.setAttribute('role', 'status');
+        row.appendChild(input);
+        row.appendChild(button);
+        box.appendChild(title);
+        box.appendChild(hint);
+        box.appendChild(row);
+        box.appendChild(result);
+        button.addEventListener('click', function () {
+            result.classList.remove('error');
+            var to = input.value.trim();
+            if (!to) { result.textContent = 'Enter the address to send the test to.'; result.classList.add('error'); input.focus(); return; }
+            button.disabled = true;
+            result.textContent = 'Sending...';
+            api('/api/admin/email/test', { method: 'POST', body: { to: to } }).then(function (res) {
+                button.disabled = false;
+                if (res.status === 401) return expired();
+                if (res.ok) {
+                    result.textContent = 'Sent to ' + to + '. Check that inbox (and the spam folder).';
+                } else {
+                    var body = res.body || {};
+                    result.textContent = (body.error || 'The test email could not be sent.') + (body.detail ? ' The mail server said: ' + body.detail : '');
+                    result.classList.add('error');
+                }
+                return null;
+            }).catch(function () {
+                button.disabled = false;
+                result.textContent = 'Could not reach the server.';
+                result.classList.add('error');
+            });
+        });
+        return box;
     }
 
     function settingRow(field) {
@@ -776,6 +885,19 @@
         } else if (field.type === 'bool') {
             input.type = 'checkbox';
             input.checked = Boolean(field.value);
+        } else if (field.type === 'text' || field.type === 'email' || field.type === 'url' || field.type === 'secret') {
+            input.type = field.type === 'secret' ? 'password' : field.type === 'text' ? 'text' : field.type;
+            input.maxLength = field.maxLength || 255;
+            input.autocomplete = field.type === 'secret' ? 'new-password' : 'off';
+            input.spellcheck = false;
+            input.className = 'wide-input';
+            if (field.type === 'secret') {
+                // Never filled in: the server does not send it back
+                input.placeholder = field.isSet ? 'A password is saved. Type to replace it.' : 'Not set';
+            } else {
+                input.value = field.value || '';
+                if (field.placeholder) input.placeholder = field.placeholder;
+            }
         } else {
             input.type = 'number';
             input.min = field.min;
@@ -798,7 +920,24 @@
             defaultText = field.options.filter(function (option) { return option.value === field.default; })[0].label;
         }
         note.textContent = 'Default: ' + defaultText;
-        control.appendChild(note);
+        if (field.type === 'secret') {
+            // A secret has no default to show; say whether one is saved, and let it be removed
+            note.textContent = field.isSet ? 'A password is saved.' : 'No password is saved.';
+            control.appendChild(note);
+            if (field.isSet) {
+                var clear = document.createElement('label');
+                clear.className = 'inline-check';
+                var box = document.createElement('input');
+                box.type = 'checkbox';
+                box.id = 'clear-' + field.key;
+                clear.appendChild(box);
+                clear.appendChild(document.createTextNode(' Remove the saved password when I save'));
+                control.appendChild(clear);
+            }
+        } else {
+            if (field.type === 'text' || field.type === 'email' || field.type === 'url') note.textContent = field.default ? 'Default: ' + field.default : 'Default: empty';
+            control.appendChild(note);
+        }
 
         var error = document.createElement('small');
         error.className = 'field-error';
@@ -816,7 +955,13 @@
         fields.forEach(function (field) {
             var input = $('setting-' + field.key);
             if (field.type === 'choice') values[field.key] = input.value;
-            else values[field.key] = field.type === 'bool' ? input.checked : (input.value === '' ? NaN : Number(input.value));
+            else if (field.type === 'text' || field.type === 'email' || field.type === 'url') values[field.key] = input.value;
+            else if (field.type === 'secret') {
+                var removing = $('clear-' + field.key);
+                if (input.value) values[field.key] = input.value;
+                else if (removing && removing.checked) values[field.key] = null;
+                // empty and not removing: leave the saved one alone (the key is not sent)
+            } else values[field.key] = field.type === 'bool' ? input.checked : (input.value === '' ? NaN : Number(input.value));
         });
         return values;
     }

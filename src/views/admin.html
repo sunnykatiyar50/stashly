@@ -178,6 +178,12 @@
                         <input type="text" id="newDisplayName" autocomplete="off" maxlength="60" />
                         <small class="field-error" id="newDisplayNameError" role="alert"></small>
                     </div>
+                    <div class="field">
+                        <label for="newUserEmail">Email <span class="optional">optional</span></label>
+                        <input type="email" id="newUserEmail" autocomplete="off" maxlength="254" />
+                        <small class="field-hint">For password reset links.</small>
+                        <small class="field-error" id="newUserEmailError" role="alert"></small>
+                    </div>
                 </div>
                 <div class="field-row">
                     <div class="field">
@@ -249,6 +255,21 @@
             <div class="qr-actions">
                 <button type="button" id="userPasswordCancel" class="ghost">Cancel</button>
                 <button type="submit" id="userPasswordSave" class="primary">Reset password</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="userEmailDialog" class="qr-dialog share-dialog" aria-labelledby="userEmailTitle">
+        <form id="userEmailForm" class="qr-body share-body" novalidate>
+            <h2 id="userEmailTitle">Email address</h2>
+            <p class="muted">Where this user's password reset links go. Leave it empty to remove it.</p>
+            <div class="field">
+                <label for="userEmailInput">Email address</label>
+                <input type="email" id="userEmailInput" autocomplete="off" maxlength="254" />
+                <small class="field-error" id="userEmailError" role="alert"></small>
+            </div>
+            <div class="qr-actions">
+                <button type="button" id="userEmailCancel" class="ghost">Cancel</button>
+                <button type="submit" id="userEmailSave" class="primary">Save</button>
             </div>
         </form>
     </dialog>

@@ -216,6 +216,21 @@ const MIGRATIONS = [
         if (!columns.includes('password_reset_at')) db.exec('ALTER TABLE stashes ADD COLUMN password_reset_at TEXT');
         db.exec('CREATE INDEX IF NOT EXISTS idx_stashes_owner ON stashes (owner_id)');
     },
+
+    // 9: pinned stashes. A user can pin stashes in their list; pinned ones sit first in My stashes and in the left menu.
+    // `pinned_at` is when it was pinned (null = not pinned). It lives on the follow row, so unfollowing or deleting the
+    // user or the stash drops the pin with it.
+    db => {
+        const columns = db.prepare('PRAGMA table_info(user_stashes)').all().map(column => column.name);
+        if (!columns.includes('pinned_at')) db.exec('ALTER TABLE user_stashes ADD COLUMN pinned_at TEXT');
+    },
+
+    // 10: an optional email address on a user, lowercase, used only to send them password reset links and notices.
+    // Not unique: two accounts may share one address (a family inbox).
+    db => {
+        const columns = db.prepare('PRAGMA table_info(users)').all().map(column => column.name);
+        if (!columns.includes('email')) db.exec('ALTER TABLE users ADD COLUMN email TEXT');
+    },
 ];
 
 const SCHEMA_VERSION = MIGRATIONS.length;

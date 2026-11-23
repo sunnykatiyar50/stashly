@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { dateRange } = require('../utils/time');
 const { parseTitle, deriveTitle } = require('../utils/title');
 const { listZip } = require('../utils/zip');
+const { emailReady } = require('../utils/mailer');
 const { UnlockLockout } = require('../utils/lockout');
 const { pipeline } = require('stream');
 const { once } = require('events');
@@ -286,6 +287,8 @@ class StashController {
             // Who may create: 'open' (anyone, the default), 'login' (signed-in users and admins) or 'admin'
             createRule: this.config.requireAdminToCreate ? 'admin' : this.config.requireLoginToCreate ? 'login' : 'open',
             adminEnabled: Boolean(this.config.adminPassword),
+            // Whether the server can send email (the pages offer "email this link" and the like only when it can)
+            emailEnabled: emailReady(this.config),
             accountsEnabled: Boolean(this.config.adminPassword),
         });
     };

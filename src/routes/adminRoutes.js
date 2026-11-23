@@ -9,7 +9,7 @@ function createAdminRoutes({ controller, users, adminAuth, config }) {
     // Only wrong passwords count, so the admin is never locked out by typing it right
     const loginLimiter = rateLimit({
         windowMs: 15 * 60 * 1000,
-        limit: config.rateAdminLogin,
+        limit: () => config.rateAdminLogin,
         standardHeaders: 'draft-8',
         legacyHeaders: false,
         skipSuccessfulRequests: true,
@@ -46,11 +46,20 @@ function createAdminRoutes({ controller, users, adminAuth, config }) {
     router.get('/settings', admin, c.getSettings);
     router.put('/settings', admin, c.putSettings);
     router.post('/settings/reset', admin, c.resetSettings);
+    // A test message goes to a real mail server, so it is limited like the other things an admin can repeat
+    router.post('/email/test', admin, rateLimit({
+        windowMs: 10 * 60 * 1000,
+        limit: 20,
+        standardHeaders: 'draft-8',
+        legacyHeaders: false,
+        message: { error: 'Too many test emails. Try again in a few minutes.' },
+    }), c.testEmail);
 
     router.get('/users', admin, userLimiter, users.list);
     router.post('/users', admin, userLimiter, users.create);
     router.patch('/users/:id', admin, userLimiter, users.update);
     router.post('/users/:id/password', admin, userLimiter, users.resetPassword);
+    router.post('/users/:id/email-reset', admin, userLimiter, users.emailReset);
     router.post('/users/:id/sign-out', admin, userLimiter, users.signOut);
     router.delete('/users/:id', admin, userLimiter, users.remove);
 

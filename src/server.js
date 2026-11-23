@@ -12,6 +12,7 @@ const { UserAuth } = require('./utils/userAuth');
 const { AdminAuth } = require('./utils/adminAuth');
 const { syncAdminUser } = require('./utils/adminUser');
 const { SettingsStore } = require('./utils/settings');
+const { Mailer } = require('./utils/mailer');
 const { gzipAssets, revalidate } = require('./utils/staticAssets');
 const { accessLog } = require('./utils/accessLog');
 const { createAudit } = require('./utils/auditLog');
@@ -25,13 +26,15 @@ const viewsDir = path.join(__dirname, 'views');
 
 // Builds the Express app. Kept separate from app.js so tests can create it with their own config and database.
 // logOut and auditOut receive the access-log and audit-log lines (default: stdout); tests pass a collector.
-function createApp({ config, model, events, secret, now, logOut, auditOut }) {
+function createApp({ config, model, events, secret, now, logOut, auditOut, mail }) {
     const app = express();
     // Throws with a clear message when a logging option is not one of the allowed values
     checkConfig(config);
     const adminAuth = new AdminAuth({ config, secret, now });
     // Applies any limits the admin saved earlier on top of the environment's values
-    const settings = new SettingsStore({ model, config });
+    const settings = new SettingsStore({ model, config, secret });
+    // The one place email goes out from (see utils/mailer.js). `mail` lets a test supply its own transport.
+    const mailer = new Mailer({ config, now, createTransport: mail && mail.createTransport });
     const audit = createAudit({ mode: config.auditLog, out: auditOut, secret, now });
     const metrics = new Metrics();
     // Accounts (only on while the admin area is): who is signed in is read before every route, and the stash controller
@@ -42,9 +45,9 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
     syncAdminUser({ users, config, log: line => console.log(line) });
     const userAuth = new UserAuth({ config, secret, users, now });
     const controller = new StashController({ model, events, config, secret, now, isAdmin: adminAuth.isAdmin, audit, metrics, users, userAuth });
-    const userController = new UserController({ model, users, userAuth, adminAuth, config, stashes: controller, now, audit, metrics });
+    const userController = new UserController({ model, users, userAuth, adminAuth, config, stashes: controller, mailer, secret, now, audit, metrics });
     const adminController = new AdminController({
-        model, events, config, adminAuth, settings, users, now, audit, metrics,
+        model, events, config, adminAuth, settings, users, mailer, now, audit, metrics,
         // A new password clears the wrong-password count the stash controller keeps
         resetFailures: slug => controller.lockout.clear(slug),
     });
@@ -165,7 +168,7 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
     app.use(
         rateLimit({
             windowMs: 60 * 1000,
-            limit: Math.max(config.rateRead, 1) * 2,
+            limit: () => Math.max(config.rateRead, 1) * 2,
             standardHeaders: 'draft-8',
             legacyHeaders: false,
             message: 'Too many requests, slow down.',
@@ -209,7 +212,7 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
         res.status(status).json({ error: message });
     });
 
-    return { app, controller, adminController, userController, userAuth, users, settings, metrics, audit };
+    return { app, controller, adminController, userController, userAuth, users, settings, metrics, audit, mailer };
 }
 
 module.exports = { createApp };

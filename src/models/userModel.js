@@ -41,6 +41,11 @@ class UserModel {
         return this.db.prepare('SELECT * FROM users WHERE username = ?').get(username) || null;
     }
 
+    // Accounts that have this address (lowercase), enabled ones only, at most 3
+    findByEmail(email) {
+        return this.db.prepare('SELECT * FROM users WHERE email = ? AND disabled = 0 AND managed = 0 ORDER BY id LIMIT 3').all(email);
+    }
+
     count() {
         return this.db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
     }
@@ -56,7 +61,7 @@ class UserModel {
     list() {
         return this.db
             .prepare(
-                `SELECT u.id, u.username, u.display_name, u.role, u.disabled, u.managed, u.created_at, u.created_by, u.last_login_at,
+                `SELECT u.id, u.username, u.display_name, u.email, u.role, u.disabled, u.managed, u.created_at, u.created_by, u.last_login_at,
                         (SELECT COUNT(*) FROM user_stashes us WHERE us.user_id = u.id) AS stash_count
                  FROM users u ORDER BY u.username`
             )
@@ -64,14 +69,14 @@ class UserModel {
     }
 
     // Throws an error with code DUPLICATE when the username is taken
-    create({ username, displayName = null, hash, salt, role, createdBy = null, managed = false, now = new Date() }) {
+    create({ username, displayName = null, email = null, hash, salt, role, createdBy = null, managed = false, now = new Date() }) {
         try {
             const result = this.db
                 .prepare(
-                    `INSERT INTO users (username, display_name, password_hash, password_salt, role, managed, created_at, created_by)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+                    `INSERT INTO users (username, display_name, email, password_hash, password_salt, role, managed, created_at, created_by)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
                 )
-                .run(username, displayName, hash, salt, role, managed ? 1 : 0, now.toISOString(), createdBy);
+                .run(username, displayName, email, hash, salt, role, managed ? 1 : 0, now.toISOString(), createdBy);
             return this.findById(Number(result.lastInsertRowid));
         } catch (err) {
             if (/UNIQUE/i.test(String(err.message))) {
@@ -95,6 +100,10 @@ class UserModel {
             sets.push('disabled = ?');
             params.push(changes.disabled ? 1 : 0);
             if (changes.disabled && changes.role === undefined) sets.push('session_version = session_version + 1');
+        }
+        if (changes.email !== undefined) {
+            sets.push('email = ?');
+            params.push(changes.email);
         }
         if (changes.displayName !== undefined) {
             sets.push('display_name = ?');
@@ -188,6 +197,17 @@ class UserModel {
         return this.db.prepare('UPDATE user_stashes SET last_seen_at = ? WHERE user_id = ? AND stash_id = ?').run(now.toISOString(), userId, stashId).changes > 0;
     }
 
+    countPinned(userId) {
+        return this.db.prepare('SELECT COUNT(*) AS n FROM user_stashes WHERE user_id = ? AND pinned_at IS NOT NULL').get(userId).n;
+    }
+
+    // Pins or unpins a stash that is in the user's list. False when it is not in the list.
+    setPinned(userId, stashId, pinned, now = new Date()) {
+        return this.db
+            .prepare('UPDATE user_stashes SET pinned_at = ? WHERE user_id = ? AND stash_id = ?')
+            .run(pinned ? now.toISOString() : null, userId, stashId).changes > 0;
+    }
+
     // The user's followed stashes with their counts, for the dashboard. A stash whose time is up is left out (the cleanup
     // job removes it within a minute). Counts follow the same rule as the stash listing: an item past its own expiry is
     // not counted. Burn-after-reading notes count as items (only that they exist, never their text).
@@ -195,7 +215,7 @@ class UserModel {
         const at = now.toISOString();
         return this.db
             .prepare(
-                `SELECT us.stash_id, us.added_at, us.last_seen_at, us.grant_role, us.grant_salt, us.grant_version, us.grant_view_hash,
+                `SELECT us.stash_id, us.pinned_at, us.added_at, us.last_seen_at, us.grant_role, us.grant_salt, us.grant_version, us.grant_view_hash,
                         s.slug, s.owner_id, s.password_hash, s.password_salt, s.session_version, s.view_token_hash, s.expires_at,
                         (SELECT COUNT(*) FROM items i WHERE i.stash_id = s.id AND (i.expires_at IS NULL OR i.expires_at > ?)) AS items,
                         (SELECT COUNT(*) FROM items i WHERE i.stash_id = s.id AND i.kind = 'file' AND (i.expires_at IS NULL OR i.expires_at > ?)) AS files,

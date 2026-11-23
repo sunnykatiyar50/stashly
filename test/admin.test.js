@@ -163,9 +163,12 @@ test('every setting names the tab it is shown under', async () => {
     assert.equal(byKey.fileTypes, 'Files');
     assert.equal(byKey.allowNoExpiry, 'Stashes');
     assert.equal(byKey.requireAdminToCreate, 'Stashes');
+    assert.equal(byKey.defaultTtl, 'Stashes');
+    for (const key of ['userSessionDays', 'signInAttempts', 'stashUnlockFailures', 'stashUnlockWindowMin']) assert.equal(byKey[key], 'Security', key);
+    for (const key of ['rateCreate', 'ratePost', 'rateUpload', 'rateRead']) assert.equal(byKey[key], 'Rate limits', key);
     // Tabs follow the order the groups first appear in
     const order = [...new Set(res.body.fields.map(f => f.group))];
-    assert.deepEqual(order, ['Limits', 'Security', 'Files', 'Stashes']);
+    assert.deepEqual(order, ['Limits', 'Security', 'Files', 'Stashes', 'Rate limits', 'Email']);
 });
 
 test('changed limits apply at once, with no restart', async () => {

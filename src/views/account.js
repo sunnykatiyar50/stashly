@@ -3,7 +3,7 @@
     'use strict';
 
     var $ = function (id) { return document.getElementById(id); };
-    var states = { loading: $('stateLoading'), disabled: $('stateDisabled'), login: $('stateLogin'), account: $('viewAccount') };
+    var states = { loading: $('stateLoading'), disabled: $('stateDisabled'), login: $('stateLogin'), reset: $('stateReset'), account: $('viewAccount') };
     var me = null;
     var refreshTimer = null;
     var REFRESH_MS = 20000;
@@ -232,6 +232,14 @@
             open.href = '/s/' + encodeURIComponent(stash.slug);
             actions.appendChild(open);
         }
+        if (!stash.needsPassword) {
+            var pin = make('button', 'ghost small pin-button' + (stash.pinned ? ' pinned' : ''), stash.pinned ? 'Unpin' : 'Pin');
+            pin.type = 'button';
+            pin.setAttribute('aria-pressed', String(Boolean(stash.pinned)));
+            pin.title = stash.pinned ? 'Remove from the pinned list in the left menu' : 'Show this stash in the left menu for quick switching';
+            pin.addEventListener('click', function () { pinStash(stash, !stash.pinned); });
+            actions.appendChild(pin);
+        }
         // Only stashes someone else made can be unfollowed: your own stay in your list
         if (!stash.owned) {
             var unfollow = make('button', 'ghost small', 'Unfollow');
@@ -244,10 +252,20 @@
         return li;
     }
 
+    function pinStash(stash, pinned) {
+        api('/api/me/stashes/' + encodeURIComponent(stash.slug) + '/pin', { method: pinned ? 'PUT' : 'DELETE' }).then(function (res) {
+            if (res.status === 401) return sessionEnded();
+            if (!res.ok) { toast((res.body && res.body.error) || 'Could not change that.', true); return null; }
+            loadList();
+            if (window.StashlyAccountNav) window.StashlyAccountNav.refreshPins();
+            return null;
+        });
+    }
+
     function unfollowStash(stash) {
         api('/api/me/stashes/' + encodeURIComponent(stash.slug), { method: 'DELETE' }).then(function (res) {
             if (res.status === 401) return sessionEnded();
-            if (res.ok) { toast('Stopped following "' + stash.slug + '". The stash itself is untouched.'); loadList(); }
+            if (res.ok) { toast('Stopped following "' + stash.slug + '". The stash itself is untouched.'); loadList(); if (window.StashlyAccountNav) window.StashlyAccountNav.refreshPins(); }
             else toast('Could not unfollow.', true);
             return null;
         });
@@ -291,6 +309,105 @@
         });
     });
 
+    // ---- forgot password, and the link from the email ----
+
+    // The link from a reset email is /account#reset=TOKEN. The token stays in the fragment (never sent to a server), and is
+    // taken out of the address bar and the history at once.
+    var resetToken = (/^#reset=([\w.-]{1,300})$/.exec(location.hash) || [])[1] || '';
+    if (resetToken) history.replaceState(null, '', location.pathname + location.search);
+
+    var forgotDialog = $('forgotDialog');
+    $('forgotLink').addEventListener('click', function () {
+        $('forgotIdentifier').value = $('loginUsername').value;
+        $('forgotError').textContent = '';
+        $('forgotDone').textContent = '';
+        openDialog(forgotDialog);
+        $('forgotIdentifier').focus();
+    });
+    $('forgotCancel').addEventListener('click', function () { forgotDialog.close(); });
+    forgotDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
+    $('forgotForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        $('forgotError').textContent = '';
+        $('forgotDone').textContent = '';
+        var identifier = $('forgotIdentifier').value.trim();
+        if (!identifier) { $('forgotError').textContent = 'Enter your username or email address.'; return; }
+        $('forgotSend').disabled = true;
+        api('/api/auth/forgot', { method: 'POST', body: { identifier: identifier } }).then(function (res) {
+            $('forgotSend').disabled = false;
+            // The same words whether or not an account matched
+            if (res.ok) $('forgotDone').textContent = 'If an account matches, a link is on its way. It works for an hour. Check your spam folder too.';
+            else $('forgotError').textContent = (res.body && res.body.error) || 'Could not send the link.';
+        }).catch(function () {
+            $('forgotSend').disabled = false;
+            $('forgotError').textContent = 'Could not reach the server.';
+        });
+    });
+
+    $('resetBack').addEventListener('click', function () { resetToken = ''; show('login'); $('loginUsername').focus(); });
+    $('resetForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        $('resetError').textContent = '';
+        var password = $('resetPassword').value;
+        if (!password) { $('resetError').textContent = 'Enter a new password.'; return; }
+        $('resetButton').disabled = true;
+        api('/api/auth/reset', { method: 'POST', body: { token: resetToken, password: password } }).then(function (res) {
+            $('resetButton').disabled = false;
+            $('resetPassword').value = '';
+            if (res.ok) {
+                resetToken = '';
+                show('login');
+                $('loginPassword').focus();
+                toast('Password changed. Sign in with the new one.');
+            } else {
+                $('resetError').textContent = (res.body && res.body.error) || 'Could not set the password.';
+            }
+        }).catch(function () {
+            $('resetButton').disabled = false;
+            $('resetError').textContent = 'Could not reach the server.';
+        });
+    });
+
+    // ---- your email address ----
+
+    var emailDialog = $('emailDialog');
+    $('emailButton').addEventListener('click', function () {
+        $('emailInput').value = (me && me.email) || '';
+        $('emailPassword').value = '';
+        $('emailError').textContent = '';
+        $('emailPasswordError').textContent = '';
+        openDialog(emailDialog);
+        $('emailInput').focus();
+    });
+    $('emailCancel').addEventListener('click', function () { emailDialog.close(); });
+    emailDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
+    $('emailForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        $('emailError').textContent = '';
+        $('emailPasswordError').textContent = '';
+        var password = $('emailPassword').value;
+        if (!password) { $('emailPasswordError').textContent = 'Enter your current password.'; return; }
+        $('emailSave').disabled = true;
+        var value = $('emailInput').value.trim();
+        api('/api/me/email', { method: 'PUT', body: { email: value || null, currentPassword: password } }).then(function (res) {
+            $('emailSave').disabled = false;
+            $('emailPassword').value = '';
+            if (res.status === 401 && res.body && res.body.signedIn === false) { emailDialog.close(); return sessionEnded(); }
+            if (res.ok) {
+                if (me) me.email = res.body.email;
+                emailDialog.close();
+                toast(res.body.email ? 'Email saved.' : 'Email removed.');
+            } else {
+                var target = res.body && res.body.field === 'email' ? 'emailError' : 'emailPasswordError';
+                $(target).textContent = (res.body && res.body.error) || 'Could not save the email.';
+            }
+            return null;
+        }).catch(function () {
+            $('emailSave').disabled = false;
+            $('emailPasswordError').textContent = 'Could not reach the server.';
+        });
+    });
+
     // ---- keeping the list fresh ----
 
     // Every 20 seconds while this tab is in front, once more when it comes back, and not at all while it is hidden
@@ -326,10 +443,13 @@
         api('/api/me').then(function (res) {
             if (!res.ok) return toast('Could not reach the server.', true);
             if (!res.body.enabled) return show('disabled');
+            $('forgotLink').classList.toggle('hidden', !res.body.resetByEmail);
+            if (resetToken && !res.body.user) { show('reset'); $('resetPassword').focus(); return null; }
             if (!res.body.user) { me = null; refreshAdminNav(); show('login'); $('loginUsername').focus(); return null; }
             me = res.body.user;
             if (justSignedIn && me.role === 'admin' && nextTarget(location.search)) { location.href = nextTarget(location.search); return null; }
             $('passwordButton').classList.toggle('hidden', Boolean(me.managed));
+            $('emailButton').classList.toggle('hidden', Boolean(me.managed));
             $('whoInfo').textContent = me.displayName ? me.displayName + ' (' + me.username + ')' : me.username;
             $('roleChip').textContent = me.role === 'admin' ? 'Admin' : 'User';
             refreshAdminNav();
