@@ -55,6 +55,26 @@ const FIELDS = {
         help: 'A name given up by a deleted, expired or renamed stash cannot be used by a new stash for this long, so a device or script still using it does not send to someone else. 0 turns it off.',
         read: c => c.reserveOldNamesDays, write: (c, v) => { c.reserveOldNamesDays = v; },
     },
+    userSessionDays: {
+        group: 'Security', label: 'Account sign-in lasts', unit: 'days', type: 'int', min: 1, max: 90,
+        help: 'How long a user stays signed in on one browser. People already signed in keep the length they got when they signed in.',
+        read: c => c.userSessionDays, write: (c, v) => { c.userSessionDays = v; },
+    },
+    signInAttempts: {
+        group: 'Security', label: 'Wrong account passwords allowed', unit: 'per 15 minutes', type: 'int', min: 1, max: 1000,
+        help: 'How many wrong passwords one address may try at the sign-in (users and the admin) before it is made to wait. Typing it right never counts.',
+        read: c => c.rateUserLogin, write: (c, v) => { c.rateUserLogin = v; c.rateAdminLogin = v; },
+    },
+    stashUnlockFailures: {
+        group: 'Security', label: 'Wrong stash passwords before a lockout', unit: 'attempts', type: 'int', min: 0, max: 1000,
+        help: 'After this many wrong passwords on one stash from one address, unlocking it is refused until the wait below ends. 0 turns the lockout off.',
+        read: c => c.stashUnlockFailures, write: (c, v) => { c.stashUnlockFailures = v; },
+    },
+    stashUnlockWindowMin: {
+        group: 'Security', label: 'Lockout wait', unit: 'minutes', type: 'int', min: 1, max: 1440,
+        help: 'How long a lockout lasts, and how long wrong passwords are counted for.',
+        read: c => Math.round(c.stashUnlockWindowMs / 60000), write: (c, v) => { c.stashUnlockWindowMs = v * 60000; },
+    },
     fileTypes: {
         group: 'Files', label: 'File types', type: 'choice',
         options: [
@@ -75,6 +95,13 @@ const FIELDS = {
             if (v) c.ttlOptions.push({ key: 'never', label: 'Never', ms: null });
         },
     },
+    defaultTtl: {
+        group: 'Stashes', label: 'Default expiry', type: 'choice',
+        // The choices follow the expiry list, which grows a "Never" once that is allowed
+        options: c => c.ttlOptions.map(option => ({ value: option.key, label: option.label })),
+        help: 'What the expiry box on the home page starts on. People can still pick another.',
+        read: c => c.defaultTtl, write: (c, v) => { c.defaultTtl = v; },
+    },
     undoSeconds: {
         group: 'Stashes', label: 'Undo a delete for', unit: 'seconds', type: 'int', min: 0, max: 3600,
         help: 'After someone deletes a note or file, it can be brought back for this long (a deleted item stays in the database until then). Burn-after-reading and secret notes, and anything removed automatically, are never kept. 0 turns undo off: deletes are immediate.',
@@ -90,6 +117,26 @@ const FIELDS = {
         help: 'Lets an admin choose a new password for a stash that no signed-in user made (and so get into it). Stashes with an owner can never be reset by an admin. Turn it off and the admin can only delete or extend such a stash.',
         read: c => c.adminCanResetStashPasswords, write: (c, v) => { c.adminCanResetStashPasswords = v; },
     },
+    rateCreate: {
+        group: 'Rate limits', label: 'Stashes created', unit: 'per minute per address', type: 'int', min: 1, max: 100000,
+        help: 'How many stashes one address may create a minute.',
+        read: c => c.rateCreate, write: (c, v) => { c.rateCreate = v; },
+    },
+    ratePost: {
+        group: 'Rate limits', label: 'Notes added', unit: 'per minute per address', type: 'int', min: 1, max: 100000,
+        help: 'How many notes, pins and other changes one address may make a minute.',
+        read: c => c.ratePost, write: (c, v) => { c.ratePost = v; },
+    },
+    rateUpload: {
+        group: 'Rate limits', label: 'Files uploaded', unit: 'per minute per address', type: 'int', min: 1, max: 100000,
+        help: 'How many files one address may start uploading a minute.',
+        read: c => c.rateUpload, write: (c, v) => { c.rateUpload = v; },
+    },
+    rateRead: {
+        group: 'Rate limits', label: 'Reading', unit: 'per minute per address', type: 'int', min: 10, max: 1000000,
+        help: 'Opening stashes, listing items and downloading files. Pages and live updates count too, so keep it generous.',
+        read: c => c.rateRead, write: (c, v) => { c.rateRead = v; },
+    },
     requireLoginToCreate: {
         group: 'Stashes', label: 'Only signed-in users can create stashes', type: 'bool',
         help: 'Users the admin made, and admins, can create stashes; anyone else can still open and use stashes they have the link to. "Only the admin" above wins when both are on.',
@@ -104,13 +151,14 @@ class SettingsStore {
         this.defaults = this.values();
         const saved = model.loadSettings();
         for (const key of Object.keys(saved)) {
-            if (FIELDS[key] && this.check(key, saved[key]) === null) FIELDS[key].write(config, saved[key]);
+            if (FIELDS[key] && this.check(key, saved[key], { ...this.values(), ...saved }) === null) FIELDS[key].write(config, saved[key]);
         }
         this.normalise();
     }
 
     // "Only the admin can create" makes no sense when there is no admin, and accounts only exist with the admin area
     normalise() {
+        if (!this.config.ttlOptions.some(option => option.key === this.config.defaultTtl)) this.config.defaultTtl = '1d';
         if (!this.config.adminPassword) {
             this.config.requireAdminToCreate = false;
             this.config.requireLoginToCreate = false;
@@ -127,16 +175,28 @@ class SettingsStore {
     describe() {
         const values = this.values();
         return Object.keys(FIELDS).map(key => {
-            const { group, label, unit, type, min, max, help, options } = FIELDS[key];
-            return { key, group, label, unit, type, min, max, help, options, value: values[key], default: this.defaults[key] };
+            const { group, label, unit, type, min, max, help } = FIELDS[key];
+            return { key, group, label, unit, type, min, max, help, options: this.optionsOf(key), value: values[key], default: this.defaults[key] };
         });
     }
 
-    // Returns an error message, or null when the value is fine
-    check(key, value) {
+    // The choices of a "choice" field: a fixed list, or one worked out from the current settings
+    optionsOf(key) {
+        const options = FIELDS[key].options;
+        return typeof options === 'function' ? options(this.config) : options;
+    }
+
+    // Returns an error message, or null when the value is fine. `merged` is every value as it would be after the update
+    // (a default expiry of "Never" is fine when "Never" is being allowed in the same save).
+    check(key, value, merged) {
         const field = FIELDS[key];
         if (field.type === 'bool') return typeof value === 'boolean' ? null : 'Must be on or off.';
-        if (field.type === 'choice') return field.options.some(option => option.value === value) ? null : 'Pick one of the choices.';
+        if (key === 'defaultTtl') {
+            const keys = this.config.ttlOptions.filter(option => option.key !== 'never').map(option => option.key);
+            if (merged && merged.allowNoExpiry) keys.push('never');
+            return keys.includes(value) ? null : 'Pick one of the expiry choices.';
+        }
+        if (field.type === 'choice') return this.optionsOf(key).some(option => option.value === value) ? null : 'Pick one of the choices.';
         if (!Number.isInteger(value)) return 'Enter a whole number.';
         if (value < field.min || value > field.max) return `Enter a number from ${field.min} to ${field.max}.`;
         return null;
@@ -146,14 +206,14 @@ class SettingsStore {
     update(input) {
         const errors = {};
         if (!input || typeof input !== 'object' || Array.isArray(input)) return { errors: { _: 'Send the settings to change.' } };
+        const merged = { ...this.values(), ...input };
         for (const key of Object.keys(input)) {
             if (!FIELDS[key]) errors[key] = 'Unknown setting.';
             else {
-                const problem = this.check(key, input[key]);
+                const problem = this.check(key, input[key], merged);
                 if (problem) errors[key] = problem;
             }
         }
-        const merged = { ...this.values(), ...input };
         if (!errors.maxItemsPerStash && !errors.maxFilesPerStash && merged.maxItemsPerStash < merged.maxFilesPerStash) {
             errors.maxItemsPerStash = 'Must be at least the number of files per stash.';
         }

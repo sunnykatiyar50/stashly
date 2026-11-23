@@ -10,7 +10,7 @@ function createUserRoutes({ controller, config }) {
     const wrongPasswords = () =>
         rateLimit({
             windowMs: 15 * 60 * 1000,
-            limit: config.rateUserLogin,
+            limit: () => config.rateUserLogin,
             standardHeaders: 'draft-8',
             legacyHeaders: false,
             skipSuccessfulRequests: true,

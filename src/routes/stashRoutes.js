@@ -20,9 +20,10 @@ function createStashRoutes({ controller, config }) {
     const write = [c.loadStash, c.allow('full', 'drop')];
     const anyRole = [c.loadStash, c.allow('full', 'view', 'drop')];
 
-    const createLimiter = limiter(60 * 1000, config.rateCreate, 'Too many stashes created, slow down.');
-    const postLimiter = limiter(60 * 1000, config.ratePost, 'Too many notes, slow down.');
-    const uploadLimiter = limiter(60 * 1000, config.rateUpload, 'Too many uploads, slow down.');
+    // The limits that can be changed in Admin > Settings are read on each request (a function), so a change applies at once
+    const createLimiter = limiter(60 * 1000, () => config.rateCreate, 'Too many stashes created, slow down.');
+    const postLimiter = limiter(60 * 1000, () => config.ratePost, 'Too many notes, slow down.');
+    const uploadLimiter = limiter(60 * 1000, () => config.rateUpload, 'Too many uploads, slow down.');
     // The pieces of a resumable upload: one file is many requests, so this allows far more than uploadLimiter
     const chunkLimiter = limiter(60 * 1000, config.rateChunk, 'Too many pieces, slow down.');
     // Only failed attempts count, so a person who types the right password is never blocked
@@ -37,7 +38,7 @@ function createStashRoutes({ controller, config }) {
 
     // Reading is limited per IP. Separately, only requests for a stash that does not exist count (every other
     // response is skipped), with a tighter limit, so names cannot be guessed at speed.
-    const readLimiter = limiter(60 * 1000, config.rateRead, 'Too many requests, slow down.');
+    const readLimiter = limiter(60 * 1000, () => config.rateRead, 'Too many requests, slow down.');
     const missLimiter = rateLimit({
         windowMs: 60 * 1000,
         limit: config.rateNotFound,

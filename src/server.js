@@ -165,7 +165,7 @@ function createApp({ config, model, events, secret, now, logOut, auditOut }) {
     app.use(
         rateLimit({
             windowMs: 60 * 1000,
-            limit: Math.max(config.rateRead, 1) * 2,
+            limit: () => Math.max(config.rateRead, 1) * 2,
             standardHeaders: 'draft-8',
             legacyHeaders: false,
             message: 'Too many requests, slow down.',

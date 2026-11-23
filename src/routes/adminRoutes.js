@@ -9,7 +9,7 @@ function createAdminRoutes({ controller, users, adminAuth, config }) {
     // Only wrong passwords count, so the admin is never locked out by typing it right
     const loginLimiter = rateLimit({
         windowMs: 15 * 60 * 1000,
-        limit: config.rateAdminLogin,
+        limit: () => config.rateAdminLogin,
         standardHeaders: 'draft-8',
         legacyHeaders: false,
         skipSuccessfulRequests: true,
