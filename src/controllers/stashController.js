@@ -161,6 +161,13 @@ class StashController {
 
     // ---- middleware ----
 
+    // Whether a stash with this name exists, and whether it has a password. Nothing else is told.
+    exists = (req, res) => {
+        const stash = this.liveStash(req.params.slug);
+        if (!stash) return res.status(404).json({ exists: false });
+        res.json({ exists: true, locked: Boolean(stash.password_hash) });
+    };
+
     // Finds the stash named in the URL. A stash whose time is up is deleted on the spot.
     loadStash = (req, res, next) => {
         const stash = this.liveStash(req.params.slug);

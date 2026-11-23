@@ -1,4 +1,4 @@
-// The home page: create a stash, or open one by name
+// The home page: one box to open a stash by name or create it, the stashes you follow, and more options on request
 (function () {
     'use strict';
 
@@ -6,22 +6,27 @@
     var GENERATED = 12;
     var minOpen = 0; // from the server: the shortest name allowed without a password
     var minPassword = 10; // from the server: the shortest password accepted
+    var canCreate = true; // from the server: whether this visitor may create stashes
+    var suggestion = ''; // a random name, shown as the placeholder and used when Create is pressed with the box empty
     var $ = function (id) { return document.getElementById(id); };
 
     var slugInput = $('slugInput');
     var passwordInput = $('passwordInput');
     var ttlSelect = $('ttlSelect');
     var createButton = $('createButton');
+    var openButton = $('openButton');
     var status = $('createStatus');
     var slugHint = $('slugHint');
+    var offer = $('createOffer');
     var DEFAULT_HINT = slugHint.textContent;
 
-    var errors = { slug: $('slugError'), password: $('passwordError'), ttl: $('ttlError') };
+    var errors = { slug: $('slugError'), password: $('passwordError'), ttl: $('ttlError'), link: $('linkError') };
 
-    function clearErrors() {
+    function clearMessages() {
         Object.keys(errors).forEach(function (key) { errors[key].textContent = ''; });
         status.textContent = '';
         status.classList.remove('error');
+        offer.classList.add('hidden');
     }
 
     function api(path, options) {
@@ -52,10 +57,10 @@
         var length = slugInput.value.trim().length;
         var noPassword = !passwordInput.value;
         if (length && noPassword && minOpen && length < minOpen) {
-            slugHint.textContent = 'Without a password the name must be at least ' + minOpen + ' characters. Add a password, or use a longer name.';
+            slugHint.textContent = 'To create it without a password, the name must be at least ' + minOpen + ' characters. Add a password under More options, or use a longer name.';
             slugHint.classList.add('warn');
         } else if (length && noPassword && length < GENERATED) {
-            slugHint.textContent = 'Short names are easy to guess. Add a password if this should stay private.';
+            slugHint.textContent = 'Short names are easy to guess. Add a password under More options if this should stay private.';
             slugHint.classList.add('warn');
         } else {
             slugHint.textContent = DEFAULT_HINT;
@@ -66,22 +71,26 @@
     function suggest() {
         return api('/api/stashes/suggest').then(function (res) {
             if (res.ok) {
-                slugInput.value = res.body.slug;
-                errors.slug.textContent = '';
-                updateHint();
+                suggestion = res.body.slug;
+                slugInput.placeholder = suggestion;
             }
         });
     }
 
-    // When creating is limited (to the admin, or to signed-in users), a visitor gets a notice instead of a form that
-    // would be refused
-    function lockCreateForm(rule) {
+    // When creating is limited (to the admin, or to signed-in users), a visitor gets a notice, and Create is off.
+    // Opening a stash still works.
+    function lockCreate(rule) {
+        canCreate = false;
         $(rule === 'login' ? 'loginNotice' : 'adminNotice').classList.remove('hidden');
-        Array.prototype.forEach.call($('createForm').elements, function (el) { el.disabled = true; });
+        createButton.disabled = true;
+        createButton.title = 'You cannot create stashes on this server';
+        Array.prototype.forEach.call(document.querySelectorAll('#moreCreateTitle ~ *, #moreCreateTitle ~ * *'), function (el) {
+            if ('disabled' in el) el.disabled = true;
+        });
     }
 
-    // "Sign in" when nobody is signed in to an account, "My stashes" in the main menu when someone is (the link only
-    // exists when the server has accounts)
+    // ---- the signed-in account: "My stashes" in the menu and on this page ----
+
     var SIGNED_IN_KEY = 'sl_signed_in';
     function rememberedSignedIn() {
         try { return localStorage.getItem(SIGNED_IN_KEY) === '1'; } catch (e) { return false; }
@@ -93,6 +102,58 @@
     // instead of the menu changing after the page has drawn
     if (rememberedSignedIn()) $('accountNavLink').classList.remove('hidden');
 
+    function relativeTime(iso) {
+        var seconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+        if (seconds < 45) return 'just now';
+        var minutes = Math.round(seconds / 60);
+        if (minutes < 60) return minutes + ' min ago';
+        var hours = Math.round(minutes / 60);
+        if (hours < 24) return hours + ' h ago';
+        return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function make(tag, className, text) {
+        var el = document.createElement(tag);
+        if (className) el.className = className;
+        if (text !== undefined) el.textContent = text;
+        return el;
+    }
+
+    var SHOWN = 6; // the most stashes listed here; the rest are one click away on My stashes
+
+    function renderMyStashes(stashes) {
+        var list = $('homeStashList');
+        list.textContent = '';
+        stashes.slice(0, SHOWN).forEach(function (stash) {
+            var li = make('li');
+            // A stash whose password changed needs the account page to follow it again
+            var link = make('a', 'home-stash' + (stash.needsPassword ? ' stale' : ''));
+            link.href = stash.needsPassword ? '/account' : '/s/' + encodeURIComponent(stash.slug);
+            link.appendChild(make('span', 'mono home-stash-name', stash.slug));
+            var meta = make('span', 'home-stash-meta');
+            if (stash.needsPassword) {
+                meta.appendChild(make('span', 'chip warn', 'Needs the password again'));
+            } else {
+                if (stash.newItems > 0) meta.appendChild(make('span', 'chip new-chip', stash.newItems + ' new'));
+                if (stash.role === 'view') meta.appendChild(make('span', 'chip', 'Read-only'));
+                meta.appendChild(make('span', 'muted', stash.latestAt ? relativeTime(stash.latestAt) : 'no activity yet'));
+            }
+            link.appendChild(meta);
+            li.appendChild(link);
+            list.appendChild(li);
+        });
+        $('homeStashEmpty').classList.toggle('hidden', stashes.length > 0);
+        $('myStashes').classList.remove('hidden');
+        var more = stashes.length - SHOWN;
+        $('myStashesTitle').textContent = more > 0 ? 'My stashes (' + stashes.length + ')' : 'My stashes';
+    }
+
+    function loadMyStashes() {
+        api('/api/me/stashes').then(function (res) {
+            if (res.ok && res.body && res.body.stashes) renderMyStashes(res.body.stashes);
+        }).catch(function () { /* the list simply is not shown */ });
+    }
+
     function showAccountLink() {
         if (!rememberedSignedIn()) $('accountLink').classList.remove('hidden');
         api('/api/me').then(function (res) {
@@ -101,14 +162,13 @@
             if (!user) {
                 $('accountNavLink').classList.add('hidden');
                 $('accountLink').classList.remove('hidden');
+                return;
             }
-            if (res.ok && res.body && res.body.user) {
-                // Signed in: "My stashes" joins the main menu (the same place it has on the My stashes page) and the
-                // footer's "Sign in" goes away
-                $('accountNavLink').classList.remove('hidden');
-                $('accountNavLink').title = 'My stashes, signed in as ' + res.body.user.username;
-                $('accountLink').classList.add('hidden');
-            }
+            // Signed in: "My stashes" joins the main menu, the footer's "Sign in" goes away, and the list shows here
+            $('accountNavLink').classList.remove('hidden');
+            $('accountNavLink').title = 'My stashes, signed in as ' + user.username;
+            $('accountLink').classList.add('hidden');
+            loadMyStashes();
         }).catch(function () { /* keeps saying "Sign in" */ });
     }
 
@@ -116,7 +176,7 @@
         // shell.js has already asked for the config; reuse that answer instead of asking again
         return (window.StashlyConfig ? window.StashlyConfig() : api('/api/config')).then(function (res) {
             if (!res.ok) return;
-            if (!res.body.canCreate) lockCreateForm(res.body.createRule);
+            if (!res.body.canCreate) lockCreate(res.body.createRule);
             if (res.body.accountsEnabled) showAccountLink();
             minOpen = Number(res.body.minOpenNameLength) || 0;
             minPassword = Number(res.body.minPasswordLength) || minPassword;
@@ -132,26 +192,124 @@
         });
     }
 
-    $('regenerateButton').addEventListener('click', function () { suggest(); slugInput.focus(); });
-    slugInput.addEventListener('input', function () { errors.slug.textContent = ''; updateHint(); });
-    passwordInput.addEventListener('input', function () { errors.password.textContent = ''; updateHint(); });
+    // ---- More options ----
 
-    $('createForm').addEventListener('submit', function (event) {
-        event.preventDefault();
-        clearErrors();
-        var problem = validateName(slugInput.value);
+    var MORE_KEY = 'sl_home_more';
+    var moreToggle = $('moreToggle');
+    var moreOptions = $('moreOptions');
+
+    function setMore(open, remember) {
+        moreOptions.classList.toggle('hidden', !open);
+        moreToggle.setAttribute('aria-expanded', String(open));
+        moreToggle.classList.toggle('open', open);
+        $('moreToggleLabel').textContent = open ? 'Fewer options' : 'More options';
+        if (remember) {
+            try { localStorage.setItem(MORE_KEY, open ? '1' : '0'); } catch (e) { /* not remembered */ }
+        }
+    }
+    moreToggle.addEventListener('click', function () { setMore(moreOptions.classList.contains('hidden'), true); });
+    try { if (localStorage.getItem(MORE_KEY) === '1') setMore(true, false); } catch (e) { /* closed by default */ }
+
+    // ---- opening ----
+
+    // A pasted address or link (it holds /s/NAME) opens as it is, so a #view= or #drop= token survives
+    function addressOf(text) {
+        var found = /\/s\/[^\s?#]+(?:#\S*)?/.exec(text);
+        return found ? found[0] : null;
+    }
+
+    function openLink(text) {
+        var target = addressOf(text);
+        if (!target) return false;
+        window.location.href = target;
+        return true;
+    }
+
+    function openStash() {
+        clearMessages();
+        var raw = slugInput.value.trim();
+        if (!raw) {
+            errors.slug.textContent = 'Type the name of a stash to open. To make a new one, press Create.';
+            slugInput.focus();
+            return;
+        }
+        // Someone pasted a whole address into the name box
+        if (openLink(raw)) return;
+        var name = raw.toLowerCase();
+        var problem = validateName(name);
         if (problem) {
             errors.slug.textContent = problem;
             slugInput.focus();
             return;
         }
-        if (!passwordInput.value && minOpen && slugInput.value.trim().length < minOpen) {
-            errors.slug.textContent = 'Without a password the name must be at least ' + minOpen + ' characters. Add a password, or use a longer name.';
+        openButton.disabled = true;
+        status.textContent = 'Looking for it...';
+        api('/api/stashes/' + encodeURIComponent(name) + '/exists').then(function (res) {
+            openButton.disabled = false;
+            status.textContent = '';
+            if (res.ok) {
+                window.location.href = '/s/' + encodeURIComponent(name);
+            } else if (res.status === 404) {
+                offerToCreate(name);
+            } else {
+                status.textContent = (res.body && res.body.error) || 'Something went wrong. Try again.';
+                status.classList.add('error');
+            }
+        }).catch(function () {
+            openButton.disabled = false;
+            status.textContent = 'Could not reach the server.';
+            status.classList.add('error');
+        });
+    }
+
+    // The name is not a stash: say so, and offer to make it
+    function offerToCreate(name) {
+        $('createOfferText').textContent = canCreate
+            ? 'There is no stash called "' + name + '".'
+            : 'There is no stash called "' + name + '", and you cannot create stashes on this server.';
+        var button = $('createOfferButton');
+        button.textContent = 'Create "' + name + '"';
+        button.classList.toggle('hidden', !canCreate);
+        button.dataset.name = name;
+        offer.classList.remove('hidden');
+    }
+
+    $('quickForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        openStash();
+    });
+
+    $('openLinkButton').addEventListener('click', function () {
+        clearMessages();
+        var text = $('linkInput').value.trim();
+        if (!text) { errors.link.textContent = 'Paste a stash link first.'; return; }
+        if (!openLink(text)) errors.link.textContent = 'That does not look like a stash link. It should contain /s/ and the stash name.';
+    });
+    $('linkInput').addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') { event.preventDefault(); $('openLinkButton').click(); }
+    });
+
+    // ---- creating ----
+
+    function createStash(name) {
+        clearMessages();
+        // Empty box: use the random name shown in it
+        name = (name || slugInput.value.trim() || suggestion).trim();
+        var problem = validateName(name);
+        if (problem) {
+            errors.slug.textContent = problem;
+            slugInput.focus();
+            return;
+        }
+        if (!passwordInput.value && minOpen && name.length < minOpen) {
+            errors.slug.textContent = 'Without a password the name must be at least ' + minOpen + ' characters. Add a password under More options, or use a longer name.';
+            setMore(true, false);
             slugInput.focus();
             return;
         }
         if (passwordInput.value && passwordInput.value.length < minPassword) {
             errors.password.textContent = 'The password must be at least ' + minPassword + ' characters.';
+            setMore(true, false);
             passwordInput.focus();
             return;
         }
@@ -159,33 +317,38 @@
         status.textContent = 'Creating...';
         api('/api/stashes', {
             method: 'POST',
-            body: { slug: slugInput.value.trim(), password: passwordInput.value || undefined, ttl: ttlSelect.value },
+            body: { slug: name, password: passwordInput.value || undefined, ttl: ttlSelect.value },
         }).then(function (res) {
             if (res.ok) {
                 window.location.href = res.body.url;
                 return;
             }
-            createButton.disabled = false;
+            createButton.disabled = !canCreate;
             status.textContent = '';
             var message = (res.body && res.body.error) || 'Something went wrong. Try again.';
             var field = res.body && res.body.field;
-            if (field && errors[field]) errors[field].textContent = message;
-            else {
+            if (field && errors[field]) {
+                errors[field].textContent = message;
+                if (field !== 'slug') setMore(true, false);
+            } else {
                 status.textContent = message;
                 status.classList.add('error');
             }
         }).catch(function () {
-            createButton.disabled = false;
+            createButton.disabled = !canCreate;
             status.textContent = 'Could not reach the server.';
             status.classList.add('error');
         });
-    });
+    }
 
-    $('openForm').addEventListener('submit', function (event) {
-        event.preventDefault();
-        var name = $('openInput').value.trim().toLowerCase();
-        if (name) window.location.href = '/s/' + encodeURIComponent(name);
+    createButton.addEventListener('click', function () { createStash(''); });
+    $('createOfferButton').addEventListener('click', function (event) { createStash(event.currentTarget.dataset.name); });
+    $('regenerateButton').addEventListener('click', function () {
+        suggest().then(function () { slugInput.value = suggestion; updateHint(); });
+        slugInput.focus();
     });
+    slugInput.addEventListener('input', function () { errors.slug.textContent = ''; offer.classList.add('hidden'); updateHint(); });
+    passwordInput.addEventListener('input', function () { errors.password.textContent = ''; updateHint(); });
 
     $('curlExample').textContent =
         'curl -d "text to share" -H "Content-Type: text/plain" ' + location.origin + '/api/stashes/NAME/notes\n' +
@@ -193,4 +356,5 @@
 
     loadConfig();
     suggest();
+    slugInput.focus();
 })();

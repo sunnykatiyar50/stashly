@@ -256,6 +256,29 @@ body.has-account-nav #logoutButton { display: none; }
 .open-card input { padding: 9px 12px; font-size: 15px; }
 .open-card button { padding: 9px 18px; font-size: 14px; }
 .form-card { max-width: 640px; display: flex; flex-direction: column; gap: 14px; }
+/* The home page: one box to open or create, with the extra options behind a toggle */
+.quick-card { gap: 10px; }
+.quick-row { flex-wrap: wrap; }
+.quick-input { flex: 1 1 220px; padding: 10px 12px; font-size: 15px; }
+.quick-row button { padding: 10px 18px; }
+.offer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: 6px; background: var(--blue-soft); color: var(--text); }
+.offer span { flex: 1 1 200px; overflow-wrap: anywhere; }
+.more-toggle { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; }
+.more-toggle svg { width: 16px; height: 16px; transition: transform 0.15s; }
+.more-toggle.open svg { transform: rotate(180deg); }
+.more-options { border-top: 1px solid var(--border); padding-top: 14px; }
+.more-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 24px; }
+.more-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; align-items: stretch; }
+.more-col h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0; }
+.more-col button { align-self: flex-start; }
+.my-stashes-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.my-stashes-head h3 { margin: 0; }
+.home-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.home-stash { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); text-decoration: none; background: var(--surface-alt); }
+.home-stash:hover { border-color: var(--blue); background: var(--blue-soft); }
+.home-stash.stale { border-style: dashed; }
+.home-stash-name { font-weight: 600; overflow-wrap: anywhere; }
+.home-stash-meta { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; }
 .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .field label { font-weight: 600; font-size: 13px; }
 .field .optional { font-weight: 400; color: var(--muted); }
@@ -535,6 +558,7 @@ audio.detail-media { max-height: none; }
     .view { overflow: visible; padding: 12px; }
     .toolbar input[type="search"] { width: 100%; }
     .field-row { grid-template-columns: 1fr; }
+    .more-grid { grid-template-columns: 1fr; }
     .settings-row { grid-template-columns: 1fr; }
     .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
     .settings-tabs { flex-direction: row; overflow-x: auto; padding: 0 0 8px; border-right: none; border-bottom: 1px solid var(--border); }
