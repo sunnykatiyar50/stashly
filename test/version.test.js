@@ -13,7 +13,7 @@ test('the public config says which release is running, taken from package.json',
     assert.equal(res.body.version, version);
 });
 
-test('the sidebar script shows that version at the bottom of the menu, and it hides when the menu is collapsed', () => {
+test('the sidebar script shows that version centred right under the logo and name, and it hides when the menu is collapsed', () => {
     const script = fs.readFileSync(path.join(__dirname, '..', 'src', 'views', 'shell.js'), 'utf8');
     assert.ok(script.includes('/api/config'));
     assert.ok(script.includes('res.body.version'));
@@ -21,4 +21,8 @@ test('the sidebar script shows that version at the bottom of the menu, and it hi
     assert.ok(script.includes("'app-version label'"));
     const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'views', 'styles.css'), 'utf8');
     assert.ok(css.includes('.app-version'));
+    // Under the brand block (logo and name), not in the footer, and centred
+    assert.ok(script.includes("document.querySelector('.sidebar-brand')"));
+    assert.ok(script.includes("insertAdjacentElement('afterend', label)"));
+    assert.match(css, /\.app-version\s*\{[^}]*text-align:\s*center/);
 });

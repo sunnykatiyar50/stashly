@@ -39,18 +39,18 @@
         }
     }
 
-    // Which release is running, as a small label at the bottom of the menu (the server says so in /api/config)
+    // Which release is running, as a small centred label right under the logo and name (the server says so in /api/config)
     // The last version seen is drawn at once, so the label does not pop in after the page; the server's answer
     // replaces it (a new release shows up on the next load).
     function showVersion() {
-        var footer = document.querySelector('.sidebar-footer');
-        if (!footer || typeof fetch !== 'function') return;
+        var brand = document.querySelector('.sidebar-brand');
+        if (!brand || typeof fetch !== 'function') return;
         var label = document.createElement('div');
         label.className = 'app-version label';
         function paint(version) {
             label.textContent = 'v' + version;
             label.title = 'Stashly ' + version;
-            if (!label.parentNode) footer.appendChild(label);
+            if (!label.parentNode) brand.insertAdjacentElement('afterend', label);
         }
         try {
             var remembered = localStorage.getItem(VERSION_KEY);

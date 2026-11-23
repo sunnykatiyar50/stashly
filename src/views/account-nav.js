@@ -1,4 +1,4 @@
-// Who is signed in, and Sign out, at the bottom of the left menu of every page that has one. Nothing is drawn for a visitor
+// Who is signed in, and Sign out, at the very bottom of the left menu (below Theme) of every page that has one. Nothing is drawn for a visitor
 // without an account, or when the server has accounts off. The pages that sign people in or out call
 // StashlyAccountNav.refresh() so the block appears or goes away without a reload.
 (function () {
@@ -81,7 +81,8 @@
     function paint(info) {
         if (!block) {
             block = build();
-            footer.insertBefore(block, footer.firstChild);
+            // Last in the footer, so Theme sits above the account
+            footer.appendChild(block);
             document.body.classList.add('has-account-nav');
         }
         var parts = block._parts;
