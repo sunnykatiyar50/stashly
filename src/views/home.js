@@ -1,4 +1,4 @@
-// The home page: one box to open a stash by name or create it, the stashes you follow, and more options on request
+// The home page: one box to open a stash by name or create it, with more options on request
 (function () {
     'use strict';
 
@@ -102,59 +102,6 @@
     // instead of the menu changing after the page has drawn
     if (rememberedSignedIn()) $('accountNavLink').classList.remove('hidden');
 
-    function relativeTime(iso) {
-        var seconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
-        if (seconds < 45) return 'just now';
-        var minutes = Math.round(seconds / 60);
-        if (minutes < 60) return minutes + ' min ago';
-        var hours = Math.round(minutes / 60);
-        if (hours < 24) return hours + ' h ago';
-        return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-
-    function make(tag, className, text) {
-        var el = document.createElement(tag);
-        if (className) el.className = className;
-        if (text !== undefined) el.textContent = text;
-        return el;
-    }
-
-    var SHOWN = 6; // the most stashes listed here; the rest are one click away on My stashes
-
-    function renderMyStashes(stashes) {
-        var list = $('homeStashList');
-        list.textContent = '';
-        stashes.slice(0, SHOWN).forEach(function (stash) {
-            var li = make('li');
-            // A stash whose password changed needs the account page to follow it again
-            var link = make('a', 'home-stash' + (stash.needsPassword ? ' stale' : ''));
-            link.href = stash.needsPassword ? '/account' : '/s/' + encodeURIComponent(stash.slug);
-            link.appendChild(make('span', 'mono home-stash-name', stash.slug));
-            var meta = make('span', 'home-stash-meta');
-            if (stash.needsPassword) {
-                meta.appendChild(make('span', 'chip warn', 'Needs the password again'));
-            } else {
-                if (stash.newItems > 0) meta.appendChild(make('span', 'chip new-chip', stash.newItems + ' new'));
-                if (stash.owned) meta.appendChild(make('span', 'chip owner-chip', 'Yours'));
-                else if (stash.role === 'view') meta.appendChild(make('span', 'chip', 'Read-only'));
-                meta.appendChild(make('span', 'muted', stash.latestAt ? relativeTime(stash.latestAt) : 'no activity yet'));
-            }
-            link.appendChild(meta);
-            li.appendChild(link);
-            list.appendChild(li);
-        });
-        $('homeStashEmpty').classList.toggle('hidden', stashes.length > 0);
-        $('myStashes').classList.remove('hidden');
-        var more = stashes.length - SHOWN;
-        $('myStashesTitle').textContent = more > 0 ? 'My stashes (' + stashes.length + ')' : 'My stashes';
-    }
-
-    function loadMyStashes() {
-        api('/api/me/stashes').then(function (res) {
-            if (res.ok && res.body && res.body.stashes) renderMyStashes(res.body.stashes);
-        }).catch(function () { /* the list simply is not shown */ });
-    }
-
     function showAccountLink() {
         if (!rememberedSignedIn()) $('accountLink').classList.remove('hidden');
         api('/api/me').then(function (res) {
@@ -165,11 +112,10 @@
                 $('accountLink').classList.remove('hidden');
                 return;
             }
-            // Signed in: "My stashes" joins the main menu, the footer's "Sign in" goes away, and the list shows here
+            // Signed in: "My stashes" joins the main menu and the footer's "Sign in" goes away
             $('accountNavLink').classList.remove('hidden');
             $('accountNavLink').title = 'My stashes, signed in as ' + user.username;
             $('accountLink').classList.add('hidden');
-            loadMyStashes();
         }).catch(function () { /* keeps saying "Sign in" */ });
     }
 

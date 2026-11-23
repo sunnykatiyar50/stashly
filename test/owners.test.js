@@ -213,7 +213,7 @@ test('a database made before owners gets the new columns, and its stashes have n
     old.close();
 });
 
-test('the admin stash list has an Owner column, and the home list marks own stashes Yours', () => {
+test('the admin stash list has an Owner column', () => {
     const fs = require('node:fs');
     const path = require('node:path');
     const view = name => fs.readFileSync(path.join(__dirname, '..', 'src', 'views', name), 'utf8');
@@ -222,6 +222,4 @@ test('the admin stash list has an Owner column, and the home list marks own stas
     const admin = view('admin.js');
     assert.ok(admin.includes("stash.owner || 'Guest'"));
     assert.ok(admin.includes('stash.canResetPassword'));
-    // the home page's My stashes marks own stashes
-    assert.ok(view('home.js').includes("'chip owner-chip', 'Yours'"));
 });

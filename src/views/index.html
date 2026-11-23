@@ -70,7 +70,7 @@
                 You can still open a stash you have the link to.
             </div>
 
-            <!-- Two columns: the form (and your stashes) on the left, how it works on the right. One column on a narrow screen. -->
+            <!-- Two columns: the form on the left, how it works on the right. One column on a narrow screen. -->
             <div class="home-grid">
               <div class="home-main">
             <form id="quickForm" class="card form-card quick-card" novalidate>
@@ -82,6 +82,11 @@
                         <button type="submit" id="openButton" class="primary">Open</button>
                         <button type="button" id="createButton" class="ghost">Create</button>
                     </div>
+                    <!-- Right under the name: fill in a random one (Create with the box empty uses it too) -->
+                    <button type="button" id="regenerateButton" class="link-button random-name" title="Fill in a new random name">
+                        <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                        Use a random name
+                    </button>
                     <small class="field-hint" id="slugHint">Anyone with a stash's name can open it. Letters, numbers, - and _.</small>
                     <small class="field-error" id="slugError" role="alert"></small>
                 </div>
@@ -99,9 +104,10 @@
                 </button>
 
                 <div id="moreOptions" class="more-options hidden">
-                    <div class="more-grid">
-                        <section class="more-col" aria-labelledby="moreCreateTitle">
-                            <h3 id="moreCreateTitle">When creating</h3>
+                    <section class="more-col" aria-labelledby="moreCreateTitle">
+                        <h3 id="moreCreateTitle">When creating</h3>
+                        <!-- Password and when it is deleted, side by side -->
+                        <div class="field-row">
                             <div class="field">
                                 <label for="passwordInput">Password <span class="optional">optional</span></label>
                                 <input type="password" id="passwordInput" autocomplete="new-password" maxlength="200" aria-describedby="passwordError" />
@@ -112,39 +118,26 @@
                                 <select id="ttlSelect"></select>
                                 <small class="field-error" id="ttlError" role="alert"></small>
                             </div>
-                            <button type="button" id="regenerateButton" class="ghost" title="Fill in a new random name">
-                                <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                                Use a random name
-                            </button>
-                            <small class="field-hint">Press Create with the name empty and a random one is used.</small>
-                        </section>
+                        </div>
+                    </section>
 
-                        <section class="more-col" aria-labelledby="moreOpenTitle">
-                            <h3 id="moreOpenTitle">When opening</h3>
-                            <div class="field">
-                                <label for="linkInput">Open with a link</label>
-                                <div class="input-row">
-                                    <input type="text" id="linkInput" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false"
-                                           placeholder="Paste a stash link" aria-describedby="linkHint" />
-                                    <button type="button" id="openLinkButton" class="ghost">Open link</button>
-                                </div>
-                                <small class="field-hint" id="linkHint">A read-only or drop-box link opens with the access it gives. You can also paste a plain address.</small>
-                                <small class="field-error" id="linkError" role="alert"></small>
+                    <!-- A link can be long, so it has a row to itself -->
+                    <section class="more-col" aria-labelledby="moreOpenTitle">
+                        <h3 id="moreOpenTitle">When opening</h3>
+                        <div class="field">
+                            <label for="linkInput">Open with a link</label>
+                            <div class="input-row">
+                                <input type="text" id="linkInput" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false"
+                                       placeholder="Paste a stash link" aria-describedby="linkHint" />
+                                <button type="button" id="openLinkButton" class="ghost">Open link</button>
                             </div>
-                        </section>
-                    </div>
+                            <small class="field-hint" id="linkHint">A read-only or drop-box link opens with the access it gives. You can also paste a plain address.</small>
+                            <small class="field-error" id="linkError" role="alert"></small>
+                        </div>
+                    </section>
                 </div>
             </form>
 
-            <!-- Only for someone signed in to an account: the stashes they follow, one click away -->
-            <section id="myStashes" class="card form-card my-stashes hidden" aria-labelledby="myStashesTitle">
-                <div class="my-stashes-head">
-                    <h3 id="myStashesTitle">My stashes</h3>
-                    <a href="/account" class="link-button">See all</a>
-                </div>
-                <ul id="homeStashList" class="home-list" aria-label="Stashes you follow"></ul>
-                <p id="homeStashEmpty" class="muted hidden">You are not following any stash yet. Open one above and it is added here.</p>
-            </section>
               </div>
 
               <aside class="home-side" aria-label="How it works">
