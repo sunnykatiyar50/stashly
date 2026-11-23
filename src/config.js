@@ -74,6 +74,8 @@ function loadConfig(env = process.env, overrides = {}) {
         // Accounts exist only when the admin area is on (ADMIN_PASSWORD set). With this on, only a signed-in user (any
         // role) or the admin may create stashes; visitors can still open any stash they have the link to.
         requireLoginToCreate: Boolean(adminPassword) && flag(env.REQUIRE_LOGIN_TO_CREATE),
+        // Whether the admin may choose a new password for a stash that has no owner (a guest made it). Off: never.
+        adminCanResetStashPasswords: env.ADMIN_CAN_RESET_STASH_PASSWORDS === undefined || env.ADMIN_CAN_RESET_STASH_PASSWORDS === '' ? true : flag(env.ADMIN_CAN_RESET_STASH_PASSWORDS),
         // How long a user stays signed in on one browser (1 to 90 days)
         userSessionDays: Math.max(1, Math.min(90, Math.floor(num(env.USER_SESSION_DAYS, 7)))),
         // Wrong account passwords per address per 15 minutes (the per-username lockout uses the STASH_UNLOCK_* settings)

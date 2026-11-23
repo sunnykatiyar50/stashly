@@ -46,6 +46,13 @@
         sections.main.classList.toggle('role-drop', r === 'drop');
         // Options has nothing for a drop-box link (it may be in the top bar, outside the section above)
         $('optionsButton').classList.toggle('hidden', r === 'drop');
+        // An admin chose this password: the people using the stash can see it happened and when
+        var reset = $('resetNotice');
+        var resetAt = state.stash.passwordResetAt;
+        reset.classList.toggle('hidden', !resetAt);
+        reset.textContent = resetAt
+            ? "An admin chose this stash's password on " + new Date(resetAt).toLocaleString() + '. If you did not ask for that, change the password under Options.'
+            : '';
         var banner = $('roleBanner');
         banner.classList.toggle('hidden', r === 'full');
         banner.textContent = r === 'view'

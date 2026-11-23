@@ -197,6 +197,7 @@
         if (stash.needsPassword) {
             title.appendChild(make('span', 'chip warn', 'Needs the password again'));
         } else {
+            if (stash.owned) title.appendChild(make('span', 'chip owner-chip', 'Yours'));
             if (stash.hasPassword) {
                 var lock = make('span', 'chip lock-chip');
                 lock.title = 'Password protected';
@@ -205,7 +206,7 @@
                 lock.innerHTML = LOCK_ICON;
                 title.appendChild(lock);
             }
-            title.appendChild(make('span', 'chip' + (stash.role === 'view' ? ' role-view' : ''), stash.role === 'view' ? 'Read-only' : 'Full access'));
+            if (!stash.owned) title.appendChild(make('span', 'chip' + (stash.role === 'view' ? ' role-view' : ''), stash.role === 'view' ? 'Read-only' : 'Full access'));
             if (stash.newItems > 0) title.appendChild(make('span', 'chip new-chip', stash.newItems + ' new'));
         }
         main.appendChild(title);
@@ -231,11 +232,14 @@
             open.href = '/s/' + encodeURIComponent(stash.slug);
             actions.appendChild(open);
         }
-        var unfollow = make('button', 'ghost small', 'Unfollow');
-        unfollow.type = 'button';
-        unfollow.setAttribute('aria-label', 'Unfollow ' + stash.slug);
-        unfollow.addEventListener('click', function () { unfollowStash(stash); });
-        actions.appendChild(unfollow);
+        // Only stashes someone else made can be unfollowed: your own stay in your list
+        if (!stash.owned) {
+            var unfollow = make('button', 'ghost small', 'Unfollow');
+            unfollow.type = 'button';
+            unfollow.setAttribute('aria-label', 'Unfollow ' + stash.slug);
+            unfollow.addEventListener('click', function () { unfollowStash(stash); });
+            actions.appendChild(unfollow);
+        }
         li.appendChild(actions);
         return li;
     }

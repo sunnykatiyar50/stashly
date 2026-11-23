@@ -65,6 +65,9 @@ class AdminController {
             createdAt: row.created_at,
             expiresAt: row.expires_at,
             canExtend: Boolean(row.ttl_ms),
+            // The user who made it (null: a guest did). An admin cannot reset the password of a stash that has an owner.
+            owner: row.owner || null,
+            canResetPassword: this.config.adminCanResetStashPasswords && !row.owner_id,
         };
     }
 
@@ -108,13 +111,22 @@ class AdminController {
     setPassword = async (req, res) => {
         const stash = this.findStash(req, res);
         if (!stash) return;
+        if (!this.config.adminCanResetStashPasswords) {
+            return res.status(403).json({ error: 'Resetting stash passwords is switched off on this server.' });
+        }
+        // A stash made by a signed-in user belongs to them: the admin cannot take it over by choosing its password
+        // (the owner can change it, and the admin can still delete the stash)
+        if (stash.owner_id) {
+            return res.status(409).json({ error: 'This stash has an owner, so an admin cannot reset its password. The owner can change it, or you can delete the stash.' });
+        }
         const password = req.body && req.body.password;
         const min = this.config.minPasswordLength;
         if (typeof password !== 'string' || password.length < min || password.length > MAX_PASSWORD) {
             return res.status(400).json({ error: `The password must be ${min} to ${MAX_PASSWORD} characters.`, field: 'password' });
         }
         const hashed = await hashPassword(password);
-        this.model.setPassword(stash.id, hashed.hash, hashed.salt);
+        // The time is kept, so the people using the stash can see that an admin chose its password
+        this.model.setPassword(stash.id, hashed.hash, hashed.salt, this.now().toISOString());
         this.resetFailures(stash.slug);
         this.audit('stash.password_reset_by_admin', { req, stash, actor: 'admin' });
         // Open pages hold cookies for the old password: end their streams so they are asked again

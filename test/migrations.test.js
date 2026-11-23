@@ -72,7 +72,7 @@ test('a schema 2 database gets the trash table (and then thumbnails) and keeps i
 
         const db = connect(file);
         assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
-        assert.equal(SCHEMA_VERSION, 7);
+        assert.equal(SCHEMA_VERSION, 8);
         assert.deepEqual(columns(db, 'trash'), [
             'id', 'stash_id', 'kind', 'title', 'text', 'file_name', 'file_type', 'file_size', 'created_at',
             'expires_at', 'burn', 'secret', 'pinned', 'edited_at', 'sort_order', 'deleted_at', 'has_thumb',
@@ -164,6 +164,8 @@ test('a schema 5 database gets the users and follow tables at version 6, keeps i
     try {
         // A database exactly as the previous release left it: schema 5, without the account tables
         const first = connect(file);
+        // Stashes now point at users (their owner), so dropping users to look like the old release needs the check off
+        first.exec('PRAGMA foreign_keys = OFF');
         first.exec('DROP TABLE user_stashes');
         first.exec('DROP TABLE users');
         first.exec("INSERT INTO stashes (slug, created_at) VALUES ('five', '2026-01-01T00:00:00Z')");
@@ -172,8 +174,8 @@ test('a schema 5 database gets the users and follow tables at version 6, keeps i
         first.close();
 
         const db = connect(file);
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 7);
-        assert.equal(SCHEMA_VERSION, 7);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
+        assert.equal(SCHEMA_VERSION, 8);
         assert.deepEqual(columns(db, 'users'), [
             'id', 'username', 'display_name', 'password_hash', 'password_salt', 'role', 'disabled', 'session_version',
             'created_at', 'created_by', 'last_login_at', 'managed',
@@ -205,7 +207,7 @@ test('a schema 5 database gets the users and follow tables at version 6, keeps i
 
         // Opening it again changes nothing
         const again = connect(file);
-        assert.equal(again.prepare('PRAGMA user_version').get().user_version, 7);
+        assert.equal(again.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
         assert.equal(again.prepare('SELECT COUNT(*) AS n FROM users').get().n, 1);
         again.close();
     } finally {
@@ -224,13 +226,13 @@ test('a schema 6 database gets users.managed at version 7: existing users are no
         first.close();
 
         const db = connect(file);
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 7);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
         assert.ok(columns(db, 'users').includes('managed'));
         assert.equal(db.prepare("SELECT managed FROM users WHERE username = 'sam'").get().managed, 0);
         db.close();
 
         const again = connect(file);
-        assert.equal(again.prepare('PRAGMA user_version').get().user_version, 7);
+        assert.equal(again.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
         assert.equal(again.prepare('SELECT COUNT(*) AS n FROM users').get().n, 1);
         again.close();
     } finally {

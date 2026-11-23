@@ -205,6 +205,12 @@ class UserController {
         // So the access log tags this request with the stash (as a hash) like any other stash request
         req.stash = stash;
 
+        // A stash you made is always in your list, with full access: there is nothing to follow
+        if (this.stashes.ownedBy(req.user, stash)) {
+            this.users.ensureOwnerFollows(req.user.id);
+            return res.json({ ok: true, slug: stash.slug, role: 'full', owned: true });
+        }
+
         let role = null;
         if (body.current === true) {
             const access = this.stashes.access(req, stash);
@@ -245,6 +251,10 @@ class UserController {
 
     unfollow = (req, res) => {
         const stash = this.model.findBySlug(String(req.params.slug || '').toLowerCase());
+        // Your own stashes stay in your list: only stashes made by someone else (or a guest) can be unfollowed
+        if (stash && this.stashes.ownedBy(req.user, stash)) {
+            return res.status(409).json({ error: 'You made this stash, so it stays in your list.', owned: true });
+        }
         // Unfollowing something that is not followed (or gone) is fine: the list ends up without it either way
         if (stash && this.users.unfollow(req.user.id, stash.id)) this.audit('user.unfollowed', { req, stash, actor: 'user', detail: { user: req.user.id } });
         res.json({ ok: true });
@@ -261,12 +271,17 @@ class UserController {
     // The dashboard. A grant that no longer works shows only that the password is needed again: no counts, no times, so
     // nothing about a stash leaks to someone who can no longer open it. Working grants come first, newest activity first.
     listStashes = (req, res) => {
+        // Own stashes are always listed: make sure each has its row before reading the list
+        this.users.ensureOwnerFollows(req.user.id);
         const rows = this.users.listFollows(req.user.id, this.now());
         const out = rows.map(row => {
-            const role = grantRole(row, row);
-            if (!role) return { slug: row.slug, role: null, needsPassword: true, addedAt: row.added_at };
+            const owned = row.owner_id === req.user.id;
+            // The owner needs no password, so an owned stash never "needs the password again"
+            const role = owned ? 'full' : grantRole(row, row);
+            if (!role) return { slug: row.slug, role: null, needsPassword: true, owned: false, addedAt: row.added_at };
             return {
                 slug: row.slug,
+                owned,
                 role,
                 needsPassword: false,
                 hasPassword: Boolean(row.password_hash),
@@ -280,6 +295,8 @@ class UserController {
         });
         const key = row => row.latestAt || row.addedAt;
         out.sort((a, b) => {
+            // Your own stashes first, then the ones you follow that still open, then the ones that need the password
+            if (Boolean(a.owned) !== Boolean(b.owned)) return a.owned ? -1 : 1;
             if (a.needsPassword !== b.needsPassword) return a.needsPassword ? 1 : -1;
             return key(a) < key(b) ? 1 : key(a) > key(b) ? -1 : 0;
         });

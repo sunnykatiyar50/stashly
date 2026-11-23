@@ -167,6 +167,14 @@
             lock.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
             name.appendChild(lock);
         }
+        // Who made it: a signed-in user (an admin cannot reset the password of their stash), or a guest
+        var madeBy = document.createElement('span');
+        madeBy.className = 'chip' + (stash.owner ? ' owner-chip' : '');
+        madeBy.textContent = stash.owner ? 'Owner: ' + stash.owner : 'Guest';
+        madeBy.title = stash.owner
+            ? 'Made by ' + stash.owner + '. The owner can change its password; an admin cannot reset it.'
+            : 'Made by a guest, so it has no owner.';
+        name.appendChild(madeBy);
         tr.appendChild(cell(name));
         tr.appendChild(cell(String(stash.items), 'num'));
         tr.appendChild(cell(String(stash.files), 'num'));
@@ -186,12 +194,15 @@
             extend.addEventListener('click', function () { extendStash(stash); });
             actions.appendChild(extend);
         }
-        var pw = document.createElement('button');
-        pw.type = 'button';
-        pw.className = 'ghost small';
-        pw.textContent = stash.hasPassword ? 'Change password' : 'Set password';
-        pw.addEventListener('click', function () { openPasswordDialog(stash); });
-        actions.appendChild(pw);
+        // Not offered for a stash with an owner, nor when the server has switched resetting off
+        if (stash.canResetPassword) {
+            var pw = document.createElement('button');
+            pw.type = 'button';
+            pw.className = 'ghost small';
+            pw.textContent = stash.hasPassword ? 'Change password' : 'Set password';
+            pw.addEventListener('click', function () { openPasswordDialog(stash); });
+            actions.appendChild(pw);
+        }
         var del = document.createElement('button');
         del.type = 'button';
         del.className = 'danger-ghost small';
