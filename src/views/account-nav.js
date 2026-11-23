@@ -117,7 +117,8 @@
             pinBox.className = 'nav-pins';
             pinBox.setAttribute('role', 'group');
             pinBox.setAttribute('aria-label', 'Pinned stashes');
-            nav.appendChild(pinBox);
+            // Always above the Admin section, whichever script finishes first (admin-nav.js appends its section last)
+            nav.insertBefore(pinBox, nav.querySelector('.nav-section, .nav-section-label'));
         }
         pinBox.textContent = '';
         var heading = document.createElement('div');
