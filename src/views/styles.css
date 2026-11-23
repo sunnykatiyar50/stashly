@@ -283,23 +283,27 @@ body.has-account-nav #logoutButton { display: none; }
 .open-card input { padding: 9px 12px; font-size: 15px; }
 .open-card button { padding: 9px 18px; font-size: 14px; }
 .form-card { max-width: 640px; display: flex; flex-direction: column; gap: 14px; }
-/* The home page: one box to open or create, with the extra options behind a toggle */
-.quick-card { gap: 10px; }
-.quick-row { flex-wrap: wrap; }
-.quick-input { flex: 1 1 220px; padding: 10px 12px; font-size: 15px; }
-.quick-row button { padding: 10px 18px; }
-.offer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: 6px; background: var(--blue-soft); color: var(--text); }
-.offer span { flex: 1 1 200px; overflow-wrap: anywhere; }
-.more-toggle { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; }
-.more-toggle svg { width: 16px; height: 16px; transition: transform 0.15s; }
-.more-toggle.open svg { transform: rotate(180deg); }
-.more-options { border-top: 1px solid var(--border); padding-top: 14px; }
-.more-options { display: flex; flex-direction: column; gap: 18px; }
+/* The home page: two cards, one intent each — open a stash by name or link, or create one */
+.home-pair { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 14px; }
+@media (max-width: 860px) { .home-pair { grid-template-columns: minmax(0, 1fr); } }
+.intent-card { max-width: none; gap: 10px; }
+.intent-head { display: flex; flex-direction: column; gap: 2px; }
+.intent-head h2 { font-size: 16px; margin: 0; }
+.intent-head p { margin: 0; font-size: 13px; }
+.intent-row { flex-wrap: wrap; }
+.intent-row button { padding: 10px 18px; }
+.intent-input { flex: 1 1 180px; padding: 10px 12px; font-size: 15px; }
+/* A floor on the box's width: it would rather push Create onto the next line than become a sliver.
+   More specific than `.input-row input`, which lets a box shrink to nothing. */
+.intent-row > input.intent-input { min-width: 160px; }
 .random-name { flex: none; display: inline-flex; align-items: center; gap: 5px; }
 .random-name svg { width: 14px; height: 14px; }
-.more-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; align-items: stretch; }
-.more-col h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0; }
-.more-col button { align-self: flex-start; }
+/* Shown on the create card when the name someone tried to open does not exist yet */
+.point { animation: point 2.5s ease-out 1; }
+@keyframes point {
+    0%, 40% { box-shadow: 0 0 0 2px var(--blue); }
+    100% { box-shadow: 0 0 0 2px transparent; }
+}
 .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .field label { font-weight: 600; font-size: 13px; }
 .field .optional { font-weight: 400; color: var(--muted); }
@@ -624,6 +628,8 @@ audio.detail-media { max-height: none; }
 
 @media (prefers-reduced-motion: reduce) {
     .live::before, .clip.new { animation: none; }
+    /* No glow for the create card when a name is not found; a plain outline that the script removes */
+    .point { animation: none; box-shadow: 0 0 0 2px var(--blue); }
 }
 
 /* ===== Note options: burn after reading, secret, per-note expiry ===== */

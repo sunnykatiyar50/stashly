@@ -60,7 +60,7 @@
             <header class="view-header">
                 <div class="view-title">
                     <h1>Open or create a stash</h1>
-                    <span class="muted">Type a name: it opens if the stash exists, and you can create it if it does not.</span>
+                    <span class="muted">Open something that already exists, or make something new.</span>
                 </div>
             </header>
 
@@ -73,42 +73,51 @@
                 You can still open a stash you have the link to.
             </div>
 
-            <!-- The form across the top, the four steps in a row under it, then the tips and the command line side by side.
-                 Rows stack as the screen narrows. -->
-            <form id="quickForm" class="card form-card quick-card" novalidate>
-                <div class="field">
-                    <label for="slugInput">Stash name</label>
-                    <div class="input-row quick-row">
-                        <input type="text" id="slugInput" class="mono quick-input" autocomplete="off" autocapitalize="off" spellcheck="false"
-                               maxlength="64" aria-describedby="slugHint slugError" />
-                        <!-- Alongside the name box, in its row: fills the box with a random name
-                             (Create with the box empty uses it too) -->
-                        <button type="button" id="regenerateButton" class="link-button random-name" title="Fill in a new random name">
-                            <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                            Use a random name
-                        </button>
-                        <button type="submit" id="openButton" class="primary">Open</button>
-                        <button type="button" id="createButton" class="ghost">Create</button>
+            <!-- Two intents, one card each, side by side: open something that exists (by name or by a link you were
+                 given), or create something new (a name and whatever you want to lock it with). Stacked when narrow. -->
+            <div class="home-pair">
+                <form id="openForm" class="card form-card intent-card" aria-labelledby="openTitle" novalidate>
+                    <div class="intent-head">
+                        <h2 id="openTitle">Open a stash</h2>
+                        <p class="muted">Its name, or a link you were given.</p>
                     </div>
-                    <small class="field-hint" id="slugHint">Anyone with a stash's name can open it. Letters, numbers, - and _.</small>
-                    <small class="field-error" id="slugError" role="alert"></small>
-                </div>
+                    <!-- One box for both: a name is looked up, anything holding /s/ opens as it is, so a read-only or
+                         drop-box link keeps its access -->
+                    <div class="field">
+                        <label for="openInput">Stash name or link</label>
+                        <div class="input-row intent-row">
+                            <input type="text" id="openInput" class="mono intent-input" autocomplete="off" autocapitalize="off" spellcheck="false"
+                                   maxlength="300" aria-describedby="openHint openError" />
+                            <button type="submit" id="openButton" class="primary">Open</button>
+                        </div>
+                        <small class="field-hint" id="openHint">Anyone with a stash's name can open it. Letters, numbers, - and _. A read-only or drop-box link opens with the access it gives.</small>
+                        <small class="field-error" id="openError" role="alert"></small>
+                    </div>
+                    <p id="openStatus" class="form-status" role="status"></p>
+                </form>
 
-                <!-- Shown when the name typed is not a stash yet -->
-                <div id="createOffer" class="offer hidden" role="status">
-                    <span id="createOfferText"></span>
-                    <button type="button" id="createOfferButton" class="primary small"></button>
-                </div>
-                <p id="createStatus" class="form-status" role="status"></p>
-
-                <button type="button" id="moreToggle" class="link-button more-toggle" aria-expanded="false" aria-controls="moreOptions">
-                    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-                    <span id="moreToggleLabel">More options</span>
-                </button>
-
-                <div id="moreOptions" class="more-options hidden">
-                    <section class="more-col" aria-labelledby="moreCreateTitle">
-                        <h3 id="moreCreateTitle">When creating</h3>
+                <form id="createForm" class="card form-card intent-card" aria-labelledby="createTitle" novalidate>
+                    <div class="intent-head">
+                        <h2 id="createTitle">Create a stash</h2>
+                        <p class="muted">A name, and anything you want to lock it with.</p>
+                    </div>
+                    <div id="createFields">
+                        <div class="field">
+                            <label for="slugInput">Stash name</label>
+                            <div class="input-row intent-row">
+                                <input type="text" id="slugInput" class="mono intent-input" autocomplete="off" autocapitalize="off" spellcheck="false"
+                                       maxlength="64" aria-describedby="slugHint slugError" />
+                                <!-- Alongside the name box, in its row: fills it with a random name
+                                     (Create with the box empty uses it too) -->
+                                <button type="button" id="regenerateButton" class="link-button random-name" title="Fill in a new random name">
+                                    <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                    Use a random name
+                                </button>
+                                <button type="submit" id="createButton" class="primary">Create</button>
+                            </div>
+                            <small class="field-hint" id="slugHint">Anyone with the name can open it. Letters, numbers, - and _.</small>
+                            <small class="field-error" id="slugError" role="alert"></small>
+                        </div>
                         <!-- Password and when it is deleted, side by side -->
                         <div class="field-row">
                             <div class="field">
@@ -122,24 +131,10 @@
                                 <small class="field-error" id="ttlError" role="alert"></small>
                             </div>
                         </div>
-                    </section>
-
-                    <!-- A link can be long, so it has a row to itself -->
-                    <section class="more-col" aria-labelledby="moreOpenTitle">
-                        <h3 id="moreOpenTitle">When opening</h3>
-                        <div class="field">
-                            <label for="linkInput">Open with a link</label>
-                            <div class="input-row">
-                                <input type="text" id="linkInput" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false"
-                                       placeholder="Paste a stash link" aria-describedby="linkHint" />
-                                <button type="button" id="openLinkButton" class="ghost">Open link</button>
-                            </div>
-                            <small class="field-hint" id="linkHint">A read-only or drop-box link opens with the access it gives. You can also paste a plain address.</small>
-                            <small class="field-error" id="linkError" role="alert"></small>
-                        </div>
-                    </section>
-                </div>
-            </form>
+                    </div>
+                    <p id="createStatus" class="form-status" role="status"></p>
+                </form>
+            </div>
 
             <section class="home-how" aria-labelledby="howTitle">
                 <div class="home-how-head">
@@ -151,7 +146,7 @@
                         <span class="how-num" aria-hidden="true">1</span>
                         <div>
                             <strong>Open or create a stash</strong>
-                            <p>Type a name above and press <b>Open</b>. If it does not exist yet you can create it. Leave the box empty for a random name.</p>
+                            <p>Type a name in <b>Open a stash</b>, or use <b>Create a stash</b> for a new one. Leave that box empty for a random name.</p>
                         </div>
                     </li>
                     <li class="card">
@@ -182,7 +177,7 @@
                 <section class="card form-card how-card" aria-labelledby="tipsTitle">
                     <h3 id="tipsTitle">Good to know</h3>
                     <ul class="how-tips">
-                        <li><b>Private?</b> Open <i>More options</i> and set a password. Then share a read-only or drop-box link from the stash.</li>
+                        <li><b>Private?</b> Set a password in <i>Create a stash</i>. Then share a read-only or drop-box link from the stash.</li>
                         <li><b>Temporary.</b> A stash and everything in it is deleted when its time is up (1 hour to 30 days). You can extend it.</li>
                         <li><b>Sensitive note?</b> Choose <i>Burn after reading</i> to show it once, or <i>Secret</i> to hide it as dots.</li>
                         <li><b>Mistake?</b> Deleted items can be undone for a couple of minutes.</li>

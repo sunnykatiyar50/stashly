@@ -6,7 +6,7 @@ Stashly is self-hosted: you run it on your own machine or server, and your notes
 
 ## Using it
 
-1. **Open or create a stash.** On the home page type a name and press **Open**. If it exists you are taken in; if not, press **Create**. Leave the box empty to get a random name. A stash lives at `/s/<name>`.
+1. **Open or create a stash.** The home page has two cards. **Open a stash** takes a name, or a link you were given: press **Open**. **Create a stash** takes a name — press **Use a random name**, or leave the box empty and press **Create** — plus an optional password and how long it lives. A stash lives at `/s/<name>`.
 2. **Open the same link on your other machine** (the **QR code** button in the header opens it on a phone).
 3. **Add things.** Type a note, add files with the paperclip, drag them onto the page, or paste a screenshot (Ctrl+V).
 4. **Copy them on the other side.** Items appear live, with no refresh. Press **Copy latest** (or **Alt+C**) for the newest note, or the copy button on any note.

@@ -1,4 +1,5 @@
-// The home page: one box to open a stash by name or create it, with more options on request
+// The home page: two cards, one intent each — open a stash (by name or by a link you were given),
+// or create a new one (a name, a password if you want one, and how long it lives)
 (function () {
     'use strict';
 
@@ -10,23 +11,35 @@
     var suggestion = ''; // a random name, shown as the placeholder and used when Create is pressed with the box empty
     var $ = function (id) { return document.getElementById(id); };
 
+    var openInput = $('openInput');
     var slugInput = $('slugInput');
     var passwordInput = $('passwordInput');
     var ttlSelect = $('ttlSelect');
     var createButton = $('createButton');
     var openButton = $('openButton');
-    var status = $('createStatus');
+    var openStatus = $('openStatus');
+    var createStatus = $('createStatus');
     var slugHint = $('slugHint');
-    var offer = $('createOffer');
     var DEFAULT_HINT = slugHint.textContent;
 
-    var errors = { slug: $('slugError'), password: $('passwordError'), ttl: $('ttlError'), link: $('linkError') };
+    var errors = { open: $('openError'), slug: $('slugError'), password: $('passwordError'), ttl: $('ttlError') };
 
-    function clearMessages() {
-        Object.keys(errors).forEach(function (key) { errors[key].textContent = ''; });
-        status.textContent = '';
-        status.classList.remove('error');
-        offer.classList.add('hidden');
+    // Each card clears its own messages: what you type in one says nothing about the other
+    function clearOpen() {
+        errors.open.textContent = '';
+        openStatus.textContent = '';
+        openStatus.classList.remove('error');
+    }
+
+    function clearCreate() {
+        ['slug', 'password', 'ttl'].forEach(function (key) { errors[key].textContent = ''; });
+        createStatus.textContent = '';
+        createStatus.classList.remove('error');
+    }
+
+    function say(status, message, isError) {
+        status.textContent = message;
+        status.classList.toggle('error', Boolean(isError));
     }
 
     function api(path, options) {
@@ -57,10 +70,10 @@
         var length = slugInput.value.trim().length;
         var noPassword = !passwordInput.value;
         if (length && noPassword && minOpen && length < minOpen) {
-            slugHint.textContent = 'To create it without a password, the name must be at least ' + minOpen + ' characters. Add a password under More options, or use a longer name.';
+            slugHint.textContent = 'To create it without a password, the name must be at least ' + minOpen + ' characters. Add a password, or use a longer name.';
             slugHint.classList.add('warn');
         } else if (length && noPassword && length < GENERATED) {
-            slugHint.textContent = 'Short names are easy to guess. Add a password under More options if this should stay private.';
+            slugHint.textContent = 'Short names are easy to guess. Add a password if this should stay private.';
             slugHint.classList.add('warn');
         } else {
             slugHint.textContent = DEFAULT_HINT;
@@ -77,16 +90,14 @@
         });
     }
 
-    // When creating is limited (to the admin, or to signed-in users), a visitor gets a notice, and Create is off.
-    // Opening a stash still works.
+    // When creating is limited (to the admin, or to signed-in users), a visitor gets a notice, and the whole create
+    // card is switched off. Opening a stash still works.
     function lockCreate(rule) {
         canCreate = false;
         $(rule === 'login' ? 'loginNotice' : 'adminNotice').classList.remove('hidden');
         createButton.disabled = true;
         createButton.title = 'You cannot create stashes on this server';
-        Array.prototype.forEach.call(document.querySelectorAll('#moreCreateTitle ~ *, #moreCreateTitle ~ * *'), function (el) {
-            if ('disabled' in el) el.disabled = true;
-        });
+        Array.prototype.forEach.call($('createFields').querySelectorAll('input, select, button'), function (el) { el.disabled = true; });
     }
 
     // ---- the signed-in account: "My stashes" in the menu and on this page ----
@@ -139,24 +150,6 @@
         });
     }
 
-    // ---- More options ----
-
-    var MORE_KEY = 'sl_home_more';
-    var moreToggle = $('moreToggle');
-    var moreOptions = $('moreOptions');
-
-    function setMore(open, remember) {
-        moreOptions.classList.toggle('hidden', !open);
-        moreToggle.setAttribute('aria-expanded', String(open));
-        moreToggle.classList.toggle('open', open);
-        $('moreToggleLabel').textContent = open ? 'Fewer options' : 'More options';
-        if (remember) {
-            try { localStorage.setItem(MORE_KEY, open ? '1' : '0'); } catch (e) { /* not remembered */ }
-        }
-    }
-    moreToggle.addEventListener('click', function () { setMore(moreOptions.classList.contains('hidden'), true); });
-    try { if (localStorage.getItem(MORE_KEY) === '1') setMore(true, false); } catch (e) { /* closed by default */ }
-
     // ---- opening ----
 
     // A pasted address or link (it holds /s/NAME) opens as it is, so a #view= or #drop= token survives
@@ -173,75 +166,55 @@
     }
 
     function openStash() {
-        clearMessages();
-        var raw = slugInput.value.trim();
+        clearOpen();
+        var raw = openInput.value.trim();
         if (!raw) {
-            errors.slug.textContent = 'Type the name of a stash to open. To make a new one, press Create.';
-            slugInput.focus();
+            errors.open.textContent = 'Type the name of a stash, or paste a link to one.';
+            openInput.focus();
             return;
         }
-        // Someone pasted a whole address into the name box
+        // Someone pasted a whole address into the box
         if (openLink(raw)) return;
         var name = raw.toLowerCase();
         var problem = validateName(name);
         if (problem) {
-            errors.slug.textContent = problem;
-            slugInput.focus();
+            errors.open.textContent = problem;
+            openInput.focus();
             return;
         }
         openButton.disabled = true;
-        status.textContent = 'Looking for it...';
+        openStatus.textContent = 'Looking for it...';
         api('/api/stashes/' + encodeURIComponent(name) + '/exists').then(function (res) {
             openButton.disabled = false;
-            status.textContent = '';
+            openStatus.textContent = '';
             if (res.ok) {
                 window.location.href = '/s/' + encodeURIComponent(name);
             } else if (res.status === 404) {
-                offerToCreate(name);
+                pointToCreate(name);
             } else {
-                status.textContent = (res.body && res.body.error) || 'Something went wrong. Try again.';
-                status.classList.add('error');
+                say(openStatus, (res.body && res.body.error) || 'Something went wrong. Try again.', true);
             }
         }).catch(function () {
             openButton.disabled = false;
-            status.textContent = 'Could not reach the server.';
-            status.classList.add('error');
+            say(openStatus, 'Could not reach the server.', true);
         });
     }
 
-    // The name is not a stash: say so, and offer to make it
-    function offerToCreate(name) {
-        $('createOfferText').textContent = canCreate
-            ? 'There is no stash called "' + name + '".'
-            : 'There is no stash called "' + name + '", and you cannot create stashes on this server.';
-        var button = $('createOfferButton');
-        button.textContent = 'Create "' + name + '"';
-        button.classList.toggle('hidden', !canCreate);
-        button.dataset.name = name;
-        offer.classList.remove('hidden');
+    // The name is not a stash. Making one is the other card's job, so this says so and points there
+    function pointToCreate(name) {
+        errors.open.textContent = 'There is no stash called "' + name + '" — create it in the card beside this one.';
+        var card = $('createForm');
+        card.classList.add('point');
+        card.scrollIntoView({ block: 'nearest' });
+        setTimeout(function () { card.classList.remove('point'); }, 2500);
     }
-
-    $('quickForm').addEventListener('submit', function (event) {
-        event.preventDefault();
-        openStash();
-    });
-
-    $('openLinkButton').addEventListener('click', function () {
-        clearMessages();
-        var text = $('linkInput').value.trim();
-        if (!text) { errors.link.textContent = 'Paste a stash link first.'; return; }
-        if (!openLink(text)) errors.link.textContent = 'That does not look like a stash link. It should contain /s/ and the stash name.';
-    });
-    $('linkInput').addEventListener('keydown', function (event) {
-        if (event.key === 'Enter') { event.preventDefault(); $('openLinkButton').click(); }
-    });
 
     // ---- creating ----
 
-    function createStash(name) {
-        clearMessages();
+    function createStash() {
+        clearCreate();
         // Empty box: use the random name shown in it
-        name = (name || slugInput.value.trim() || suggestion).trim();
+        var name = (slugInput.value.trim() || suggestion).trim();
         var problem = validateName(name);
         if (problem) {
             errors.slug.textContent = problem;
@@ -249,19 +222,17 @@
             return;
         }
         if (!passwordInput.value && minOpen && name.length < minOpen) {
-            errors.slug.textContent = 'Without a password the name must be at least ' + minOpen + ' characters. Add a password under More options, or use a longer name.';
-            setMore(true, false);
+            errors.slug.textContent = 'Without a password the name must be at least ' + minOpen + ' characters. Add a password, or use a longer name.';
             slugInput.focus();
             return;
         }
         if (passwordInput.value && passwordInput.value.length < minPassword) {
             errors.password.textContent = 'The password must be at least ' + minPassword + ' characters.';
-            setMore(true, false);
             passwordInput.focus();
             return;
         }
         createButton.disabled = true;
-        status.textContent = 'Creating...';
+        createStatus.textContent = 'Creating...';
         api('/api/stashes', {
             method: 'POST',
             body: { slug: name, password: passwordInput.value || undefined, ttl: ttlSelect.value },
@@ -271,31 +242,38 @@
                 return;
             }
             createButton.disabled = !canCreate;
-            status.textContent = '';
+            createStatus.textContent = '';
             var message = (res.body && res.body.error) || 'Something went wrong. Try again.';
             var field = res.body && res.body.field;
             if (field && errors[field]) {
                 errors[field].textContent = message;
-                if (field !== 'slug') setMore(true, false);
+                if (field !== 'slug') passwordInput.focus();
             } else {
-                status.textContent = message;
-                status.classList.add('error');
+                say(createStatus, message, true);
             }
         }).catch(function () {
             createButton.disabled = !canCreate;
-            status.textContent = 'Could not reach the server.';
-            status.classList.add('error');
+            say(createStatus, 'Could not reach the server.', true);
         });
     }
 
-    createButton.addEventListener('click', function () { createStash(''); });
-    $('createOfferButton').addEventListener('click', function (event) { createStash(event.currentTarget.dataset.name); });
+    $('openForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        openStash();
+    });
+
+    $('createForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        createStash();
+    });
+
     $('regenerateButton').addEventListener('click', function () {
         suggest().then(function () { slugInput.value = suggestion; updateHint(); });
         slugInput.focus();
     });
-    slugInput.addEventListener('input', function () { errors.slug.textContent = ''; offer.classList.add('hidden'); updateHint(); });
+    slugInput.addEventListener('input', function () { errors.slug.textContent = ''; updateHint(); });
     passwordInput.addEventListener('input', function () { errors.password.textContent = ''; updateHint(); });
+    openInput.addEventListener('input', function () { errors.open.textContent = ''; });
 
     $('curlExample').textContent =
         '# send a note\n' +
@@ -307,5 +285,5 @@
 
     loadConfig();
     suggest();
-    slugInput.focus();
+    openInput.focus();
 })();
