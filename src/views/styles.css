@@ -200,6 +200,7 @@ body.sidebar-collapsed .sidebar-toggle { margin: 0 auto; padding: 7px; }
 .nav-section-label { display: block; padding: 12px 12px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #7b8798; }
 body.sidebar-collapsed .nav-section { margin-top: 8px; padding-top: 8px; border-top: 1px solid #1f2937; }
 .nav-link .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-version { padding: 6px 12px 2px; font-size: 11px; color: #7b8798; }
 .sidebar-footer { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid #1f2937; }
 
 .content { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }

@@ -20,6 +20,9 @@ function checkConfig(config) {
     if (!USERNAME_PATTERN.test(config.adminUsername)) throw new Error('ADMIN_USERNAME must be 3 to 40 letters, numbers, dots, dashes or underscores.');
 }
 
+// The release this server is running, from package.json (the release script bumps it, and the image carries it)
+const { version } = require('../package.json');
+
 function loadConfig(env = process.env, overrides = {}) {
     const allowNoExpiry = flag(env.ALLOW_NO_EXPIRY);
     const adminPassword = env.ADMIN_PASSWORD || '';
@@ -33,6 +36,7 @@ function loadConfig(env = process.env, overrides = {}) {
     if (allowNoExpiry) ttlOptions.push({ key: 'never', label: 'Never', ms: null });
 
     return {
+        version,
         port: num(env.PORT, 3000),
         host: env.HOST || '0.0.0.0',
         sqlitePath: env.SQLITE_PATH || './stashly.sqlite',
