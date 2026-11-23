@@ -258,18 +258,30 @@
             </div>
         </form>
     </dialog>
-    <dialog id="userEmailDialog" class="qr-dialog share-dialog" aria-labelledby="userEmailTitle">
-        <form id="userEmailForm" class="qr-body share-body" novalidate>
-            <h2 id="userEmailTitle">Email address</h2>
-            <p class="muted">Where this user's password reset links go. Leave it empty to remove it.</p>
+    <dialog id="userEditDialog" class="qr-dialog share-dialog" aria-labelledby="userEditTitle">
+        <form id="userEditForm" class="qr-body share-body" novalidate>
+            <h2 id="userEditTitle">Edit details</h2>
+            <p class="muted">Their sessions stay signed in. A new email address is where password reset links go; leave it empty to remove it.</p>
             <div class="field">
-                <label for="userEmailInput">Email address</label>
-                <input type="email" id="userEmailInput" autocomplete="off" maxlength="254" />
-                <small class="field-error" id="userEmailError" role="alert"></small>
+                <label for="userEditDisplayName">Name</label>
+                <input type="text" id="userEditDisplayName" autocomplete="off" maxlength="60" />
+                <small class="field-error" id="userEditDisplayNameError" role="alert"></small>
             </div>
+            <div class="field">
+                <label for="userEditUsername">Username</label>
+                <input type="text" id="userEditUsername" autocomplete="off" maxlength="40" autocapitalize="none" spellcheck="false" />
+                <small class="field-hint">3 to 40 letters, numbers, dots, dashes or underscores. They sign in with the new one from now on.</small>
+                <small class="field-error" id="userEditUsernameError" role="alert"></small>
+            </div>
+            <div class="field">
+                <label for="userEditEmail">Email address</label>
+                <input type="email" id="userEditEmail" autocomplete="off" maxlength="254" />
+                <small class="field-error" id="userEditEmailError" role="alert"></small>
+            </div>
+            <small class="field-error" id="userEditError" role="alert"></small>
             <div class="qr-actions">
-                <button type="button" id="userEmailCancel" class="ghost">Cancel</button>
-                <button type="submit" id="userEmailSave" class="primary">Save</button>
+                <button type="button" id="userEditCancel" class="ghost">Cancel</button>
+                <button type="submit" id="userEditSave" class="primary">Save</button>
             </div>
         </form>
     </dialog>

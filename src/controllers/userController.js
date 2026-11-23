@@ -233,9 +233,65 @@ class UserController {
         res.json({ ok: true, email: parsed.value });
     };
 
+    // Your own details, from the settings page: any of { displayName, username, email }. Only what is sent changes. The
+    // name is harmless, but the username (how you sign in) and the email (where reset links go) are what takes an account
+    // over, so changing either asks for the current password, like changing the password itself does. Sessions follow the
+    // account's id, so you stay signed in under the new username.
+    updateProfile = async (req, res) => {
+        if (req.user.managed) return res.status(409).json({ error: MANAGED_MESSAGE });
+        const body = req.body || {};
+        const user = this.users.findById(req.user.id);
+        const changes = {};
+        if (body.displayName !== undefined) {
+            const name = parseDisplayName(body.displayName);
+            if (name.error) return res.status(400).json({ error: name.error, field: 'displayName' });
+            if (name.value !== (user.display_name || null)) changes.displayName = name.value;
+        }
+        if (body.username !== undefined) {
+            const username = normalizeUsername(body.username);
+            if (!USERNAME_PATTERN.test(username)) {
+                return res.status(400).json({ error: 'The username must be 3 to 40 letters, numbers, dots, dashes or underscores.', field: 'username' });
+            }
+            if (username !== user.username) changes.username = username;
+        }
+        if (body.email !== undefined) {
+            const mail = parseEmail(body.email);
+            if (mail.error) return res.status(400).json({ error: mail.error, field: 'email' });
+            if (mail.value !== (user.email || null)) changes.email = mail.value;
+        }
+        const sensitive = changes.username !== undefined || changes.email !== undefined;
+        if (sensitive) {
+            const key = `user:${user.username}`;
+            if (this.refuseIfLocked(res, key, req.ip)) return;
+            const password = body.currentPassword;
+            if (typeof password !== 'string' || !(await verifyPassword(password, user.password_hash, user.password_salt))) {
+                this.lockout.note(key, req.ip);
+                this.audit('user.login_failed', { req, actor: 'user', detail: { via: 'profile_change', user: user.id } });
+                return res.status(401).json({ error: 'That is not your current password.', field: 'currentPassword' });
+            }
+        }
+        const keys = Object.keys(changes);
+        let updated = user;
+        if (keys.length) {
+            try {
+                updated = this.users.update(user.id, changes);
+            } catch (err) {
+                if (err.code === 'DUPLICATE') return res.status(409).json({ error: err.message, field: 'username' });
+                throw err;
+            }
+            if (changes.username !== undefined) this.lockout.clear(`user:${user.username}`);
+            this.audit('user.profile_updated', { req, actor: 'user', detail: { user: user.id, keys } });
+            // The old address is told, so a takeover of the account does not go unnoticed
+            if (changes.email !== undefined && user.email && this.mailer && this.mailer.enabled) {
+                this.background(this.mailer.send({ to: user.email, ...templates.emailChangedEmail({ serverName: this.config.smtpFromName || 'Stashly', username: updated.username }) }));
+            }
+        }
+        res.json({ ok: true, user: this.userAuth.present(updated) });
+    };
+
     // ---- guards ----
 
-    enabledOnly = (req, res, next) => {
+    enabledOnly =(req, res, next) => {
         if (!this.userAuth.enabled) return res.status(404).json({ error: NOT_ENABLED });
         next();
     };
@@ -566,6 +622,13 @@ class UserController {
         if (!user) return;
         const body = req.body || {};
         const changes = {};
+        if (body.username !== undefined) {
+            const username = normalizeUsername(body.username);
+            if (!USERNAME_PATTERN.test(username)) {
+                return res.status(400).json({ error: 'The username must be 3 to 40 letters, numbers, dots, dashes or underscores.', field: 'username' });
+            }
+            if (username !== user.username) changes.username = username;
+        }
         if (body.role !== undefined) {
             if (!ROLES.includes(body.role)) return res.status(400).json({ error: 'The role must be admin or user.', field: 'role' });
             if (body.role !== user.role) changes.role = body.role;
@@ -589,8 +652,18 @@ class UserController {
             return res.status(400).json({ error: 'You cannot demote or disable your own account. Ask another admin.' });
         }
         const keys = Object.keys(changes);
-        const updated = keys.length ? this.users.update(user.id, changes) : user;
-        if (keys.length) this.audit('user.updated', { req, actor: 'admin', detail: { user: user.id, keys } });
+        let updated = user;
+        if (keys.length) {
+            try {
+                updated = this.users.update(user.id, changes);
+            } catch (err) {
+                if (err.code === 'DUPLICATE') return res.status(409).json({ error: err.message, field: 'username' });
+                throw err;
+            }
+            // The old name's failed-sign-in count is of no use to the new one
+            if (changes.username !== undefined) this.lockout.clear(`user:${user.username}`);
+            this.audit('user.updated', { req, actor: 'admin', detail: { user: user.id, keys } });
+        }
         res.json(this.presentAdmin({ ...updated, stash_count: this.users.list().find(row => row.id === user.id).stash_count }));
     };
 

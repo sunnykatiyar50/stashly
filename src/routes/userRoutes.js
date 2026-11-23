@@ -52,7 +52,8 @@ function createUserRoutes({ controller, config }) {
     router.post('/auth/forgot', c.enabledOnly, resetLimiter(5), c.forgot);
     router.post('/auth/reset', c.enabledOnly, resetLimiter(10), c.reset);
     router.get('/me', c.me);
-    router.post('/me/password', c.requireUser, passwordLimiter, c.changePassword);
+    router.patch('/me', c.requireUser, passwordLimiter, c.updateProfile);
+    router.post('/me/password',c.requireUser, passwordLimiter, c.changePassword);
     router.put('/me/email', c.requireUser, passwordLimiter, c.setEmail);
     router.get('/me/stashes', c.requireUser, c.listStashes);
     router.post('/me/stashes', c.requireUser, followLimiter, missLimiter, c.follow);

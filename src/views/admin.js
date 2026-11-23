@@ -455,7 +455,7 @@
                 },
             },
             { label: 'Reset password', ariaLabel: 'Reset password of' + who, onClick: function () { openUserPassword(user); } },
-            { label: user.email ? 'Change email' : 'Add email', ariaLabel: 'Edit the email of' + who, onClick: function () { openUserEmail(user); } },
+            { label: 'Edit details', ariaLabel: 'Edit the name, username and email of' + who, onClick: function () { openUserEdit(user); } },
             ].concat(user.email ? [{ label: 'Email a reset link', ariaLabel: 'Email a reset link to' + who, onClick: function () { emailResetLink(user); } }] : [], [
             { label: 'Sign out everywhere', ariaLabel: 'Sign out' + who + ' everywhere', onClick: function () { signOutUser(user); } },
             null,
@@ -528,34 +528,59 @@
         });
     });
 
-    // ---- a user's email address, and emailing them a reset link ----
+    // ---- a user's details (name, username, email), and emailing them a reset link ----
 
-    var userEmailDialog = $('userEmailDialog');
-    var userEmailTarget = null;
+    var userEditDialog = $('userEditDialog');
+    var userEditTarget = null;
+    // Which server field goes with which message line in the dialog
+    var userEditErrors = { displayName: $('userEditDisplayNameError'), username: $('userEditUsernameError'), email: $('userEditEmailError') };
 
-    function openUserEmail(user) {
-        userEmailTarget = user;
-        $('userEmailTitle').textContent = 'Email address of ' + user.username;
-        $('userEmailInput').value = user.email || '';
-        $('userEmailError').textContent = '';
-        if (typeof userEmailDialog.showModal === 'function') userEmailDialog.showModal(); else userEmailDialog.setAttribute('open', '');
-        $('userEmailInput').focus();
+    function clearUserEditErrors() {
+        Object.keys(userEditErrors).forEach(function (key) { userEditErrors[key].textContent = ''; });
+        $('userEditError').textContent = '';
     }
 
-    $('userEmailCancel').addEventListener('click', function () { userEmailDialog.close(); });
-    userEmailDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
-    $('userEmailForm').addEventListener('submit', function (event) {
+    function openUserEdit(user) {
+        userEditTarget = user;
+        $('userEditTitle').textContent = 'Edit details of ' + user.username;
+        $('userEditDisplayName').value = user.displayName || '';
+        $('userEditUsername').value = user.username;
+        $('userEditEmail').value = user.email || '';
+        clearUserEditErrors();
+        if (typeof userEditDialog.showModal === 'function') userEditDialog.showModal(); else userEditDialog.setAttribute('open', '');
+        $('userEditDisplayName').focus();
+    }
+
+    $('userEditCancel').addEventListener('click', function () { userEditDialog.close(); });
+    userEditDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
+    $('userEditForm').addEventListener('submit', function (event) {
         event.preventDefault();
-        $('userEmailError').textContent = '';
-        $('userEmailSave').disabled = true;
-        api('/api/admin/users/' + encodeURIComponent(userEmailTarget.id), { method: 'PATCH', body: { email: $('userEmailInput').value.trim() } }).then(function (res) {
-            $('userEmailSave').disabled = false;
-            if (userStatus(res)) { userEmailDialog.close(); return; }
-            if (res.ok) { userEmailDialog.close(); toast('Email saved for ' + userEmailTarget.username + '.'); loadUsers(); }
-            else $('userEmailError').textContent = (res.body && res.body.error) || 'Could not save the email.';
+        clearUserEditErrors();
+        // Only what changed is sent, so saving never touches a field nobody edited
+        var body = {};
+        var name = $('userEditDisplayName').value.trim();
+        var username = $('userEditUsername').value.trim();
+        var email = $('userEditEmail').value.trim();
+        if (name !== (userEditTarget.displayName || '')) body.displayName = name;
+        if (username.toLowerCase() !== userEditTarget.username) body.username = username;
+        if (email.toLowerCase() !== (userEditTarget.email || '')) body.email = email;
+        if (!Object.keys(body).length) { userEditDialog.close(); return; }
+        $('userEditSave').disabled = true;
+        api('/api/admin/users/' + encodeURIComponent(userEditTarget.id), { method: 'PATCH', body: body }).then(function (res) {
+            $('userEditSave').disabled = false;
+            if (userStatus(res)) { userEditDialog.close(); return; }
+            if (res.ok) {
+                userEditDialog.close();
+                toast('Details saved for ' + (res.body && res.body.username ? res.body.username : userEditTarget.username) + '.');
+                loadUsers();
+                return;
+            }
+            var message = (res.body && res.body.error) || 'Could not save the details.';
+            var line = res.body && userEditErrors[res.body.field];
+            if (line) line.textContent = message; else $('userEditError').textContent = message;
         }).catch(function () {
-            $('userEmailSave').disabled = false;
-            $('userEmailError').textContent = 'Could not reach the server.';
+            $('userEditSave').disabled = false;
+            $('userEditError').textContent = 'Could not reach the server.';
         });
     });
 

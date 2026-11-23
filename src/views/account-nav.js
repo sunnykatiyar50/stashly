@@ -10,6 +10,22 @@
     var KEY = 'sl_account_nav';
     var block = null;
 
+    // The Settings gear, drawn with DOM calls (no markup parsing)
+    function gearIcon() {
+        var ns = 'http://www.w3.org/2000/svg';
+        var svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        var circle = document.createElementNS(ns, 'circle');
+        circle.setAttribute('cx', '12');
+        circle.setAttribute('cy', '12');
+        circle.setAttribute('r', '3');
+        svg.appendChild(circle);
+        var path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z');
+        svg.appendChild(path);
+        return svg;
+    }
+
     var ICON = '<svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
 
     // What to show for a user: the display name (or the username), and under it the username and role
@@ -72,7 +88,20 @@
         out.appendChild(label);
         out.addEventListener('click', signOut);
 
+        // Your own details and settings, on every page
+        var settings = document.createElement('a');
+        settings.className = 'nav-link' + (location.pathname === '/settings' ? ' active' : '');
+        settings.href = '/settings';
+        settings.title = 'Settings';
+        if (location.pathname === '/settings') settings.setAttribute('aria-current', 'page');
+        settings.appendChild(gearIcon());
+        var settingsLabel = document.createElement('span');
+        settingsLabel.className = 'label';
+        settingsLabel.textContent = 'Settings';
+        settings.appendChild(settingsLabel);
+
         group.appendChild(who);
+        group.appendChild(settings);
         group.appendChild(out);
         group._parts = { who: who, avatar: avatar, name: name, sub: sub };
         return group;

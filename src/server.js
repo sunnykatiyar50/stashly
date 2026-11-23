@@ -195,6 +195,8 @@ function createApp({ config, model, events, secret, now, logOut, auditOut, mail 
     app.get('/admin', (req, res) => res.sendFile(path.join(viewsDir, 'admin.html')));
     // Sign in, and the stashes you follow
     app.get('/account', (req, res) => res.sendFile(path.join(viewsDir, 'account.html')));
+    // Your own details and settings
+    app.get('/settings', (req, res) => res.sendFile(path.join(viewsDir, 'settings.html')));
     // The page's scripts, styles and icons: compressed, and revalidated instead of re-downloaded on every click
     app.use(gzipAssets(viewsDir));
     app.use(express.static(viewsDir, { index: 'index.html', setHeaders: revalidate }));

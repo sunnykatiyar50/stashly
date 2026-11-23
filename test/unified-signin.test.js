@@ -315,5 +315,4 @@ test('after sign-in only next=/admin is followed; any other value is ignored (no
     const js = views('account.js');
     assert.match(js, /justSignedIn && me\.role === 'admin' && nextTarget\(location\.search\)/);
     assert.match(js, /location\.href = nextTarget\(location\.search\)/);
-    assert.match(js, /passwordButton'\)\.classList\.toggle\('hidden', Boolean\(me\.managed\)\)/);
 });

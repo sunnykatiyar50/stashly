@@ -763,3 +763,85 @@ test('the pages carry the account parts: Users in admin, the Follow button on a 
         assert.match(res.headers['content-type'], /javascript/);
     }
 });
+
+test('the admin can edit a user\'s name, username and email; a taken or bad username is refused; the old name stops signing in', async () => {
+    const ctx = await accountApp();
+    const sam = await addUser(ctx, 'sam');
+    await addUser(ctx, 'taken');
+    const patch = body => ctx.root.patch(`/api/admin/users/${sam.id}`).send(body);
+
+    const done = await patch({ displayName: 'Sam Smith', username: 'Samuel', email: 'Sam@Example.com' }).expect(200);
+    assert.equal(done.body.username, 'samuel');
+    assert.equal(done.body.displayName, 'Sam Smith');
+    assert.equal(done.body.email, 'sam@example.com');
+    // The list shows the new name, and the account keeps its id
+    assert.equal(ctx.db.prepare('SELECT username FROM users WHERE id = ?').get(sam.id).username, 'samuel');
+
+    // The same name again (any case) is no change; another user's name, or a malformed one, is refused
+    await patch({ username: 'SAMUEL' }).expect(200);
+    assert.equal((await patch({ username: 'taken' }).expect(409)).body.field, 'username');
+    assert.equal((await patch({ username: 'TAKEN' }).expect(409)).body.field, 'username');
+    assert.equal((await patch({ username: 'ab' }).expect(400)).body.field, 'username');
+    assert.equal((await patch({ username: 'has space' }).expect(400)).body.field, 'username');
+    assert.equal((await patch({ username: 42 }).expect(400)).body.field, 'username');
+    assert.equal((await patch({ email: 'not-an-address' }).expect(400)).body.field, 'email');
+    assert.equal(ctx.db.prepare('SELECT username FROM users WHERE id = ?').get(sam.id).username, 'samuel');
+
+    // The email can be cleared again
+    assert.equal((await patch({ email: '' }).expect(200)).body.email, null);
+
+    // The old username no longer signs in; the new one does, with the same password
+    await request(ctx.app).post('/api/auth/login').send({ username: 'sam', password: PASSWORD }).expect(401);
+    await request(ctx.app).post('/api/auth/login').send({ username: 'samuel', password: PASSWORD }).expect(200);
+});
+
+test('a user edits their own name, username and email on the settings page; the username and email need the current password', async () => {
+    const ctx = await accountApp();
+    await addUser(ctx, 'sam');
+    await addUser(ctx, 'taken');
+    const agent = await signIn(ctx, 'sam');
+
+    // The page itself is served, and the API needs a signed-in user
+    await request(ctx.app).get('/settings').expect(200).expect('Content-Type', /html/);
+    await request(ctx.app).patch('/api/me').send({ displayName: 'Sam' }).expect(401);
+
+    // The name is harmless: no password
+    const named = await agent.patch('/api/me').send({ displayName: 'Sam Smith' }).expect(200);
+    assert.equal(named.body.user.displayName, 'Sam Smith');
+    assert.equal((await agent.patch('/api/me').send({ displayName: 'n'.repeat(61) }).expect(400)).body.field, 'displayName');
+
+    // The username and the email are not: a missing or wrong password changes nothing
+    assert.equal((await agent.patch('/api/me').send({ email: 'sam@example.com' }).expect(401)).body.field, 'currentPassword');
+    assert.equal((await agent.patch('/api/me').send({ username: 'samuel', currentPassword: 'wrong-password-123' }).expect(401)).body.field, 'currentPassword');
+    assert.equal(ctx.db.prepare("SELECT COUNT(*) AS n FROM users WHERE username = 'sam'").get().n, 1);
+
+    // Bad values and a taken name are refused (the check comes before the password is used up)
+    assert.equal((await agent.patch('/api/me').send({ username: 'ab', currentPassword: PASSWORD }).expect(400)).body.field, 'username');
+    assert.equal((await agent.patch('/api/me').send({ email: 'nope', currentPassword: PASSWORD }).expect(400)).body.field, 'email');
+    assert.equal((await agent.patch('/api/me').send({ username: 'TAKEN', currentPassword: PASSWORD }).expect(409)).body.field, 'username');
+
+    // All three at once, with the password; the user stays signed in under the new name
+    const done = await agent.patch('/api/me').send({ displayName: 'Sam', username: 'Samuel', email: 'Sam@Example.com', currentPassword: PASSWORD }).expect(200);
+    assert.equal(done.body.user.username, 'samuel');
+    assert.equal(done.body.user.email, 'sam@example.com');
+    const me = await agent.get('/api/me').expect(200);
+    assert.equal(me.body.user.username, 'samuel');
+    assert.equal(me.body.user.displayName, 'Sam');
+
+    // Nothing changed, nothing to check: no password needed
+    await agent.patch('/api/me').send({ username: 'samuel', email: 'sam@example.com', displayName: 'Sam' }).expect(200);
+    // The email can be removed again (with the password)
+    assert.equal((await agent.patch('/api/me').send({ email: '', currentPassword: PASSWORD }).expect(200)).body.user.email, null);
+});
+
+test('the settings page is linked from the menu and from My stashes, which no longer holds the email and password forms', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const view = name => fs.readFileSync(path.join(__dirname, '..', 'src', 'views', name), 'utf8');
+    assert.ok(view('account-nav.js').includes("settings.href = '/settings'"));
+    assert.ok(view('account.html').includes('href="/settings"'));
+    assert.doesNotMatch(view('account.html'), /id="(emailDialog|passwordDialog)"/);
+    const page = view('settings.html');
+    for (const id of ['profileForm', 'profileName', 'profileUsername', 'profileEmail', 'passwordForm']) assert.ok(page.includes(`id="${id}"`), id);
+    assert.ok(page.includes('src="/settings.js"'));
+});
