@@ -21,13 +21,20 @@
     var autoTried = {};     // stashes this page already tried to follow by itself, so a failure is not retried in a loop
     var SEEN_EVERY_MS = 30000;
 
+    // Someone who was signed in last time sees "My stashes" in the menu straight away (the check in refresh() confirms
+    // it), so the menu does not change under them after the page has drawn
+    try { if (localStorage.getItem('sl_signed_in') === '1') $('accountLink').classList.remove('hidden'); } catch (e) { /* stays hidden until known */ }
+
     // Called by the rest of the page every time the stash is (re)loaded
     function refresh() {
         if (!probed) {
             probed = true;
-            api('/api/me').then(function (res) {
+            // account-nav.js asked at page start already; reuse that answer
+            var nav = window.StashlyAccountNav;
+            (nav && nav.firstMe ? nav.firstMe() : api('/api/me')).then(function (res) {
                 accounts = Boolean(res.ok && res.body && res.body.enabled && res.body.user);
                 $('accountLink').classList.toggle('hidden', !accounts);
+                try { localStorage.setItem('sl_signed_in', accounts ? '1' : '0'); } catch (e) { /* not remembered */ }
                 if (accounts) refresh();
             }).catch(function () { /* no account features this time */ });
             return;

@@ -63,3 +63,19 @@ test('a stash is closed, not logged out of: the stash page says Close, and Sign 
     // The account's own Sign out is in the left menu block, which the stash page loads too
     assert.ok(html.includes('src="/account-nav.js"'));
 });
+
+test('the stash page menu order is Home, My stashes, Pinned, then the open stash; the open stash is hidden when it is pinned', () => {
+    const html = view('stash.html');
+    const at = text => html.indexOf(text);
+    assert.ok(at('title="Home"') < at('id="accountLink"'));
+    assert.ok(at('id="accountLink"') < at('id="thisStashLink"'));
+    const script = view('account-nav.js');
+    // The pinned list goes in front of the open stash (and so in front of Admin), and hides the open stash's own entry
+    assert.ok(script.includes("nav.querySelector('#thisStashLink, .nav-section, .nav-section-label')"));
+    assert.ok(script.includes('setOpenStashVisible(!(here && pinned.some('));
+});
+
+test('the stash page reuses the config and /api/me answers the page start already asked for', () => {
+    assert.ok(view('stash.js').includes('window.StashlyConfig ? window.StashlyConfig()'));
+    assert.ok(view('stash-account.js').includes('nav.firstMe()'));
+});

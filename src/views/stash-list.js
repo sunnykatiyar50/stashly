@@ -64,7 +64,7 @@
     }
 
     // The line under the title in the list: a few lines of the note, or the size of a file.
-    // The note lines can be hidden with the eye button above the list.
+    // The note lines can be hidden in Options, under This device.
     function itemSub(item) {
         // A file with a title of its own also shows its real name
         if (item.kind !== 'note') return (item.hasTitle ? item.fileName + ' · ' : '') + window.StashlyUpload.formatSize(item.fileSize);
@@ -445,23 +445,18 @@
         if (phone.addEventListener) phone.addEventListener('change', place); else phone.addListener(place);
     })();
 
-    // The eye button shows or hides the note lines under each title, for a shorter list or a screen others can
-    // see. The choice is kept on this device only.
+    // A checkbox in Options (This device) shows or hides the note lines under each title, for a shorter list or a
+    // screen others can see. The choice is kept on this device only.
     var CONTENT_KEY = 'stashly.hideContent';
 
     function setContentHidden(hidden, save) {
         $('items').classList.toggle('hide-content', hidden);
-        var toggle = $('contentToggle');
-        toggle.setAttribute('aria-pressed', hidden ? 'false' : 'true');
-        toggle.classList.toggle('active', hidden);
-        toggle.title = hidden ? 'Show note content in the list' : 'Hide note content in the list';
+        $('contentLinesInput').checked = !hidden;
         if (save) { try { localStorage.setItem(CONTENT_KEY, hidden ? '1' : '0'); } catch (e) { /* storage may be blocked */ } }
     }
 
-    $('contentToggle').addEventListener('click', function () {
-        var hidden = !$('items').classList.contains('hide-content');
-        setContentHidden(hidden, true);
-        toast(hidden ? 'Note content hidden in the list' : 'Note content shown in the list');
+    $('contentLinesInput').addEventListener('change', function (event) {
+        setContentHidden(!event.target.checked, true);
     });
 
     try { setContentHidden(localStorage.getItem(CONTENT_KEY) === '1', false); } catch (e) { setContentHidden(false, false); }

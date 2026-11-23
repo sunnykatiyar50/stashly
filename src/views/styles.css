@@ -357,10 +357,8 @@ body.has-account-nav #logoutButton { display: none; }
 .clip-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .clip-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .clip-sub, .clip-time { color: var(--muted); font-size: 12px; }
-/* Two lines of the note under its title; the rest is cut off. The eye button above the list hides them. */
+/* Two lines of the note under its title; the rest is cut off. Options > This device can hide them. */
 .clip-list.hide-content .clip-preview { display: none; }
-#contentToggle .eye-closed, #contentToggle.active .eye-open { display: none; }
-#contentToggle.active .eye-closed { display: inline; }
 /* The drag handle: a narrow column on the left, faint until the row is hovered (always shown on touch screens) */
 .clip.has-grip { grid-template-columns: 14px 34px minmax(0, 1fr) auto; padding-left: 2px; }
 .clip-grip { align-self: center; display: inline-flex; justify-content: center; color: var(--muted); cursor: grab; touch-action: none; opacity: .35; }
