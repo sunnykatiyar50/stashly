@@ -81,14 +81,15 @@
                     <div class="input-row quick-row">
                         <input type="text" id="slugInput" class="mono quick-input" autocomplete="off" autocapitalize="off" spellcheck="false"
                                maxlength="64" aria-describedby="slugHint slugError" />
+                        <!-- Alongside the name box, in its row: fills the box with a random name
+                             (Create with the box empty uses it too) -->
+                        <button type="button" id="regenerateButton" class="link-button random-name" title="Fill in a new random name">
+                            <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                            Use a random name
+                        </button>
                         <button type="submit" id="openButton" class="primary">Open</button>
                         <button type="button" id="createButton" class="ghost">Create</button>
                     </div>
-                    <!-- Right under the name: fill in a random one (Create with the box empty uses it too) -->
-                    <button type="button" id="regenerateButton" class="link-button random-name" title="Fill in a new random name">
-                        <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                        Use a random name
-                    </button>
                     <small class="field-hint" id="slugHint">Anyone with a stash's name can open it. Letters, numbers, - and _.</small>
                     <small class="field-error" id="slugError" role="alert"></small>
                 </div>

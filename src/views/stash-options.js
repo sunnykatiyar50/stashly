@@ -163,14 +163,16 @@
         $('changePasswordToggle').classList.remove('hidden');
     }
 
-    $('changePasswordToggle').addEventListener('click', function (event) {
+    function openPasswordForm(toggle) {
         passwordForm.classList.remove('hidden');
-        event.currentTarget.classList.add('hidden');
+        toggle.classList.add('hidden');
         // The owner is signed in to their account, which is proof enough: they need not type the old password
         var owned = Boolean(state.stash && state.stash.owned);
         $('currentPasswordInput').classList.toggle('hidden', owned);
         (owned ? $('newPasswordInput') : $('currentPasswordInput')).focus();
-    });
+    }
+
+    $('changePasswordToggle').addEventListener('click', function (event) { openPasswordForm(event.currentTarget); });
 
     $('changePasswordCancel').addEventListener('click', closePasswordForm);
 
@@ -190,6 +192,9 @@
             $('changePasswordSave').disabled = false;
             if (res.ok) {
                 state.stash.sessionEndsAt = res.body.sessionEndsAt;
+                // A password the owner chose is not an admin's doing any more, so the notice about it goes away
+                state.stash.passwordResetAt = null;
+                $('resetNotice').classList.add('hidden');
                 // The stash had share links; they were cancelled with the old password
                 if (state.stash.shareLinks) state.stash.shareLinks = { view: false, drop: false };
                 closePasswordForm();
@@ -332,9 +337,21 @@
         });
     }
 
-    $('optionsButton').addEventListener('click', function () {
+    // Opens Options, on one tab when the caller names it (and only if that tab has something for this visitor)
+    function openOptions(tab) {
         renderOptions();
         if (typeof optionsDialog.showModal === 'function') optionsDialog.showModal(); else optionsDialog.setAttribute('open', '');
+        var chosen = optionTabs.filter(function (el) { return el.dataset.tab === tab && !el.classList.contains('hidden'); })[0];
+        if (chosen) selectOptionTab(chosen, false);
+    }
+
+    $('optionsButton').addEventListener('click', function () { openOptions(); });
+
+    // From the notice that an admin chose this stash's password, straight to the form that puts it right
+    $('resetNoticePassword').addEventListener('click', function () {
+        openOptions('signin');
+        var toggle = $('changePasswordToggle');
+        if (!toggle.classList.contains('hidden')) openPasswordForm(toggle);
     });
 
     $('optionsClose').addEventListener('click', function () { optionsDialog.close(); });

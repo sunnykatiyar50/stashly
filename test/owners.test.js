@@ -223,3 +223,31 @@ test('the admin stash list has an Owner column', () => {
     assert.ok(admin.includes("stash.owner || 'Guest'"));
     assert.ok(admin.includes('stash.canResetPassword'));
 });
+
+test('the notice about an admin-chosen password offers the way to fix it and can be put away', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const view = name => fs.readFileSync(path.join(__dirname, '..', 'src', 'views', name), 'utf8');
+    const html = view('stash.html');
+    const notice = html.slice(html.indexOf('id="resetNotice"'), html.indexOf('id="composer"'));
+    assert.ok(notice.includes('id="resetNoticeText"'), 'the words');
+    assert.ok(notice.includes('id="resetNoticePassword"') && notice.includes('Change password'), 'the way to fix it');
+    assert.ok(notice.includes('id="resetNoticeDismiss"') && notice.includes('Dismiss'), 'the way to put it away');
+    assert.match(view('styles.css'), /\.notice-row\s*\{[^}]*display:\s*flex/, 'the buttons sit on the notice, not under it');
+
+    // It opens the form itself instead of telling people to look for it, and changing the password clears the mark
+    const options = view('stash-options.js');
+    assert.ok(options.includes("$('resetNoticePassword').addEventListener('click'"));
+    assert.ok(options.includes("openOptions('signin')"));
+    assert.ok(options.includes('state.stash.passwordResetAt = null'));
+
+    // Only someone who can change the password is offered the button; a read-only link is told who can
+    const load = view('stash-load.js');
+    assert.ok(load.includes("$('resetNoticePassword').classList.toggle('hidden', r !== 'full')"));
+    assert.match(load, /Whoever knows the password can choose a new one/);
+    assert.doesNotMatch(load, /change the password under Options/);
+    // Dismissing is this browser's own memory, tied to that reset, so a later reset shows it again
+    assert.ok(load.includes("'sl_reset_seen_'"));
+    assert.ok(load.includes('resetAt === dismissedResetAt()'));
+    assert.ok(load.includes("$('resetNoticeDismiss').addEventListener('click'"));
+});
