@@ -192,21 +192,15 @@
             extend.addEventListener('click', function () { extendStash(stash); });
             actions.appendChild(extend);
         }
-        // Not offered for a stash with an owner, nor when the server has switched resetting off
+        // Anything that changes or removes the stash is in the menu. The password is not offered for a stash with an
+        // owner, nor when the server has switched resetting off.
+        var items = [];
         if (stash.canResetPassword) {
-            var pw = document.createElement('button');
-            pw.type = 'button';
-            pw.className = 'ghost small';
-            pw.textContent = stash.hasPassword ? 'Change password' : 'Set password';
-            pw.addEventListener('click', function () { openPasswordDialog(stash); });
-            actions.appendChild(pw);
+            items.push({ label: stash.hasPassword ? 'Change password' : 'Set password', onClick: function () { openPasswordDialog(stash); }, ariaLabel: (stash.hasPassword ? 'Change password of ' : 'Set a password on ') + stash.slug });
+            items.push(null);
         }
-        var del = document.createElement('button');
-        del.type = 'button';
-        del.className = 'danger-ghost small';
-        del.textContent = 'Delete';
-        del.addEventListener('click', function () { deleteStash(stash); });
-        actions.appendChild(del);
+        items.push({ label: 'Delete', danger: true, onClick: function () { deleteStash(stash); }, ariaLabel: 'Delete ' + stash.slug });
+        actions.appendChild(menuButton(items, 'More actions for ' + stash.slug));
         tr.appendChild(cell(actions, 'actions'));
         return tr;
     }
@@ -308,6 +302,95 @@
         $('userEmpty').classList.toggle('hidden', users.length > 0);
     }
 
+    // ---- the "..." menu on a row: the actions that change or remove something live here, one click away but not in the way ----
+
+    var openMenu = null; // { button, menu }
+
+    function closeMenu(returnFocus) {
+        if (!openMenu) return;
+        openMenu.menu.remove();
+        openMenu.button.setAttribute('aria-expanded', 'false');
+        if (returnFocus) openMenu.button.focus();
+        openMenu = null;
+    }
+
+    // items: [{ label, onClick, danger, ariaLabel }]. A null entry draws a divider.
+    function menuButton(items, label) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'ghost small menu-button';
+        button.setAttribute('aria-haspopup', 'menu');
+        button.setAttribute('aria-expanded', 'false');
+        button.setAttribute('aria-label', label);
+        button.title = label;
+        // Three dots, drawn as shapes (no text, no markup built from data)
+        var dots = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        dots.setAttribute('viewBox', '0 0 24 24');
+        [5, 12, 19].forEach(function (cy) {
+            var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            dot.setAttribute('cx', '12');
+            dot.setAttribute('cy', String(cy));
+            dot.setAttribute('r', '1.8');
+            dots.appendChild(dot);
+        });
+        button.appendChild(dots);
+
+        button.addEventListener('click', function (event) {
+            event.stopPropagation();
+            if (openMenu && openMenu.button === button) { closeMenu(true); return; }
+            closeMenu(false);
+            var menu = document.createElement('div');
+            menu.className = 'row-menu';
+            menu.setAttribute('role', 'menu');
+            items.forEach(function (item) {
+                if (!item) {
+                    var rule = document.createElement('div');
+                    rule.className = 'row-menu-rule';
+                    rule.setAttribute('role', 'separator');
+                    menu.appendChild(rule);
+                    return;
+                }
+                var entry = document.createElement('button');
+                entry.type = 'button';
+                entry.setAttribute('role', 'menuitem');
+                entry.className = 'row-menu-item' + (item.danger ? ' danger' : '');
+                entry.textContent = item.label;
+                if (item.ariaLabel) entry.setAttribute('aria-label', item.ariaLabel);
+                entry.addEventListener('click', function () { closeMenu(false); item.onClick(); });
+                menu.appendChild(entry);
+            });
+            document.body.appendChild(menu);
+            // Under the button, or above it near the bottom of the window. Fixed, so a scrolling table never clips it.
+            var at = button.getBoundingClientRect();
+            var height = menu.offsetHeight;
+            var width = menu.offsetWidth;
+            var top = at.bottom + 4;
+            if (top + height > window.innerHeight - 8) top = Math.max(8, at.top - height - 4);
+            menu.style.top = top + 'px';
+            menu.style.left = Math.max(8, Math.min(window.innerWidth - width - 8, at.right - width)) + 'px';
+            button.setAttribute('aria-expanded', 'true');
+            openMenu = { button: button, menu: menu };
+            var first = menu.querySelector('.row-menu-item');
+            if (first) first.focus();
+        });
+        return button;
+    }
+
+    document.addEventListener('click', function () { closeMenu(false); });
+    window.addEventListener('resize', function () { closeMenu(false); });
+    window.addEventListener('scroll', function () { closeMenu(false); }, true);
+    document.addEventListener('keydown', function (event) {
+        if (!openMenu) return;
+        var entries = Array.prototype.slice.call(openMenu.menu.querySelectorAll('.row-menu-item'));
+        var at = entries.indexOf(document.activeElement);
+        if (event.key === 'Escape') { event.preventDefault(); closeMenu(true); }
+        else if (event.key === 'ArrowDown') { event.preventDefault(); entries[(at + 1) % entries.length].focus(); }
+        else if (event.key === 'ArrowUp') { event.preventDefault(); entries[(at - 1 + entries.length) % entries.length].focus(); }
+        else if (event.key === 'Home') { event.preventDefault(); entries[0].focus(); }
+        else if (event.key === 'End') { event.preventDefault(); entries[entries.length - 1].focus(); }
+        else if (event.key === 'Tab') closeMenu(false);
+    });
+
     function actionButton(label, className, onClick, ariaLabel) {
         var button = document.createElement('button');
         button.type = 'button';
@@ -349,15 +432,27 @@
         var actions = document.createElement('div');
         actions.className = 'row-actions';
         var who = ' ' + user.username;
-        actions.appendChild(actionButton(user.role === 'admin' ? 'Make user' : 'Make admin', 'ghost', function () {
-            changeUser(user, { role: user.role === 'admin' ? 'user' : 'admin' }, user.username + ' is now ' + (user.role === 'admin' ? 'a user' : 'an admin') + '. Their sessions ended.');
-        }, (user.role === 'admin' ? 'Make user' : 'Make admin') + who));
-        actions.appendChild(actionButton(user.disabled ? 'Enable' : 'Disable', 'ghost', function () {
-            changeUser(user, { disabled: !user.disabled }, user.username + (user.disabled ? ' can sign in again.' : ' is disabled and signed out.'));
-        }, (user.disabled ? 'Enable' : 'Disable') + who));
-        actions.appendChild(actionButton('Reset password', 'ghost', function () { openUserPassword(user); }, 'Reset password of' + who));
-        actions.appendChild(actionButton('Sign out', 'ghost', function () { signOutUser(user); }, 'Sign out' + who + ' everywhere'));
-        actions.appendChild(actionButton('Delete', 'danger-ghost', function () { deleteUser(user); }, 'Delete' + who));
+        // Each of these changes what the person can do or removes them, so they all live in the menu
+        actions.appendChild(menuButton([
+            {
+                label: user.role === 'admin' ? 'Make user' : 'Make admin',
+                ariaLabel: (user.role === 'admin' ? 'Make user' : 'Make admin') + who,
+                onClick: function () {
+                    changeUser(user, { role: user.role === 'admin' ? 'user' : 'admin' }, user.username + ' is now ' + (user.role === 'admin' ? 'a user' : 'an admin') + '. Their sessions ended.');
+                },
+            },
+            {
+                label: user.disabled ? 'Enable' : 'Disable',
+                ariaLabel: (user.disabled ? 'Enable' : 'Disable') + who,
+                onClick: function () {
+                    changeUser(user, { disabled: !user.disabled }, user.username + (user.disabled ? ' can sign in again.' : ' is disabled and signed out.'));
+                },
+            },
+            { label: 'Reset password', ariaLabel: 'Reset password of' + who, onClick: function () { openUserPassword(user); } },
+            { label: 'Sign out everywhere', ariaLabel: 'Sign out' + who + ' everywhere', onClick: function () { signOutUser(user); } },
+            null,
+            { label: 'Delete', danger: true, ariaLabel: 'Delete' + who, onClick: function () { deleteUser(user); } },
+        ], 'More actions for' + who));
         tr.appendChild(cell(actions, 'actions'));
         return tr;
     }
