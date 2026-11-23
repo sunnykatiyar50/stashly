@@ -28,9 +28,9 @@
             </button>
         </div>
         <nav class="sidebar-nav" aria-label="Main">
-            <a href="/" class="nav-link active" title="New stash" aria-current="page">
-                <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                <span class="label">New stash</span>
+            <a href="/" class="nav-link active" title="Home" aria-current="page">
+                <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                <span class="label">Home</span>
             </a>
             <!-- Once signed in to an account, "My stashes" is part of the main menu on every page -->
             <a href="/account" id="accountNavLink" class="nav-link hidden" title="My stashes">
@@ -54,27 +54,10 @@
     <main class="content">
         <section class="view">
           <div class="home-stack">
-            <div class="card form-card open-card">
-                <div class="open-card-title">
-                    <span class="open-card-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-                    </span>
-                    <div>
-                        <h3 id="openTitle">Open an existing stash</h3>
-                        <small class="field-hint">Type the stash's name to jump straight in.</small>
-                    </div>
-                </div>
-                <form id="openForm" class="input-row" novalidate aria-labelledby="openTitle">
-                    <input type="text" id="openInput" class="mono" placeholder="stash name" autocomplete="off" autocapitalize="off"
-                           spellcheck="false" aria-label="Stash name" />
-                    <button type="submit" class="primary">Open</button>
-                </form>
-            </div>
-
             <header class="view-header">
                 <div class="view-title">
-                    <h1>New stash</h1>
-                    <span class="muted">A link two machines can both open to trade text, images and files.</span>
+                    <h1>Open or create a stash</h1>
+                    <span class="muted">Type a name: it opens if the stash exists, and you can create it if it does not.</span>
                 </div>
             </header>
 
@@ -87,39 +70,78 @@
                 You can still open a stash you have the link to.
             </div>
 
-            <form id="createForm" class="card form-card" novalidate>
+            <form id="quickForm" class="card form-card quick-card" novalidate>
                 <div class="field">
                     <label for="slugInput">Stash name</label>
-                    <div class="input-row">
-                        <input type="text" id="slugInput" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false"
+                    <div class="input-row quick-row">
+                        <input type="text" id="slugInput" class="mono quick-input" autocomplete="off" autocapitalize="off" spellcheck="false"
                                maxlength="64" aria-describedby="slugHint slugError" />
-                        <button type="button" id="regenerateButton" class="ghost" title="Suggest a new random name">
-                            <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                            Regenerate
-                        </button>
+                        <button type="submit" id="openButton" class="primary">Open</button>
+                        <button type="button" id="createButton" class="ghost">Create</button>
                     </div>
-                    <small class="field-hint" id="slugHint">Anyone with the name can open the stash. Letters, numbers, - and _.</small>
+                    <small class="field-hint" id="slugHint">Anyone with a stash's name can open it. Letters, numbers, - and _.</small>
                     <small class="field-error" id="slugError" role="alert"></small>
                 </div>
 
-                <div class="field-row">
-                    <div class="field">
-                        <label for="passwordInput">Password <span class="optional">optional</span></label>
-                        <input type="password" id="passwordInput" autocomplete="new-password" maxlength="200" aria-describedby="passwordError" />
-                        <small class="field-error" id="passwordError" role="alert"></small>
-                    </div>
-                    <div class="field">
-                        <label for="ttlSelect">Delete after</label>
-                        <select id="ttlSelect"></select>
-                        <small class="field-error" id="ttlError" role="alert"></small>
-                    </div>
+                <!-- Shown when the name typed is not a stash yet -->
+                <div id="createOffer" class="offer hidden" role="status">
+                    <span id="createOfferText"></span>
+                    <button type="button" id="createOfferButton" class="primary small"></button>
                 </div>
+                <p id="createStatus" class="form-status" role="status"></p>
 
-                <div class="form-actions">
-                    <button type="submit" id="createButton" class="primary">Create stash</button>
-                    <p id="createStatus" class="form-status" role="status"></p>
+                <button type="button" id="moreToggle" class="link-button more-toggle" aria-expanded="false" aria-controls="moreOptions">
+                    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                    <span id="moreToggleLabel">More options</span>
+                </button>
+
+                <div id="moreOptions" class="more-options hidden">
+                    <div class="more-grid">
+                        <section class="more-col" aria-labelledby="moreCreateTitle">
+                            <h3 id="moreCreateTitle">When creating</h3>
+                            <div class="field">
+                                <label for="passwordInput">Password <span class="optional">optional</span></label>
+                                <input type="password" id="passwordInput" autocomplete="new-password" maxlength="200" aria-describedby="passwordError" />
+                                <small class="field-error" id="passwordError" role="alert"></small>
+                            </div>
+                            <div class="field">
+                                <label for="ttlSelect">Delete after</label>
+                                <select id="ttlSelect"></select>
+                                <small class="field-error" id="ttlError" role="alert"></small>
+                            </div>
+                            <button type="button" id="regenerateButton" class="ghost" title="Fill in a new random name">
+                                <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                Use a random name
+                            </button>
+                            <small class="field-hint">Press Create with the name empty and a random one is used.</small>
+                        </section>
+
+                        <section class="more-col" aria-labelledby="moreOpenTitle">
+                            <h3 id="moreOpenTitle">When opening</h3>
+                            <div class="field">
+                                <label for="linkInput">Open with a link</label>
+                                <div class="input-row">
+                                    <input type="text" id="linkInput" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false"
+                                           placeholder="Paste a stash link" aria-describedby="linkHint" />
+                                    <button type="button" id="openLinkButton" class="ghost">Open link</button>
+                                </div>
+                                <small class="field-hint" id="linkHint">A read-only or drop-box link opens with the access it gives. You can also paste a plain address.</small>
+                                <small class="field-error" id="linkError" role="alert"></small>
+                            </div>
+                        </section>
+                    </div>
                 </div>
             </form>
+
+            <!-- Only for someone signed in to an account: the stashes they follow, one click away -->
+            <section id="myStashes" class="card form-card my-stashes hidden" aria-labelledby="myStashesTitle">
+                <div class="my-stashes-head">
+                    <h3 id="myStashesTitle">My stashes</h3>
+                    <a href="/account" class="link-button">See all</a>
+                </div>
+                <ul id="homeStashList" class="home-list" aria-label="Stashes you follow"></ul>
+                <p id="homeStashEmpty" class="muted hidden">You are not following any stash yet. Open one above and it is added here.</p>
+            </section>
 
             <div class="card form-card">
                 <h3>How it works</h3>

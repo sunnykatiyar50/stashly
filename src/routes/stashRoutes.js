@@ -68,6 +68,9 @@ function createStashRoutes({ controller, config }) {
     // Every route below names a stash: count the ones that turn out not to exist
     router.use('/:slug', missLimiter);
 
+    // Does this stash exist? Lets the home page decide between opening a name and offering to create it, without
+    // loading the stash. Says nothing a locked stash's own 401 does not already say, and a miss counts towards missLimiter.
+    router.get('/:slug/exists', readLimiter, c.exists);
     router.get('/:slug', readLimiter, ...anyRole, c.get);
     // The same listing with the search and dates in the body, so search words stay out of addresses and proxy logs
     router.post('/:slug/query', readLimiter, ...anyRole, c.get);
