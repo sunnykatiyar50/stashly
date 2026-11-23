@@ -63,3 +63,13 @@ test('a stash is closed, not logged out of: the stash page says Close, and Sign 
     // The account's own Sign out is in the left menu block, which the stash page loads too
     assert.ok(html.includes('src="/account-nav.js"'));
 });
+
+test('the notices on the stash page use the full width of the page, not the 640px of a form page', () => {
+    const css = view('styles.css');
+    assert.match(css, /\.notice\s*\{[^}]*max-width:\s*640px/);
+    assert.match(css, /\.view-stash \.notice\s*\{\s*max-width:\s*none/);
+    // both notices on that page are cards with the notice class
+    const html = view('stash.html');
+    assert.match(html, /id="roleBanner" class="card notice/);
+    assert.match(html, /id="resetNotice" class="card notice/);
+});
