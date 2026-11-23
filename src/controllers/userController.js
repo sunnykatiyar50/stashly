@@ -2,11 +2,17 @@
 // the users. No handler ever returns a password, a hash or a salt, and none puts a username, password, token or stash
 // name in the audit log (a user is named there by id, a stash by the usual keyed hash).
 const { hashPassword, verifyPassword, MAX_PASSWORD } = require('../utils/password');
-const { linkTokenMatches } = require('../utils/token');
+const { linkTokenMatches, signToken, verifyToken } = require('../utils/token');
+const { validAddress } = require('../utils/mailer');
+const templates = require('../utils/emailTemplates');
 const { UnlockLockout } = require('../utils/lockout');
 const { noopAudit } = require('../utils/auditLog');
 const { noopMetrics } = require('../utils/metrics');
 const { grantRole, normalizeUsername, USERNAME_PATTERN, ROLES } = require('../models/userModel');
+const MAX_PINS = 20;
+const RESET_MINUTES = 60;
+const RESET_COOLDOWN_MS = 5 * 60 * 1000;
+const BAD_LINK = 'This link is not valid or has expired. Ask for a new one.';
 
 const GENERIC_LOGIN_ERROR = 'That username or password is not right.';
 const NOT_ENABLED = 'Accounts are not enabled on this server.';
@@ -29,6 +35,16 @@ function parseDisplayName(value) {
     if (/[\u0000-\u001f\u007f]/.test(name)) return { error: 'The display name cannot hold control characters.' };
     if (name.length > MAX_DISPLAY_NAME) return { error: `The display name can be at most ${MAX_DISPLAY_NAME} characters.` };
     return { value: name || null };
+}
+
+// The optional email address: undefined stays undefined (no change), null or empty clears it. Stored lowercase.
+function parseEmail(value) {
+    if (value === undefined) return { value: undefined };
+    if (value === null || value === '') return { value: null };
+    if (typeof value !== 'string') return { error: 'The email address must be text.' };
+    const email = value.trim().toLowerCase();
+    if (!validAddress(email)) return { error: 'That is not a valid email address.' };
+    return { value: email };
 }
 
 // A read-only or drop-box link as people have it: the token itself, or the whole address ".../s/NAME#view=TOKEN".
@@ -57,13 +73,19 @@ function slugFrom(value) {
 
 class UserController {
     // stashes: the StashController, so following uses its lockout counters and its rules for who may do what
-    constructor({ model, users, userAuth, adminAuth, config, stashes, now = () => new Date(), audit = noopAudit, metrics = noopMetrics }) {
+    constructor({ model, users, userAuth, adminAuth, config, stashes, mailer = null, secret = '', now = () => new Date(), audit = noopAudit, metrics = noopMetrics }) {
         this.model = model;
         this.users = users;
         this.userAuth = userAuth;
         this.adminAuth = adminAuth;
         this.config = config;
         this.stashes = stashes;
+        this.mailer = mailer;
+        this.secret = secret;
+        // When a reset link was last sent for a user, so one account cannot be mailed over and over
+        this.resetSentAt = new Map();
+        // The last emails started in the background (a reply never waits for the mail server): tests wait for it
+        this.pending = Promise.resolve();
         this.now = now;
         this.audit = audit;
         this.metrics = metrics;
@@ -80,7 +102,136 @@ class UserController {
         return this.dummy;
     }
 
-    cleanup = () => this.lockout.sweep();
+    cleanup = () => {
+        this.lockout.sweep();
+        const cutoff = this.now().getTime() - RESET_COOLDOWN_MS;
+        for (const [id, at] of this.resetSentAt) if (at < cutoff) this.resetSentAt.delete(id);
+    };
+
+    // ---- password reset by email ----
+
+    // Reset links need working email AND the address of this server (the links never use the request's Host header)
+    get resetReady() {
+        return Boolean(this.mailer && this.mailer.enabled && this.mailer.publicUrl);
+    }
+
+    resetSalt(user) {
+        return `${user.password_salt}|${user.email}|v${user.session_version}`;
+    }
+
+    // "<user id>.<expiry>.<signature>". The signature covers the password salt, the email and the session version, so the
+    // link stops working the moment the password is changed (single use), the email changes or sessions are ended.
+    resetLink(user) {
+        const expiresAt = this.now().getTime() + RESET_MINUTES * 60 * 1000;
+        const token = `${user.id}.${signToken(this.secret, `reset:${user.id}`, this.resetSalt(user), expiresAt)}`;
+        // In the fragment: it never reaches the server's logs, a proxy or a Referer header
+        return `${this.mailer.publicUrl}/account#reset=${token}`;
+    }
+
+    // The user a reset token is for, or null
+    userForToken(token) {
+        const match = typeof token === 'string' ? /^(\d{1,12})\.(.{1,200})$/.exec(token) : null;
+        const user = match ? this.users.findById(Number(match[1])) : null;
+        if (!user || user.disabled || user.managed || !user.email) return null;
+        return verifyToken(this.secret, `reset:${user.id}`, this.resetSalt(user), match[2], this.now().getTime()) ? user : null;
+    }
+
+    async sendReset(user, byAdmin) {
+        return this.mailer.send({
+            to: user.email,
+            ...templates.resetEmail({ serverName: this.config.smtpFromName || 'Stashly', username: user.username, link: this.resetLink(user), minutes: RESET_MINUTES, byAdmin }),
+        });
+    }
+
+    // Starts emails without waiting for them; a failure is only audited by the caller
+    background(task) {
+        this.pending = Promise.all([this.pending, Promise.resolve(task).catch(() => {})]).then(() => {});
+    }
+
+    // Always the same answer, whether or not an account matches, so this cannot be used to find out who has an account or
+    // an email address. The mail goes out in the background so the answer does not take longer when one is sent.
+    forgot = (req, res) => {
+        if (!this.resetReady) return res.status(409).json({ error: 'Password reset by email is not set up on this server. Ask your administrator.' });
+        const raw = req.body && req.body.identifier;
+        if (typeof raw !== 'string' || !raw.trim() || raw.length > 254) return res.status(400).json({ error: 'Enter your username or email address.' });
+        const text = raw.trim().toLowerCase();
+        const found = text.includes('@') ? this.users.findByEmail(text) : [this.users.findByUsername(normalizeUsername(text))];
+        const now = this.now().getTime();
+        const targets = found.filter(user => user && !user.disabled && !user.managed && validAddress(user.email || '') && now - (this.resetSentAt.get(user.id) || 0) >= RESET_COOLDOWN_MS);
+        for (const user of targets) this.resetSentAt.set(user.id, now);
+        this.audit('user.reset_requested', { req, actor: 'visitor', detail: { matched: targets.length } });
+        this.background(Promise.all(targets.map(async user => {
+            try {
+                await this.sendReset(user, false);
+            } catch (err) {
+                this.audit('email.send_failed', { req, actor: 'visitor', detail: { kind: 'reset', reason: err.code || 'failed' } });
+            }
+        })));
+        res.json({ ok: true });
+    };
+
+    // Chooses a new password with the link from the email. Every session of the user ends; they sign in again.
+    reset = async (req, res) => {
+        const { token, password } = req.body || {};
+        const min = this.config.minPasswordLength;
+        if (typeof password !== 'string' || password.length < min || password.length > MAX_PASSWORD) {
+            return res.status(400).json({ error: `The password must be ${min} to ${MAX_PASSWORD} characters.`, field: 'password' });
+        }
+        const user = this.userForToken(token);
+        if (!user) return res.status(400).json({ error: BAD_LINK, field: 'token' });
+        const hashed = await hashPassword(password);
+        // Checked again after the slow hashing: a second use of the same link in parallel must lose
+        if (!this.userForToken(token)) return res.status(400).json({ error: BAD_LINK, field: 'token' });
+        this.users.setPassword(user.id, hashed.hash, hashed.salt);
+        this.lockout.clear(`user:${user.username}`);
+        this.audit('user.password_reset_by_link', { req, actor: 'visitor', detail: { user: user.id } });
+        if (this.mailer && this.mailer.enabled) {
+            this.background(this.mailer.send({ to: user.email, ...templates.passwordChangedEmail({ serverName: this.config.smtpFromName || 'Stashly', username: user.username }) }));
+        }
+        res.json({ ok: true });
+    };
+
+    // The admin sends the user a reset link to their address
+    emailReset = async (req, res) => {
+        const user = this.editable(req, res);
+        if (!user) return;
+        if (!this.resetReady) return res.status(409).json({ error: 'Email is not ready. Set it up under Settings > Email, including the public address of this server.' });
+        if (!user.email) return res.status(409).json({ error: 'This user has no email address. Add one first.' });
+        try {
+            await this.sendReset(user, true);
+            this.audit('user.reset_link_sent', { req, actor: 'admin', detail: { user: user.id } });
+            res.json({ ok: true });
+        } catch (err) {
+            this.audit('email.send_failed', { req, actor: 'admin', detail: { kind: 'reset', reason: err.code || 'failed' } });
+            res.status(err.code === 'rate' ? 429 : 502).json({ error: err.message, detail: err.detail || '' });
+        }
+    };
+
+    // Sets or clears your own email address. The current password is asked for: a session someone walked away from must
+    // not be able to point the reset links somewhere else.
+    setEmail = async (req, res) => {
+        if (req.user.managed) return res.status(409).json({ error: MANAGED_MESSAGE });
+        const { email, currentPassword } = req.body || {};
+        const parsed = parseEmail(email);
+        if (parsed.error || parsed.value === undefined) return res.status(400).json({ error: parsed.error || 'Enter an email address.', field: 'email' });
+        const user = this.users.findById(req.user.id);
+        const key = `user:${user.username}`;
+        if (this.refuseIfLocked(res, key, req.ip)) return;
+        if (typeof currentPassword !== 'string' || !(await verifyPassword(currentPassword, user.password_hash, user.password_salt))) {
+            this.lockout.note(key, req.ip);
+            this.audit('user.login_failed', { req, actor: 'user', detail: { via: 'email_change', user: user.id } });
+            return res.status(401).json({ error: 'That is not your current password.', field: 'currentPassword' });
+        }
+        if (parsed.value !== (user.email || null)) {
+            this.users.update(user.id, { email: parsed.value });
+            this.audit('user.email_changed', { req, actor: 'user', detail: { user: user.id, cleared: parsed.value === null } });
+            // The old address is told, so a takeover of the account does not go unnoticed
+            if (user.email && this.mailer && this.mailer.enabled) {
+                this.background(this.mailer.send({ to: user.email, ...templates.emailChangedEmail({ serverName: this.config.smtpFromName || 'Stashly', username: user.username }) }));
+            }
+        }
+        res.json({ ok: true, email: parsed.value });
+    };
 
     // ---- guards ----
 
@@ -146,7 +297,7 @@ class UserController {
     // 200 either way, so a page can ask who is signed in
     me = (req, res) => {
         if (!this.userAuth.enabled) return res.json({ enabled: false });
-        res.json({ enabled: true, user: req.user || null });
+        res.json({ enabled: true, user: req.user || null, resetByEmail: this.resetReady });
     };
 
     // Changes your own password. The current one is asked for again (a browser someone walked away from cannot be used
@@ -268,6 +419,22 @@ class UserController {
         res.json({ ok: true });
     };
 
+    // Pin (PUT) or unpin (DELETE) a stash in your list. Only stashes already in the list can be pinned, and only a few.
+    pin = (req, res) => this.setPin(req, res, true);
+    unpin = (req, res) => this.setPin(req, res, false);
+
+    setPin(req, res, pinned) {
+        const stash = this.model.findBySlug(String(req.params.slug || '').toLowerCase());
+        if (stash) this.users.ensureOwnerFollows(req.user.id);
+        const row = stash ? this.users.getFollow(req.user.id, stash.id) : null;
+        if (!row) return res.status(404).json({ error: 'That stash is not in your list.' });
+        if (pinned && !row.pinned_at && this.users.countPinned(req.user.id) >= MAX_PINS) {
+            return res.status(409).json({ error: 'You can pin up to ' + MAX_PINS + ' stashes. Unpin one first.' });
+        }
+        this.users.setPinned(req.user.id, stash.id, pinned, this.now());
+        res.json({ ok: true, pinned });
+    }
+
     // The dashboard. A grant that no longer works shows only that the password is needed again: no counts, no times, so
     // nothing about a stash leaks to someone who can no longer open it. Working grants come first, newest activity first.
     listStashes = (req, res) => {
@@ -278,7 +445,7 @@ class UserController {
             const owned = row.owner_id === req.user.id;
             // The owner needs no password, so an owned stash never "needs the password again"
             const role = owned ? 'full' : grantRole(row, row);
-            if (!role) return { slug: row.slug, role: null, needsPassword: true, owned: false, addedAt: row.added_at };
+            if (!role) return { slug: row.slug, role: null, needsPassword: true, owned: false, addedAt: row.added_at, pinned: Boolean(row.pinned_at) };
             return {
                 slug: row.slug,
                 owned,
@@ -291,11 +458,15 @@ class UserController {
                 latestAt: row.latest_at || null,
                 expiresAt: row.expires_at || null,
                 addedAt: row.added_at,
+                pinned: Boolean(row.pinned_at),
             };
         });
+        const pinnedAt = new Map(rows.map(row => [row.slug, row.pinned_at || '']));
         const key = row => row.latestAt || row.addedAt;
         out.sort((a, b) => {
-            // Your own stashes first, then the ones you follow that still open, then the ones that need the password
+            // Pinned ones first (the one pinned first on top), then your own stashes, then the ones you follow that still open, then the ones that need the password
+            if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+            if (a.pinned) return pinnedAt.get(a.slug) < pinnedAt.get(b.slug) ? -1 : 1;
             if (Boolean(a.owned) !== Boolean(b.owned)) return a.owned ? -1 : 1;
             if (a.needsPassword !== b.needsPassword) return a.needsPassword ? 1 : -1;
             return key(a) < key(b) ? 1 : key(a) > key(b) ? -1 : 0;
@@ -310,6 +481,7 @@ class UserController {
             id: row.id,
             username: row.username,
             displayName: row.display_name || null,
+            email: row.email || null,
             role: row.role,
             disabled: Boolean(row.disabled),
             // Set in the server's environment: the page shows no buttons for it
@@ -361,6 +533,8 @@ class UserController {
         }
         const name = parseDisplayName(body.displayName);
         if (name.error) return res.status(400).json({ error: name.error, field: 'displayName' });
+        const mail = parseEmail(body.email);
+        if (mail.error) return res.status(400).json({ error: mail.error, field: 'email' });
         const role = body.role === undefined ? 'user' : body.role;
         if (!ROLES.includes(role)) return res.status(400).json({ error: 'The role must be admin or user.', field: 'role' });
         const min = this.config.minPasswordLength;
@@ -372,6 +546,7 @@ class UserController {
             const user = this.users.create({
                 username,
                 displayName: name.value === undefined ? null : name.value,
+                email: mail.value === undefined ? null : mail.value,
                 hash: hashed.hash,
                 salt: hashed.salt,
                 role,
@@ -403,6 +578,11 @@ class UserController {
             const name = parseDisplayName(body.displayName);
             if (name.error) return res.status(400).json({ error: name.error, field: 'displayName' });
             if (name.value !== (user.display_name || null)) changes.displayName = name.value;
+        }
+        if (body.email !== undefined) {
+            const mail = parseEmail(body.email);
+            if (mail.error) return res.status(400).json({ error: mail.error, field: 'email' });
+            if (mail.value !== (user.email || null)) changes.email = mail.value;
         }
         // An admin account cannot lock itself out of admin (the ADMIN_PASSWORD admin can do anything; it is not a user)
         if (this.isSelf(req, user) && (changes.role !== undefined || changes.disabled === true)) {

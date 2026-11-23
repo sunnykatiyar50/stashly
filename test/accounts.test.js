@@ -60,7 +60,7 @@ test('accounts are off when there is no ADMIN_PASSWORD: every account endpoint s
 test('with ADMIN_PASSWORD set, accounts are on and /api/me says nobody is signed in', async () => {
     const ctx = makeApp({ adminPassword: ADMIN });
     const me = await request(ctx.app).get('/api/me').expect(200);
-    assert.deepEqual(me.body, { enabled: true, user: null });
+    assert.deepEqual(me.body, { enabled: true, user: null, resetByEmail: false });
     assert.equal((await request(ctx.app).get('/api/config')).body.accountsEnabled, true);
     // Protected endpoints ask for a sign-in rather than pretending the feature is off
     await request(ctx.app).get('/api/me/stashes').expect(401);
@@ -100,7 +100,7 @@ test('the admin makes users: the answer never carries the password, and the list
     assertNoSecrets(list.body);
     // ("admin" is the account the server's environment makes from ADMIN_USERNAME; it is listed with the others)
     assert.deepEqual(list.body.users.map(u => u.username), ['admin', 'kim_admin', 'plain-one', 'sam.lee']);
-    assert.deepEqual(Object.keys(list.body.users[1]).sort(), ['createdAt', 'disabled', 'displayName', 'id', 'lastLoginAt', 'managed', 'role', 'stashCount', 'username']);
+    assert.deepEqual(Object.keys(list.body.users[1]).sort(), ['createdAt', 'disabled', 'displayName', 'email', 'id', 'lastLoginAt', 'managed', 'role', 'stashCount', 'username']);
     assert.equal(list.body.users[1].stashCount, 0);
 
     // The row in the database holds a hash, not the password, and who made the account
@@ -271,7 +271,7 @@ test('the right username and password sign in: a cookie with the right flags, an
     const res = await agent.post('/api/auth/login').send({ username: '  SAM ', password: PASSWORD }).expect(200);
     assertNoSecrets(res.body);
     assert.equal(res.body.user.username, 'sam');
-    assert.deepEqual(Object.keys(res.body.user).sort(), ['displayName', 'id', 'managed', 'role', 'username']);
+    assert.deepEqual(Object.keys(res.body.user).sort(), ['displayName', 'email', 'id', 'managed', 'role', 'username']);
     const cookie = res.headers['set-cookie'].find(c => c.startsWith('stashly_user='));
     assert.match(cookie, /HttpOnly/i);
     assert.match(cookie, /SameSite=Strict/i);
@@ -281,13 +281,13 @@ test('the right username and password sign in: a cookie with the right flags, an
     assert.doesNotMatch(cookie, new RegExp(PASSWORD));
 
     const me = await agent.get('/api/me').expect(200);
-    assert.deepEqual(me.body, { enabled: true, user: { id: res.body.user.id, username: 'sam', displayName: 'Sam Lee', role: 'user', managed: false } });
+    assert.deepEqual(me.body, { enabled: true, user: { id: res.body.user.id, username: 'sam', displayName: 'Sam Lee', email: null, role: 'user', managed: false }, resetByEmail: false });
     // last login is recorded and shown to the admin
     const row = (await ctx.root.get('/api/admin/users')).body.users.find(u => u.username === 'sam');
     assert.equal(row.lastLoginAt, ctx.clock.time.toISOString());
 
     await agent.post('/api/auth/logout').expect(200);
-    assert.deepEqual((await agent.get('/api/me')).body, { enabled: true, user: null });
+    assert.deepEqual((await agent.get('/api/me')).body, { enabled: true, user: null, resetByEmail: false });
 });
 
 test('the session cookie is Secure when COOKIE_SECURE=true, and its length follows USER_SESSION_DAYS', async () => {

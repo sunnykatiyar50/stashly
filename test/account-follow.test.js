@@ -309,7 +309,7 @@ test('a new stash password ends the follow: it stays in the list as "needs the p
     // The row remains; the dashboard says what is needed and shows nothing about the stash
     assert.equal(followRows(ctx).length, 1);
     const [stale] = await dashboard(ctx.sam);
-    assert.deepEqual(Object.keys(stale).sort(), ['addedAt', 'needsPassword', 'owned', 'role', 'slug']);
+    assert.deepEqual(Object.keys(stale).sort(), ['addedAt', 'needsPassword', 'owned', 'pinned', 'role', 'slug']);
     assert.equal(stale.role, null);
     assert.equal(stale.needsPassword, true);
 
@@ -501,7 +501,7 @@ test('the dashboard shows counts, files, new items, latest activity and expiry, 
     list = await dashboard(ctx.sam);
     assert.deepEqual(list.map(s => s.slug), ['busy-stash-one', 'quiet-stash-one']);
     const busy = list[0];
-    assert.deepEqual(Object.keys(busy).sort(), ['addedAt', 'expiresAt', 'files', 'hasPassword', 'items', 'latestAt', 'needsPassword', 'newItems', 'owned', 'role', 'slug']);
+    assert.deepEqual(Object.keys(busy).sort(), ['addedAt', 'expiresAt', 'files', 'hasPassword', 'items', 'latestAt', 'needsPassword', 'newItems', 'owned', 'pinned', 'role', 'slug']);
     assert.equal(busy.items, 3);
     assert.equal(busy.files, 1);
     assert.equal(busy.newItems, 3);
@@ -585,7 +585,7 @@ test('a grant that no longer works shows nothing about the stash: no counts, tim
     await owner.post('/api/stashes/locked-stash/sign-out-others').expect(200);
     const res = await ctx.sam.get('/api/me/stashes').expect(200);
     const text = JSON.stringify(res.body);
-    assert.deepEqual(Object.keys(res.body.stashes[0]).sort(), ['addedAt', 'needsPassword', 'owned', 'role', 'slug']);
+    assert.deepEqual(Object.keys(res.body.stashes[0]).sort(), ['addedAt', 'needsPassword', 'owned', 'pinned', 'role', 'slug']);
     assert.ok(!/items|files|latestAt|expiresAt|hasPassword|newItems|private contents/.test(text));
 });
 

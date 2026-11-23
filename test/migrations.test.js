@@ -72,7 +72,7 @@ test('a schema 2 database gets the trash table (and then thumbnails) and keeps i
 
         const db = connect(file);
         assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
-        assert.equal(SCHEMA_VERSION, 8);
+        assert.equal(SCHEMA_VERSION, 10);
         assert.deepEqual(columns(db, 'trash'), [
             'id', 'stash_id', 'kind', 'title', 'text', 'file_name', 'file_type', 'file_size', 'created_at',
             'expires_at', 'burn', 'secret', 'pinned', 'edited_at', 'sort_order', 'deleted_at', 'has_thumb',
@@ -175,13 +175,13 @@ test('a schema 5 database gets the users and follow tables at version 6, keeps i
 
         const db = connect(file);
         assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
-        assert.equal(SCHEMA_VERSION, 8);
+        assert.equal(SCHEMA_VERSION, 10);
         assert.deepEqual(columns(db, 'users'), [
             'id', 'username', 'display_name', 'password_hash', 'password_salt', 'role', 'disabled', 'session_version',
-            'created_at', 'created_by', 'last_login_at', 'managed',
+            'created_at', 'created_by', 'last_login_at', 'managed', 'email',
         ]);
         assert.deepEqual(columns(db, 'user_stashes'), [
-            'user_id', 'stash_id', 'added_at', 'last_seen_at', 'grant_role', 'grant_salt', 'grant_version', 'grant_view_hash',
+            'user_id', 'stash_id', 'added_at', 'last_seen_at', 'grant_role', 'grant_salt', 'grant_version', 'grant_view_hash', 'pinned_at',
         ]);
         assert.equal(db.prepare('SELECT text FROM items').get().text, 'kept');
         assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 0);
