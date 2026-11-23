@@ -88,10 +88,16 @@ class UserModel {
         }
     }
 
-    // changes: any of { role, disabled, displayName }. A new role or a disable also ends the user's sessions.
+    // changes: any of { username, email, role, disabled, displayName }. A new role or a disable also ends the user's
+    // sessions; a new username does not (sessions follow the user's id). Throws an error with code DUPLICATE when the
+    // new username is taken.
     update(id, changes) {
         const sets = [];
         const params = [];
+        if (changes.username !== undefined) {
+            sets.push('username = ?');
+            params.push(changes.username);
+        }
         if (changes.role !== undefined) {
             sets.push('role = ?', 'session_version = session_version + 1');
             params.push(changes.role);
@@ -109,7 +115,18 @@ class UserModel {
             sets.push('display_name = ?');
             params.push(changes.displayName);
         }
-        if (sets.length) this.db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
+        if (sets.length) {
+            try {
+                this.db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
+            } catch (err) {
+                if (/UNIQUE/i.test(String(err.message))) {
+                    const duplicate = new Error('That username is taken.');
+                    duplicate.code = 'DUPLICATE';
+                    throw duplicate;
+                }
+                throw err;
+            }
+        }
         return this.findById(id);
     }
 

@@ -260,6 +260,18 @@ body.has-account-nav #logoutButton { display: none; }
 /* The curl lines wrap, so the whole of them shows in the narrower column */
 .how-card .code { white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: visible; }
 .how-card .how-list { margin-top: 4px; }
+/* How it works: numbered steps, tips, and the terminal way */
+.how-intro { margin: 2px 0 0; }
+.how-steps { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.how-steps li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; align-items: start; }
+.how-num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--blue); color: #fff; font-weight: 700; font-size: 13px; }
+.how-steps strong { display: block; font-size: 14px; margin-top: 3px; }
+.how-steps p { margin: 3px 0 0; color: var(--text-soft); font-size: 13.5px; line-height: 1.55; }
+.how-sub { margin: 20px 0 0; padding-top: 14px; border-top: 1px solid var(--border); font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.how-tips { margin: 8px 0 0; padding-left: 18px; color: var(--text-soft); font-size: 13.5px; line-height: 1.6; display: flex; flex-direction: column; gap: 6px; }
+.how-card kbd { display: inline-block; padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--surface); font-family: var(--mono); font-size: 12px; line-height: 1.4; }
+.how-card p code { padding: 1px 5px; border-radius: 4px; background: var(--code-bg); font-family: var(--mono); font-size: 12.5px; }
+.how-card .how-sub + p { margin: 8px 0 0; }
 @media (max-width: 900px) { .home-grid { grid-template-columns: 1fr; } }
 /* "Open an existing stash" stands out from the rest of the home page: accent border, larger controls */
 .open-card { padding: 18px 20px; border: 1px solid var(--blue); border-left-width: 4px; box-shadow: 0 4px 14px var(--shadow); }
@@ -357,10 +369,8 @@ body.has-account-nav #logoutButton { display: none; }
 .clip-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .clip-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .clip-sub, .clip-time { color: var(--muted); font-size: 12px; }
-/* Two lines of the note under its title; the rest is cut off. The eye button above the list hides them. */
+/* Two lines of the note under its title; the rest is cut off. Options > This device can hide them. */
 .clip-list.hide-content .clip-preview { display: none; }
-#contentToggle .eye-closed, #contentToggle.active .eye-open { display: none; }
-#contentToggle.active .eye-closed { display: inline; }
 /* The drag handle: a narrow column on the left, faint until the row is hovered (always shown on touch screens) */
 .clip.has-grip { grid-template-columns: 14px 34px minmax(0, 1fr) auto; padding-left: 2px; }
 .clip-grip { align-self: center; display: inline-flex; justify-content: center; color: var(--muted); cursor: grab; touch-action: none; opacity: .35; }
@@ -861,3 +871,10 @@ body:not(.stash-open) .in-topbar { display: none; }
     .view-stash.detail-open #presenceChip,
     .view-stash.detail-open #rangeChip { display: none !important; }
 }
+
+/* The settings page: one card per group of settings */
+.settings-stack { display: flex; flex-direction: column; gap: 16px; max-width: 560px; }
+.settings-section { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; }
+.settings-section h2 { font-size: 16px; }
+.settings-section form { display: flex; flex-direction: column; gap: 14px; }
+.settings-actions { display: flex; justify-content: flex-start; }

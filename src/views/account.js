@@ -126,49 +126,6 @@
         toast('Your session ended. Sign in again.', true);
     }
 
-    // ---- change password ----
-
-    var passwordDialog = $('passwordDialog');
-
-    $('passwordButton').addEventListener('click', function () {
-        $('currentPassword').value = '';
-        $('newPassword').value = '';
-        $('currentPasswordError').textContent = '';
-        $('newPasswordError').textContent = '';
-        openDialog(passwordDialog);
-        $('currentPassword').focus();
-    });
-    $('passwordCancel').addEventListener('click', function () { passwordDialog.close(); });
-    passwordDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
-    $('passwordForm').addEventListener('submit', function (event) {
-        event.preventDefault();
-        $('currentPasswordError').textContent = '';
-        $('newPasswordError').textContent = '';
-        var current = $('currentPassword').value;
-        var next = $('newPassword').value;
-        if (!current) { $('currentPasswordError').textContent = 'Enter your current password.'; return; }
-        if (!next) { $('newPasswordError').textContent = 'Enter a new password.'; return; }
-        $('passwordSave').disabled = true;
-        api('/api/me/password', { method: 'POST', body: { currentPassword: current, newPassword: next } }).then(function (res) {
-            $('passwordSave').disabled = false;
-            if (res.status === 401 && res.body && res.body.signedIn === false) { passwordDialog.close(); return sessionEnded(); }
-            if (res.ok) {
-                // Nothing stays in the form
-                $('currentPassword').value = '';
-                $('newPassword').value = '';
-                passwordDialog.close();
-                toast('Password changed. Your other browsers were signed out.');
-            } else {
-                var target = res.body && res.body.field === 'newPassword' ? 'newPasswordError' : 'currentPasswordError';
-                $(target).textContent = (res.body && res.body.error) || 'Could not change the password.';
-            }
-            return null;
-        }).catch(function () {
-            $('passwordSave').disabled = false;
-            $('currentPasswordError').textContent = 'Could not reach the server.';
-        });
-    });
-
     // ---- the list of followed stashes ----
 
     function loadList() {
@@ -368,46 +325,6 @@
         });
     });
 
-    // ---- your email address ----
-
-    var emailDialog = $('emailDialog');
-    $('emailButton').addEventListener('click', function () {
-        $('emailInput').value = (me && me.email) || '';
-        $('emailPassword').value = '';
-        $('emailError').textContent = '';
-        $('emailPasswordError').textContent = '';
-        openDialog(emailDialog);
-        $('emailInput').focus();
-    });
-    $('emailCancel').addEventListener('click', function () { emailDialog.close(); });
-    emailDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
-    $('emailForm').addEventListener('submit', function (event) {
-        event.preventDefault();
-        $('emailError').textContent = '';
-        $('emailPasswordError').textContent = '';
-        var password = $('emailPassword').value;
-        if (!password) { $('emailPasswordError').textContent = 'Enter your current password.'; return; }
-        $('emailSave').disabled = true;
-        var value = $('emailInput').value.trim();
-        api('/api/me/email', { method: 'PUT', body: { email: value || null, currentPassword: password } }).then(function (res) {
-            $('emailSave').disabled = false;
-            $('emailPassword').value = '';
-            if (res.status === 401 && res.body && res.body.signedIn === false) { emailDialog.close(); return sessionEnded(); }
-            if (res.ok) {
-                if (me) me.email = res.body.email;
-                emailDialog.close();
-                toast(res.body.email ? 'Email saved.' : 'Email removed.');
-            } else {
-                var target = res.body && res.body.field === 'email' ? 'emailError' : 'emailPasswordError';
-                $(target).textContent = (res.body && res.body.error) || 'Could not save the email.';
-            }
-            return null;
-        }).catch(function () {
-            $('emailSave').disabled = false;
-            $('emailPasswordError').textContent = 'Could not reach the server.';
-        });
-    });
-
     // ---- keeping the list fresh ----
 
     // Every 20 seconds while this tab is in front, once more when it comes back, and not at all while it is hidden
@@ -448,8 +365,6 @@
             if (!res.body.user) { me = null; refreshAdminNav(); show('login'); $('loginUsername').focus(); return null; }
             me = res.body.user;
             if (justSignedIn && me.role === 'admin' && nextTarget(location.search)) { location.href = nextTarget(location.search); return null; }
-            $('passwordButton').classList.toggle('hidden', Boolean(me.managed));
-            $('emailButton').classList.toggle('hidden', Boolean(me.managed));
             $('whoInfo').textContent = me.displayName ? me.displayName + ' (' + me.username + ')' : me.username;
             $('roleChip').textContent = me.role === 'admin' ? 'Admin' : 'User';
             refreshAdminNav();

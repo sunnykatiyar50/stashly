@@ -10,6 +10,22 @@
     var KEY = 'sl_account_nav';
     var block = null;
 
+    // The Settings gear, drawn with DOM calls (no markup parsing)
+    function gearIcon() {
+        var ns = 'http://www.w3.org/2000/svg';
+        var svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        var circle = document.createElementNS(ns, 'circle');
+        circle.setAttribute('cx', '12');
+        circle.setAttribute('cy', '12');
+        circle.setAttribute('r', '3');
+        svg.appendChild(circle);
+        var path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z');
+        svg.appendChild(path);
+        return svg;
+    }
+
     var ICON = '<svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
 
     // What to show for a user: the display name (or the username), and under it the username and role
@@ -72,7 +88,20 @@
         out.appendChild(label);
         out.addEventListener('click', signOut);
 
+        // Your own details and settings, on every page
+        var settings = document.createElement('a');
+        settings.className = 'nav-link' + (location.pathname === '/settings' ? ' active' : '');
+        settings.href = '/settings';
+        settings.title = 'Settings';
+        if (location.pathname === '/settings') settings.setAttribute('aria-current', 'page');
+        settings.appendChild(gearIcon());
+        var settingsLabel = document.createElement('span');
+        settingsLabel.className = 'label';
+        settingsLabel.textContent = 'Settings';
+        settings.appendChild(settingsLabel);
+
         group.appendChild(who);
+        group.appendChild(settings);
         group.appendChild(out);
         group._parts = { who: who, avatar: avatar, name: name, sub: sub };
         return group;
@@ -106,26 +135,48 @@
         return svg;
     }
     var pinBox = null;
+    var PINS_KEY = 'sl_pinned_slugs';
+    var here = location.pathname.split('/')[1] === 's' ? decodeURIComponent(location.pathname.split('/')[2] || '').toLowerCase() : '';
+
+    // The stash page lists the open stash in the menu too. When it is one of the pinned ones, the Pinned list already
+    // shows it (as the current one), so this second entry is hidden instead of showing the same stash twice.
+    function setOpenStashVisible(visible) {
+        var open = document.getElementById('thisStashLink');
+        if (open) open.classList.toggle('hidden', !visible);
+    }
+    // The pinned names seen last time, so the open stash's entry is right on first paint (the server's answer confirms)
+    function rememberedPins() {
+        try {
+            var list = JSON.parse(localStorage.getItem(PINS_KEY) || '[]');
+            return Array.isArray(list) ? list : [];
+        } catch (e) { return []; }
+    }
+    function rememberPins(slugs) {
+        try { localStorage.setItem(PINS_KEY, JSON.stringify(slugs)); } catch (e) { /* not remembered */ }
+    }
+    if (here && rememberedPins().indexOf(here) !== -1) setOpenStashVisible(false);
 
     function drawPins(stashes) {
         var nav = document.querySelector('.sidebar-nav');
         if (!nav) return;
         var pinned = stashes.filter(function (s) { return s.pinned && !s.needsPassword; });
+        rememberPins(pinned.map(function (s) { return s.slug; }));
+        setOpenStashVisible(!(here && pinned.some(function (s) { return s.slug === here; })));
         if (!pinned.length) { if (pinBox) { pinBox.remove(); pinBox = null; } return; }
         if (!pinBox) {
             pinBox = document.createElement('div');
             pinBox.className = 'nav-pins';
             pinBox.setAttribute('role', 'group');
             pinBox.setAttribute('aria-label', 'Pinned stashes');
-            // Always above the Admin section, whichever script finishes first (admin-nav.js appends its section last)
-            nav.insertBefore(pinBox, nav.querySelector('.nav-section, .nav-section-label'));
+            // Menu order: Home, My stashes, Pinned, the open stash (stash page only), then Admin (admin-nav.js appends its
+            // section last, so this is right whichever script finishes first)
+            nav.insertBefore(pinBox, nav.querySelector('#thisStashLink, .nav-section, .nav-section-label'));
         }
         pinBox.textContent = '';
         var heading = document.createElement('div');
         heading.className = 'nav-pins-title label';
         heading.textContent = 'Pinned';
         pinBox.appendChild(heading);
-        var here = location.pathname.split('/')[1] === 's' ? decodeURIComponent(location.pathname.split('/')[2] || '').toLowerCase() : '';
         pinned.forEach(function (stash) {
             var link = document.createElement('a');
             link.className = 'nav-link nav-pin' + (stash.slug === here ? ' active' : '');
@@ -155,14 +206,29 @@
 
     function clear() {
         if (pinBox) { pinBox.remove(); pinBox = null; }
+        rememberPins([]);
+        setOpenStashVisible(true);
         if (block) block.remove();
         block = null;
         document.body.classList.remove('has-account-nav');
     }
 
+    // Who is signed in: { ok, status, body }. The first answer is shared with the stash page's own script
+    // (StashlyAccountNav.firstMe), so the page does not ask the server the same thing twice while it starts.
+    function getMe() {
+        return fetch('/api/me', { credentials: 'same-origin' }).then(function (res) {
+            return res.json().catch(function () { return null; }).then(function (body) {
+                return { ok: res.ok, status: res.status, body: body };
+            });
+        });
+    }
+    var firstMe = null;
+
     function refresh() {
-        return fetch('/api/me', { credentials: 'same-origin' })
-            .then(function (res) { return res.json().catch(function () { return null; }); })
+        var request = firstMe;
+        firstMe = null; // only the very first call reuses the page-start request; later ones (after sign in or out) ask again
+        return (request || getMe())
+            .then(function (res) { return res.body; })
             .then(function (body) {
                 if (body && body.enabled && body.user) {
                     var info = describe(body.user);
@@ -196,7 +262,10 @@
         });
     }
 
-    window.StashlyAccountNav = { refresh: refresh, refreshPins: refreshPins };
+    // Started now, and used by the first refresh() below
+    firstMe = getMe();
+    var shared = firstMe;
+    window.StashlyAccountNav = { refresh: refresh, refreshPins: refreshPins, firstMe: function () { return shared; } };
     var known = remembered();
     if (known) paint(known);
     refresh();

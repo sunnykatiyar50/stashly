@@ -15,7 +15,8 @@
     function load() { return P.load.apply(null, arguments); }
     function redeemFromHash() { return P.redeemFromHash.apply(null, arguments); }
 
-    api('/api/config').then(function (res) {
+    // shell.js already asked for the config when the page started; reuse that answer instead of asking again
+    (window.StashlyConfig ? window.StashlyConfig() : api('/api/config')).then(function (res) {
         if (!res.ok) return;
         state.minPassword = Number(res.body.minPasswordLength) || 10;
         // How long to stay signed in: on the unlock form, and in Options to change it later
