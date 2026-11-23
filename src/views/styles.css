@@ -514,6 +514,11 @@ audio.detail-media { max-height: none; }
 .settings-control { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; align-content: flex-start; }
 .settings-control input[type="number"] { width: 130px; }
 .settings-control select { width: 100%; }
+.settings-control input.wide-input { width: 100%; }
+.inline-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-soft); flex-basis: 100%; }
+.email-test { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.email-test h3 { font-size: 15px; margin: 0; }
+.email-test .input-row { max-width: 520px; }
 .settings-control .field-hint, .settings-control .field-error { flex-basis: 100%; }
 
 /* ===== Accounts: the account page, the users table and the follow button ===== */

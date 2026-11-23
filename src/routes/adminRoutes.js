@@ -46,6 +46,14 @@ function createAdminRoutes({ controller, users, adminAuth, config }) {
     router.get('/settings', admin, c.getSettings);
     router.put('/settings', admin, c.putSettings);
     router.post('/settings/reset', admin, c.resetSettings);
+    // A test message goes to a real mail server, so it is limited like the other things an admin can repeat
+    router.post('/email/test', admin, rateLimit({
+        windowMs: 10 * 60 * 1000,
+        limit: 20,
+        standardHeaders: 'draft-8',
+        legacyHeaders: false,
+        message: { error: 'Too many test emails. Try again in a few minutes.' },
+    }), c.testEmail);
 
     router.get('/users', admin, userLimiter, users.list);
     router.post('/users', admin, userLimiter, users.create);

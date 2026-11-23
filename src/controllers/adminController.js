@@ -10,14 +10,17 @@ const { hashPassword, MAX_PASSWORD } = require('../utils/password');
 const { ZipWriter, STORE, DEFLATE } = require('../utils/zipWriter');
 const { noopAudit } = require('../utils/auditLog');
 const { noopMetrics } = require('../utils/metrics');
+const { validAddress } = require('../utils/mailer');
+const templates = require('../utils/emailTemplates');
 
 // Windows can briefly hold a file that was just closed, so a few tries
 const removeTemp = temp => fs.promises.rm(temp, { force: true, maxRetries: 5, retryDelay: 50 }).catch(() => {});
 
 class AdminController {
     // audit and metrics: see StashController (they do nothing unless the app passes real ones)
-    constructor({ model, events, config, adminAuth, settings, users = null, now = () => new Date(), resetFailures = () => {}, audit = noopAudit, metrics = noopMetrics }) {
+    constructor({ model, events, config, adminAuth, settings, users = null, mailer = null, now = () => new Date(), resetFailures = () => {}, audit = noopAudit, metrics = noopMetrics }) {
         this.users = users;
+        this.mailer = mailer;
         this.audit = audit;
         this.metrics = metrics;
         this.resetFailures = resetFailures;
@@ -134,6 +137,24 @@ class AdminController {
         res.json({ ok: true, hasPassword: true });
     };
 
+    // Sends one test message with the settings as they are saved, so the admin can see that the mail server works.
+    // Failures say what went wrong (the mail server's own words included): this is the admin, who needs them.
+    testEmail = async (req, res) => {
+        const to = req.body && typeof req.body.to === 'string' ? req.body.to.trim() : '';
+        if (!validAddress(to)) return res.status(400).json({ error: 'Enter a valid email address to send the test to.', field: 'to' });
+        if (!this.mailer || !this.mailer.enabled) {
+            return res.status(409).json({ error: 'Email is not ready. Turn on "Send emails", fill in the mail server and the From address, and save.' });
+        }
+        try {
+            await this.mailer.send({ to, ...templates.testEmail({ serverName: this.config.smtpFromName || 'Stashly', url: this.mailer.publicUrl }) });
+            this.audit('email.test_sent', { req, actor: 'admin' });
+            res.json({ ok: true });
+        } catch (err) {
+            this.audit('email.send_failed', { req, actor: 'admin', detail: { kind: 'test', reason: err.code || 'failed' } });
+            res.status(err.code === 'rate' ? 429 : 502).json({ error: err.message, reason: err.code || 'failed', detail: err.detail || '' });
+        }
+    };
+
     getSettings = (req, res) => {
         res.json({ fields: this.settings.describe() });
     };
@@ -144,8 +165,9 @@ class AdminController {
         const after = this.settings.values();
         const keys = Object.keys(after).filter(key => after[key] !== before[key]);
         if (!keys.length) return;
+        // A secret (the SMTP password) is named as changed, but its value is never written to the log
         const values = {};
-        for (const key of keys) values[key] = after[key];
+        for (const key of keys) if (!this.settings.isSecret(key)) values[key] = after[key];
         this.audit('admin.settings_changed', { req, actor: 'admin', detail: { keys, values } });
     }
 

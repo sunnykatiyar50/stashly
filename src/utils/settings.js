@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const MB = 1024 * 1024;
 const round = value => Math.round(value * 100) / 100;
 
@@ -137,6 +138,61 @@ const FIELDS = {
         help: 'Opening stashes, listing items and downloading files. Pages and live updates count too, so keep it generous.',
         read: c => c.rateRead, write: (c, v) => { c.rateRead = v; },
     },
+    smtpEnabled: {
+        group: 'Email', label: 'Send emails', type: 'bool',
+        help: 'Lets the server send email (password reset links, shared links) through the mail server below. Needs the server and the From address.',
+        read: c => c.smtpEnabled, write: (c, v) => { c.smtpEnabled = v; },
+    },
+    smtpHost: {
+        group: 'Email', label: 'Mail server (SMTP host)', type: 'text', maxLength: 255, placeholder: 'smtp.example.com',
+        help: 'The name or address of your SMTP server.',
+        read: c => c.smtpHost, write: (c, v) => { c.smtpHost = v; },
+    },
+    smtpPort: {
+        group: 'Email', label: 'Port', type: 'int', min: 1, max: 65535,
+        help: 'Usually 587 for STARTTLS, 465 for SSL/TLS, and 25 for a plain local server.',
+        read: c => c.smtpPort, write: (c, v) => { c.smtpPort = v; },
+    },
+    smtpSecurity: {
+        group: 'Email', label: 'Security', type: 'choice',
+        options: [
+            { value: 'starttls', label: 'STARTTLS (usually port 587)' },
+            { value: 'ssl', label: 'SSL/TLS (usually port 465)' },
+            { value: 'none', label: 'None: plain text, only for a trusted local server' },
+        ],
+        help: 'How the connection to the mail server is protected. Use STARTTLS or SSL/TLS for any server across a network.',
+        read: c => c.smtpSecurity, write: (c, v) => { c.smtpSecurity = v; },
+    },
+    smtpUser: {
+        group: 'Email', label: 'Username', type: 'text', maxLength: 255,
+        help: 'The login for the mail server. Leave empty if it needs none.',
+        read: c => c.smtpUser, write: (c, v) => { c.smtpUser = v; },
+    },
+    smtpPassword: {
+        group: 'Email', label: 'Password', type: 'secret', maxLength: 500,
+        help: 'The login password. It is kept encrypted, never shown again, and never leaves the server. Leave the box empty to keep the saved one.',
+        read: c => c.smtpPassword, write: (c, v) => { c.smtpPassword = v; },
+    },
+    smtpFromAddress: {
+        group: 'Email', label: 'From address', type: 'email', placeholder: 'stashly@example.com',
+        help: 'The address the emails come from. Your mail server may only allow addresses it owns.',
+        read: c => c.smtpFromAddress, write: (c, v) => { c.smtpFromAddress = v; },
+    },
+    smtpFromName: {
+        group: 'Email', label: 'From name', type: 'text', maxLength: 100,
+        help: 'The name shown next to the address.',
+        read: c => c.smtpFromName, write: (c, v) => { c.smtpFromName = v; },
+    },
+    publicUrl: {
+        group: 'Email', label: 'Address of this server', type: 'url', maxLength: 200, placeholder: 'https://stash.example.com',
+        help: 'How people reach Stashly, with https:// and no path. Every link in an email starts with it. Password reset emails are only sent once it is set, because a link must never be built from what a visitor sends.',
+        read: c => c.publicUrl, write: (c, v) => { c.publicUrl = v.replace(/\/+$/, ''); },
+    },
+    emailsPerHour: {
+        group: 'Email', label: 'Emails per hour', unit: 'emails', type: 'int', min: 1, max: 100000,
+        help: 'The most emails the whole server sends in an hour. A stolen account or a bug cannot send more than this.',
+        read: c => c.emailsPerHour, write: (c, v) => { c.emailsPerHour = v; },
+    },
     requireLoginToCreate: {
         group: 'Stashes', label: 'Only signed-in users can create stashes', type: 'bool',
         help: 'Users the admin made, and admins, can create stashes; anyone else can still open and use stashes they have the link to. "Only the admin" above wins when both are on.',
@@ -144,16 +200,56 @@ const FIELDS = {
     },
 };
 
+// A secret setting (the SMTP password) is kept encrypted in the database: AES-256-GCM, with a key made from the
+// server's secret. Set SESSION_SECRET so that secret is not itself stored in the database. If the secret changes, the saved
+// password can no longer be read and must be entered again.
+const ENCRYPTED = 'enc:v1:';
+const settingsKey = secret => Buffer.from(crypto.hkdfSync('sha256', String(secret), 'stashly', 'settings-secrets-v1', 32));
+
+function encryptSecret(secret, text) {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', settingsKey(secret), iv);
+    const body = Buffer.concat([cipher.update(String(text), 'utf8'), cipher.final()]);
+    return ENCRYPTED + [iv, cipher.getAuthTag(), body].map(part => part.toString('base64')).join('.');
+}
+
+// Returns the text, or null when it cannot be read (not ours, damaged, or made with another secret)
+function decryptSecret(secret, value) {
+    if (typeof value !== 'string' || !value.startsWith(ENCRYPTED)) return null;
+    try {
+        const [iv, tag, body] = value.slice(ENCRYPTED.length).split('.').map(part => Buffer.from(part, 'base64'));
+        const decipher = crypto.createDecipheriv('aes-256-gcm', settingsKey(secret), iv);
+        decipher.setAuthTag(tag);
+        return Buffer.concat([decipher.update(body), decipher.final()]).toString('utf8');
+    } catch {
+        return null;
+    }
+}
+
+const EMAIL_SHAPE = /^[^\s@<>(),;:"\\[\]]+@[^\s@<>(),;:"\\[\]]+\.[^\s@<>(),;:"\\[\]]{2,}$/;
+
 class SettingsStore {
-    constructor({ model, config }) {
+    constructor({ model, config, secret = '' }) {
         this.model = model;
         this.config = config;
+        this.secret = secret;
         this.defaults = this.values();
         const saved = model.loadSettings();
+        // A saved secret is decrypted first; one that cannot be read is dropped (the admin enters it again)
+        for (const key of Object.keys(saved)) {
+            if (FIELDS[key] && FIELDS[key].type === 'secret') {
+                const text = decryptSecret(secret, saved[key]);
+                if (text === null) delete saved[key]; else saved[key] = text;
+            }
+        }
         for (const key of Object.keys(saved)) {
             if (FIELDS[key] && this.check(key, saved[key], { ...this.values(), ...saved }) === null) FIELDS[key].write(config, saved[key]);
         }
         this.normalise();
+    }
+
+    isSecret(key) {
+        return Boolean(FIELDS[key] && FIELDS[key].type === 'secret');
     }
 
     // "Only the admin can create" makes no sense when there is no admin, and accounts only exist with the admin area
@@ -175,8 +271,11 @@ class SettingsStore {
     describe() {
         const values = this.values();
         return Object.keys(FIELDS).map(key => {
-            const { group, label, unit, type, min, max, help } = FIELDS[key];
-            return { key, group, label, unit, type, min, max, help, options: this.optionsOf(key), value: values[key], default: this.defaults[key] };
+            const { group, label, unit, type, min, max, help, maxLength, placeholder } = FIELDS[key];
+            const field = { key, group, label, unit, type, min, max, help, maxLength, placeholder, options: this.optionsOf(key), value: values[key], default: this.defaults[key] };
+            // A secret is write-only: the page learns only whether one is saved
+            if (type === 'secret') return { ...field, value: '', default: '', isSet: Boolean(values[key]) };
+            return field;
         });
     }
 
@@ -191,6 +290,20 @@ class SettingsStore {
     check(key, value, merged) {
         const field = FIELDS[key];
         if (field.type === 'bool') return typeof value === 'boolean' ? null : 'Must be on or off.';
+        if (['text', 'email', 'url', 'secret'].includes(field.type)) {
+            if (typeof value !== 'string') return 'Enter text.';
+            if (/[\u0000-\u001f\u007f]/.test(value)) return 'That cannot hold line breaks or control characters.';
+            if (value.length > (field.maxLength || 255)) return `Use at most ${field.maxLength || 255} characters.`;
+            if (field.type === 'email' && value && (value.length > 254 || !EMAIL_SHAPE.test(value))) return 'Enter an email address like name@example.com.';
+            if (field.type === 'url' && value) {
+                let parsed = null;
+                try { parsed = new URL(value); } catch { /* not a URL */ }
+                if (!parsed || !['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash || (parsed.pathname && parsed.pathname !== '/')) {
+                    return 'Enter an address like https://stash.example.com, with no path, query or login.';
+                }
+            }
+            return null;
+        }
         if (key === 'defaultTtl') {
             const keys = this.config.ttlOptions.filter(option => option.key !== 'never').map(option => option.key);
             if (merged && merged.allowNoExpiry) keys.push('never');
@@ -206,6 +319,17 @@ class SettingsStore {
     update(input) {
         const errors = {};
         if (!input || typeof input !== 'object' || Array.isArray(input)) return { errors: { _: 'Send the settings to change.' } };
+        // Text is trimmed. A secret left empty keeps what is saved; null removes it.
+        input = { ...input };
+        for (const key of Object.keys(input)) {
+            const field = FIELDS[key];
+            if (!field) continue;
+            if (field.type === 'secret') {
+                if (input[key] === '') delete input[key]; else if (input[key] === null) input[key] = '';
+            } else if (['text', 'email', 'url'].includes(field.type) && typeof input[key] === 'string') {
+                input[key] = input[key].trim();
+            }
+        }
         const merged = { ...this.values(), ...input };
         for (const key of Object.keys(input)) {
             if (!FIELDS[key]) errors[key] = 'Unknown setting.';
@@ -216,6 +340,12 @@ class SettingsStore {
         }
         if (!errors.maxItemsPerStash && !errors.maxFilesPerStash && merged.maxItemsPerStash < merged.maxFilesPerStash) {
             errors.maxItemsPerStash = 'Must be at least the number of files per stash.';
+        }
+        // Switching email on needs somewhere to send from
+        if (merged.smtpEnabled) {
+            if (!merged.smtpHost && !errors.smtpHost) errors.smtpHost = 'Enter the mail server to send through.';
+            if (!merged.smtpFromAddress && !errors.smtpFromAddress) errors.smtpFromAddress = 'Enter the address the emails come from.';
+            if (merged.smtpUser && !merged.smtpPassword && !errors.smtpPassword) errors.smtpPassword = 'Enter the password for that username.';
         }
         if (merged.requireAdminToCreate && !this.config.adminPassword) errors.requireAdminToCreate = 'Admin is not enabled.';
         if (merged.requireLoginToCreate && !this.config.adminPassword) errors.requireLoginToCreate = 'Accounts are not enabled (they need the admin area).';
@@ -232,7 +362,8 @@ class SettingsStore {
         const values = this.values();
         const overrides = {};
         for (const key of Object.keys(FIELDS)) {
-            if (values[key] !== this.defaults[key]) overrides[key] = values[key];
+            if (values[key] === this.defaults[key]) continue;
+            overrides[key] = FIELDS[key].type === 'secret' ? encryptSecret(this.secret, values[key]) : values[key];
         }
         this.model.saveSettings(overrides);
     }

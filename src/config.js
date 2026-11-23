@@ -75,6 +75,19 @@ function loadConfig(env = process.env, overrides = {}) {
         // role) or the admin may create stashes; visitors can still open any stash they have the link to.
         requireLoginToCreate: Boolean(adminPassword) && flag(env.REQUIRE_LOGIN_TO_CREATE),
         // Whether the admin may choose a new password for a stash that has no owner (a guest made it). Off: never.
+        // Email (Admin > Settings > Email). The environment gives the starting values; the SMTP password may be given here
+        // too, but is better typed in the admin page, where it is kept encrypted.
+        smtpEnabled: flag(env.SMTP_ENABLED),
+        smtpHost: String(env.SMTP_HOST || '').trim(),
+        smtpPort: Math.min(65535, Math.max(1, Math.floor(num(env.SMTP_PORT, 587)) || 587)),
+        smtpSecurity: ['starttls', 'ssl', 'none'].includes(String(env.SMTP_SECURITY).toLowerCase()) ? String(env.SMTP_SECURITY).toLowerCase() : 'starttls',
+        smtpUser: String(env.SMTP_USER || '').trim(),
+        smtpPassword: String(env.SMTP_PASSWORD || ''),
+        smtpFromAddress: String(env.SMTP_FROM || '').trim(),
+        smtpFromName: String(env.SMTP_FROM_NAME === undefined ? 'Stashly' : env.SMTP_FROM_NAME).trim(),
+        emailsPerHour: Math.max(1, Math.floor(num(env.EMAIL_PER_HOUR, 100)) || 100),
+        // The address of this server as people reach it (https://stash.example.com): the base of every link in an email
+        publicUrl: String(env.PUBLIC_URL || '').trim().replace(/\/+$/, ''),
         adminCanResetStashPasswords: env.ADMIN_CAN_RESET_STASH_PASSWORDS === undefined || env.ADMIN_CAN_RESET_STASH_PASSWORDS === '' ? true : flag(env.ADMIN_CAN_RESET_STASH_PASSWORDS),
         // How long a user stays signed in on one browser (1 to 90 days)
         userSessionDays: Math.max(1, Math.min(90, Math.floor(num(env.USER_SESSION_DAYS, 7)))),
