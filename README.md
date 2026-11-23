@@ -52,7 +52,7 @@ docker compose up -d
 docker compose pull; docker compose up -d     # update later
 ```
 
-Open http://localhost:3000. Data lives in the `stashly-data` volume (`docker compose down -v` deletes it). Set `SESSION_SECRET`, `ADMIN_PASSWORD` and other options under `environment:` in [docker-compose.yml](docker-compose.yml).
+Open http://localhost:3000. Data lives in the `stashly-data` volume (`docker compose down -v` deletes it). Settings go in a `.env` file next to `docker-compose.yml` (copy `.env.example` to `.env`; the compose file reads it, and it is optional). Set at least `SESSION_SECRET` and `ADMIN_PASSWORD`.
 
 **Keep the data on a volume.** The database is `/data/stashly.sqlite` and the uploaded files are in `/data/files`, and `/data` must be a volume or bind mount, because updating the image recreates the container and deletes anything stored inside it. Leave `SQLITE_PATH` unset (a bare file name such as `stashly.sqlite` puts the database inside the container). At startup the container logs a `WARNING` when the database folder isn't on a mount or is only on an anonymous volume; set `ALLOW_EPHEMERAL_DATA=true` to silence it for a throwaway container.
 
