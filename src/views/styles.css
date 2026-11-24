@@ -582,25 +582,30 @@ audio.detail-media { max-height: none; }
 .header-actions .button-link.hidden { display: none; }
 #followStashButton.following { border-color: var(--blue); color: var(--blue); background: var(--blue-soft); }
 
-/* ===== Small screens: the sidebar becomes a top bar ===== */
+/* ===== Small screens: a slim top bar, and the left menu slides over the page from a button in it =====
+   The bar (.mobile-bar) is only drawn here; the menu is the same sidebar as on a wide screen, with its names and the
+   pinned stashes, kept off-screen until the menu button opens it (shell.js). */
+.mobile-bar, .drawer-backdrop { display: none; }
+.drawer-button { position: relative; flex: none; display: inline-flex; padding: 7px; background: none; border: none; border-radius: 6px; color: var(--sidebar-text); }
+.drawer-button:hover { background: var(--sidebar-hover); color: #fff; }
+.drawer-button svg { width: 22px; height: 22px; }
+.mobile-brand { display: inline-flex; align-items: center; gap: 8px; min-width: 0; color: #fff; text-decoration: none; }
+.mobile-bar-actions { margin-left: auto; display: flex; align-items: center; }
+/* A dot on the menu button while a pinned stash has something new in it */
+body.pins-new .drawer-button::after { content: ''; position: absolute; top: 5px; right: 5px; width: 9px; height: 9px; border-radius: 50%; background: var(--blue); border: 2px solid var(--sidebar-bg); }
 @media (max-width: 760px) {
     body.app { flex-direction: column; overflow: auto; height: auto; min-height: 100%; }
-    .sidebar { width: auto; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 8px 12px; }
-    body.sidebar-collapsed .sidebar { width: auto; }
-    body.sidebar-collapsed .sidebar .label { display: inline; }
-    .sidebar-brand { border: none; padding: 0; margin: 0; }
+    .mobile-bar { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--sidebar-bg); color: var(--sidebar-text); }
+    .sidebar {
+        position: fixed; top: 0; bottom: 0; left: 0; z-index: 60;
+        width: clamp(200px, 55vw, 290px); overflow-y: auto; overscroll-behavior: contain;
+        transform: translateX(-100%); visibility: hidden;
+        transition: transform 0.2s ease, visibility 0s linear 0.2s;
+    }
+    body.drawer-open .sidebar { transform: none; visibility: visible; transition: transform 0.2s ease; }
+    body.drawer-open { overflow: hidden; }
+    body.drawer-open .drawer-backdrop { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(0, 0, 0, 0.5); }
     .sidebar-toggle { display: none; }
-    .sidebar-nav { flex-direction: row; }
-    .nav-link { width: auto; padding: 7px 10px; }
-    .sidebar-footer { margin: 0 0 0 auto; flex-direction: row; border: none; padding: 0; }
-    .sidebar-footer .nav-link .label { display: none; }
-    /* In the top bar on a phone: the avatar and a Sign out icon, without the name */
-    .nav-account { flex-direction: row; align-items: center; padding: 0 4px 0 0; margin: 0; border: none; }
-    /* No room for the version in the phone's top bar */
-    .app-version { display: none; }
-    .nav-user { padding: 0; }
-    .nav-user-text { display: none; }
-    .nav-account .nav-link { width: auto; padding: 7px 8px; }
     .content { overflow: visible; }
     .view { overflow: visible; padding: 12px; }
     .toolbar input[type="search"] { width: 100%; }
@@ -749,26 +754,12 @@ body:not(.stash-open) .in-topbar { display: none; }
 
 /* Icons on the action buttons of an open clip */
 #detailActions svg, .detail-actions svg { width: 15px; height: 15px; }
-/* The top bar on a phone: Theme, Options, Log out, then Admin last */
-@media (max-width: 760px) {
-    .sidebar-footer [data-theme-toggle] { order: 1; }
-    .sidebar-footer #optionsButton { order: 2; }
-    .sidebar-footer #logoutButton { order: 3; }
-    .sidebar-footer a[href="/admin"] { order: 4; }
-}
-
 /* ===== Phone: the top of a stash in three rows instead of six =====
-   Row 1, the top bar: logo, +, then Theme, Options, Log out, Admin (no words, no stash pill: the name is just below).
+   Row 1, the top bar: menu button, logo, then Options and Close (no words, no stash pill: the name is just below).
    Row 2: the stash name, padlock, clip count and a green Live dot.
    Row 3: short chips (time left, pages open) on the left, the action icons on the right. */
 .chip-short { display: none; }
 @media (max-width: 760px) {
-    .stash-page .sidebar { flex-wrap: nowrap; padding: 6px 10px; gap: 4px; }
-    .stash-page .sidebar .brand-name, .stash-page .sidebar-nav .label { display: none; }
-    .stash-page #thisStashLink { display: none; }
-    .stash-page .sidebar-nav .nav-link { padding: 7px 9px; }
-    .stash-page .sidebar-footer { gap: 0; }
-
     #stateMain .view-header { gap: 6px 8px; justify-content: flex-start; align-items: center; }
     #stateMain .view-title { display: contents; }
     #stashTitle, #lockChip, #itemInfo, #liveStatus { order: 1; }

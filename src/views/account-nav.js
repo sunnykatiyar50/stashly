@@ -161,6 +161,8 @@
         if (!nav) return;
         var pinned = stashes.filter(function (s) { return s.pinned && !s.needsPassword; });
         rememberPins(pinned.map(function (s) { return s.slug; }));
+        // On a phone the menu is closed, so a dot on its button says a pinned stash has something new
+        document.body.classList.toggle('pins-new', pinned.some(function (s) { return s.newItems > 0; }));
         setOpenStashVisible(!(here && pinned.some(function (s) { return s.slug === here; })));
         if (!pinned.length) { if (pinBox) { pinBox.remove(); pinBox = null; } return; }
         if (!pinBox) {
@@ -208,6 +210,7 @@
         if (pinBox) { pinBox.remove(); pinBox = null; }
         rememberPins([]);
         setOpenStashVisible(true);
+        document.body.classList.remove('pins-new');
         if (block) block.remove();
         block = null;
         document.body.classList.remove('has-account-nav');
