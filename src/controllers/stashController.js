@@ -26,6 +26,8 @@ const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 // The most clips one reorder may move (a stash holds at most a few thousand; a page shows them all)
 const MAX_REORDER = 5000;
+// The most clips one bulk delete, restore, pin or unpin may name
+const MAX_BULK = 500;
 // The most items one listing can be asked for with `limit` (the extension asks for a few; without a limit, all come)
 const MAX_LIST_LIMIT = 200;
 // A listing asked for with `preview` carries only this many characters of each note (the rest comes from
@@ -1422,42 +1424,124 @@ class StashController {
     deleteItem = (req, res) => {
         const stash = req.stash;
         const id = Number(req.params.id);
-        const row = Number.isInteger(id) ? this.model.getItem(stash.id, id) : null;
-        if (!row) return res.status(404).json({ error: 'Item not found.' });
         const now = this.now();
-        const seconds = this.config.undoSeconds;
+        const removed = this.removeOne(stash, id, now);
+        if (!removed) return res.status(404).json({ error: 'Item not found.' });
+        this.audit('item.deleted', { req, stash, detail: { kind: removed.kind, undoable: removed.undoable } });
+        this.events.publish(stash.slug, 'item-deleted', { id });
+        res.json({ ok: true, undoUntil: removed.undoable ? this.undoUntil(now) : null });
+    };
+
+    // Takes one item out of the stash: into the trash when it can be undone, else gone for good. Returns null when
+    // there is no such item, else { kind, undoable }. The caller audits and tells the open pages.
+    removeOne(stash, id, now) {
+        const row = Number.isInteger(id) ? this.model.getItem(stash.id, id) : null;
+        if (!row) return null;
         const expired = Boolean(row.expires_at) && row.expires_at <= now.toISOString();
-        const undoable = seconds > 0 && !row.burn && !row.secret && !expired;
+        const undoable = this.config.undoSeconds > 0 && !row.burn && !row.secret && !expired;
         if (undoable) this.model.trashItem(stash.id, id, now);
         else this.model.deleteItem(stash.id, id);
-        this.audit('item.deleted', { req, stash, detail: { kind: row.kind, undoable } });
-        this.events.publish(stash.slug, 'item-deleted', { id });
-        res.json({ ok: true, undoUntil: undoable ? new Date(now.getTime() + seconds * 1000).toISOString() : null });
-    };
+        return { kind: row.kind, undoable };
+    }
+
+    undoUntil(now) {
+        return new Date(now.getTime() + this.config.undoSeconds * 1000).toISOString();
+    }
 
     // Brings a deleted item back, with the same id, place in the list and pin. It must still be inside the undo window,
     // and the stash's limits are checked again, because things may have been added since.
     restore = (req, res) => {
         const stash = req.stash;
-        const id = Number(req.params.id);
-        const now = this.now();
+        const result = this.restoreOne(stash, Number(req.params.id), this.now());
+        if (result.error) return res.status(result.status).json({ error: result.error });
+        this.audit('item.restored', { req, stash, detail: { kind: result.row.kind } });
+        const item = this.presentItem(stash.slug, result.row);
+        this.events.publish(stash.slug, 'item-added', this.withOrigin(item, req));
+        res.json(item);
+    };
+
+    // Puts one trashed item back. Returns { row } or { status, error }. The caller audits and tells the open pages.
+    restoreOne(stash, id, now) {
+        const gone = { status: 404, error: 'That item cannot be brought back any more.' };
         const seconds = this.config.undoSeconds;
         const row = seconds > 0 && Number.isInteger(id) ? this.model.getTrashed(stash.id, id, new Date(now.getTime() - seconds * 1000)) : null;
-        if (!row) return res.status(404).json({ error: 'That item cannot be brought back any more.' });
+        if (!row) return gone;
         // Gone for good if its own expiry passed meanwhile, or its file has vanished from the disk
         if ((row.expires_at && row.expires_at <= now.toISOString()) || (row.kind === 'file' && !this.model.files.exists(id))) {
             this.model.dropTrashed(stash.id, id);
-            return res.status(404).json({ error: 'That item cannot be brought back any more.' });
+            return gone;
         }
         const problem = this.limitProblem(stash, { file: row.kind === 'file', size: row.file_size });
-        if (problem) return res.status(problem.status).json({ error: problem.error });
+        if (problem) return { status: problem.status, error: problem.error };
         // "Keep the last N" is not applied here: the item would often be the oldest and vanish again at once. The next
         // new item trims the stash as usual.
-        const restored = this.model.restoreItem(stash.id, id);
-        this.audit('item.restored', { req, stash, detail: { kind: restored.kind } });
-        const item = this.presentItem(stash.slug, restored);
-        this.events.publish(stash.slug, 'item-added', this.withOrigin(item, req));
-        res.json(item);
+        return { row: this.model.restoreItem(stash.id, id) };
+    }
+
+    // Many clips at once: delete them, bring deleted ones back (the Undo of a bulk delete), or pin or unpin them. The
+    // body is { action: 'delete' | 'restore' | 'pin' | 'unpin', ids: [...] }. Each clip follows the same rules as doing
+    // it one by one; clips that are no longer there are skipped, not an error, so a list that is a little out of date
+    // still works. One audit line and one live event per clip.
+    bulkItems = (req, res) => {
+        const stash = req.stash;
+        const action = req.body && req.body.action;
+        const ids = req.body && req.body.ids;
+        if (!['delete', 'restore', 'pin', 'unpin'].includes(action)) {
+            return res.status(400).json({ error: 'Say what to do: delete, restore, pin or unpin.' });
+        }
+        if (!Array.isArray(ids) || !ids.length || ids.length > MAX_BULK || !ids.every(id => Number.isInteger(id) && id > 0)) {
+            return res.status(400).json({ error: `Send between 1 and ${MAX_BULK} clip ids.` });
+        }
+        const unique = Array.from(new Set(ids));
+        const now = this.now();
+
+        if (action === 'delete') {
+            const deleted = [];
+            const undoable = [];
+            const missing = [];
+            unique.forEach(id => {
+                const removed = this.removeOne(stash, id, now);
+                if (!removed) { missing.push(id); return; }
+                deleted.push(id);
+                if (removed.undoable) undoable.push(id);
+                this.events.publish(stash.slug, 'item-deleted', { id });
+            });
+            if (deleted.length) this.audit('items.deleted', { req, stash, detail: { count: deleted.length, undoable: undoable.length } });
+            return res.json({ deleted, undoable, missing, undoUntil: undoable.length ? this.undoUntil(now) : null });
+        }
+
+        if (action === 'restore') {
+            const items = [];
+            const missing = [];
+            let problem = null;
+            for (const id of unique) {
+                const result = this.restoreOne(stash, id, now);
+                if (result.error) {
+                    // A limit (too many items, too much space) applies to the rest as well: stop there
+                    if (result.status !== 404) { problem = result; break; }
+                    missing.push(id);
+                    continue;
+                }
+                const item = this.presentItem(stash.slug, result.row);
+                items.push(item);
+                this.events.publish(stash.slug, 'item-added', this.withOrigin(item, req));
+            }
+            if (items.length) this.audit('items.restored', { req, stash, detail: { count: items.length } });
+            return res.json({ items, missing, error: problem ? problem.error : null });
+        }
+
+        const pinned = action === 'pin';
+        const items = [];
+        const missing = [];
+        unique.forEach(id => {
+            const row = this.model.getLiveItem(stash.id, id, now);
+            const updated = row ? this.model.setPinned(stash.id, id, pinned) : null;
+            if (!updated) { missing.push(id); return; }
+            const item = this.presentItem(stash.slug, updated);
+            items.push(item);
+            this.events.publish(stash.slug, 'item-updated', item);
+        });
+        res.json({ items, missing });
     };
 
     extend = (req, res) => {

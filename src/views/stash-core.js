@@ -26,6 +26,8 @@
         filters: { search: '', startDate: '', endDate: '' },
         es: null,
         connectedOnce: false,
+        selecting: false,  // select mode: rows have a tick box, and the bar above the list acts on the ticked ones
+        picked: {},        // the ticked clips in select mode, by id
         selectedId: null,  // the clip open on the right, or null
         revealedId: null,  // a burn note whose text is on screen and nowhere else
         editingId: null,   // the note being edited in the pane (live updates must not overwrite the form)

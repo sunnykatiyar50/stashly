@@ -22,6 +22,7 @@
     var FLAME_ICON = P.FLAME_ICON;
     var EYE_OFF_ICON = P.EYE_OFF_ICON;
     var GRIP_ICON = P.GRIP_ICON;
+    var CHECK_ICON = P.CHECK_ICON;
     var COPY_ICON = P.COPY_ICON;
     var role = P.role;
     var CLOCK_ICON = P.CLOCK_ICON;
@@ -92,13 +93,26 @@
         // to their own group)
         if (role() === 'full') {
             el.classList.add('has-grip');
-            var grip = make('span', 'clip-grip');
-            grip.title = 'Drag to move. Or press Alt+Up or Alt+Down.';
-            grip.setAttribute('aria-hidden', 'true');
-            grip.appendChild(svg(GRIP_ICON));
-            grip.addEventListener('pointerdown', function (event) { startDrag(event, el); });
-            grip.addEventListener('click', function (event) { event.stopPropagation(); });
-            el.appendChild(grip);
+            if (state.selecting) {
+                // Select mode: a tick box takes the place of the drag handle, and the whole row ticks it
+                var picked = Boolean(state.picked[item.id]);
+                el.classList.add('has-pick');
+                el.classList.toggle('picked', picked);
+                el.setAttribute('role', 'checkbox');
+                el.setAttribute('aria-checked', String(picked));
+                var tick = make('span', 'clip-pick');
+                tick.setAttribute('aria-hidden', 'true');
+                tick.appendChild(svg(CHECK_ICON));
+                el.appendChild(tick);
+            } else {
+                var grip = make('span', 'clip-grip');
+                grip.title = 'Drag to move. Or press Alt+Up or Alt+Down.';
+                grip.setAttribute('aria-hidden', 'true');
+                grip.appendChild(svg(GRIP_ICON));
+                grip.addEventListener('pointerdown', function (event) { startDrag(event, el); });
+                grip.addEventListener('click', function (event) { event.stopPropagation(); });
+                el.appendChild(grip);
+            }
         }
 
         var lead;
@@ -191,10 +205,16 @@
         if (quick.children.length) side.appendChild(quick);
         el.appendChild(side);
 
-        el.addEventListener('click', function () { openItem(item.id); });
+        // In select mode a click ticks the row (Shift-click ticks a range) instead of opening the clip
+        el.addEventListener('click', function (event) {
+            if (state.selecting) P.togglePick(item.id, event.shiftKey); else openItem(item.id);
+        });
         el.addEventListener('keydown', function (event) {
             if (event.target !== el) return;
-            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openItem(item.id); }
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                if (state.selecting) P.togglePick(item.id, event.shiftKey); else openItem(item.id);
+            }
             // Alt+Up / Alt+Down moves the clip one place, for those not using a mouse
             if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown') && role() === 'full') {
                 event.preventDefault();
@@ -335,6 +355,8 @@
             : 'Nothing here yet. Add a note or drop a file.';
         $('filterToggle').classList.toggle('active', Boolean(state.filters.startDate || state.filters.endDate));
         updateMore();
+        // Every change to the list passes here: clips that left it are dropped from the ticked ones
+        if (P.updateBulk) P.updateBulk();
     }
 
     // ---- paging: the "Show more" button at the end of the list ----

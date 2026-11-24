@@ -29,6 +29,7 @@ Add `preview` (`true` in the body, or `?preview=1`) to a listing and notes longe
 | GET | `/api/stashes/:slug/latest` | newest note as plain text; if it is burn-after-reading, answers 409 and leaves it alone |
 | POST | `/api/stashes/:slug/latest` | the same, but a burn-after-reading note is returned and deleted (full access only) |
 | DELETE | `/api/stashes/:slug/items/:id` | delete a note or file (full access). Answers `{ ok: true, undoUntil }`: until when it can be restored (an ISO time), or `null` when it is gone for good (undo off, or a burn-after-reading or secret note) |
+| POST | `/api/stashes/:slug/items/bulk` | many clips at once (full access). Body `{ action, ids }` with `action` one of `delete`, `restore`, `pin`, `unpin` and 1 to 500 clip ids. Each clip follows the same rules as the single routes; clips that are not there are skipped and listed under `missing`. `delete` answers `{ deleted, undoable, missing, undoUntil }`; `restore` (the undo of a bulk delete) answers `{ items, missing, error }` and stops early, with `error`, when a stash limit is reached; `pin` and `unpin` answer `{ items, missing }` |
 | POST | `/api/stashes/:slug/items/:id/restore` | undo a delete (full access): puts the item back with its id, place and pin; 404 if it is not in the trash or the undo time has passed; 413 or 507 if the stash limits no longer allow it |
 | POST | `/api/stashes/:slug/extend` | restart the expiry timer |
 | DELETE | `/api/stashes/:slug` | delete the stash |
