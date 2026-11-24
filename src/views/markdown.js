@@ -7,6 +7,60 @@
 
     var MAX_LENGTH = 200000;
 
+    // ---- emoji names, as chat apps and GitHub write them: :rocket: shows as 🚀 ----
+    // A small table of the names people actually paste, not the whole set; anything not here is left as it was typed.
+    // A name is looked up lowercased, and only ever becomes a text node, so it can never inject anything.
+    var EMOJI = {
+        zero: '0️⃣', one: '1️⃣', two: '2️⃣', three: '3️⃣', four: '4️⃣', five: '5️⃣',
+        six: '6️⃣', seven: '7️⃣', eight: '8️⃣', nine: '9️⃣', ten: '🔟', hundred: '💯',
+        rocket: '🚀', tada: '🎉', sparkles: '✨', sparkle: '❇️', fire: '🔥', zap: '⚡', boom: '💥',
+        white_check_mark: '✅', heavy_check_mark: '✔️', ballot_box_with_check: '☑️', x: '❌',
+        warning: '⚠️', information_source: 'ℹ️', exclamation: '❗', grey_exclamation: '❕',
+        question: '❓', grey_question: '❔', rotating_light: '🚨', construction: '🚧', bug: '🐛',
+        hammer_and_wrench: '🛠️', wrench: '🔧', hammer: '🔨', gear: '⚙️', lock: '🔒', unlocked: '🔓',
+        key: '🔑', shield: '🛡️', closed_lock_with_key: '🔐', bulb: '💡', memo: '📝', spiral_note: '🗒️',
+        page_facing_up: '📄', page_with_curl: '📃', clipboard: '📋', books: '📚', book: '📖',
+        bookmark: '🔖', pushpin: '📌', round_pushpin: '📍', paperclip: '📎', link: '🔗', mag: '🔍',
+        bell: '🔔', no_bell: '🔕', loudspeaker: '📢', mega: '📣', speech_balloon: '💬', email: '📧',
+        envelope: '✉️', calendar: '📅', date: '📆', hourglass: '⌛', hourglass_flowing_sand: '⏳',
+        alarm_clock: '⏰', stopwatch: '⏱️',
+        clock1: '🕐', clock2: '🕑', clock3: '🕒', clock4: '🕓', clock5: '🕔', clock6: '🕕',
+        clock7: '🕖', clock8: '🕗', clock9: '🕘', clock10: '🕙', clock11: '🕚', clock12: '🕛',
+        wave: '👋', smile: '😄', grinning: '😁', joy: '😂', rofl: '🤣', sweat_smile: '😅',
+        slightly_smiling_face: '🙂', heart_eyes: '😍', sunglasses: '😎', partying_face: '🥳',
+        thinking_face: '🤔', facepalm: '🤦', eyes: '👀', see_no_evil: '🙈', sob: '😭', angry: '😠',
+        scream: '😱', sleeping: '😴', pray: '🙏', muscle: '💪', clap: '👏', thumbsup: '👍', '+1': '👍',
+        thumbsdown: '👎', '-1': '👎', point_right: '👉', point_left: '👈', point_up: '☝️',
+        point_down: '👇', raised_hands: '🙌', ok_hand: '👌', v: '✌️', metal: '🤘', fist: '✊',
+        crossed_fingers: '🤞', shrug: '🤷', brain: '🧠',
+        package: '📦', computer: '💻', desktop_computer: '🖥️', iphone: '📱', robot: '🤖',
+        floppy_disk: '💾', cd: '💿', file_folder: '📁', open_file_folder: '📂', bar_chart: '📊',
+        chart_with_upwards_trend: '📈', chart_with_downwards_trend: '📉', moneybag: '💰',
+        dollar: '💵', credit_card: '💳', coffee: '☕', beer: '🍺', pizza: '🍕', apple: '🍎',
+        sunny: '☀️', cloud: '☁️', umbrella: '☔', snowflake: '❄️', star: '⭐', star2: '🌟',
+        heart: '❤️', broken_heart: '💔', red_circle: '🔴', large_blue_circle: '🔵',
+        large_green_circle: '🟢', black_circle: '⚫', white_circle: '⚪', arrow_right: '➡️',
+        arrow_left: '⬅️', arrow_up: '⬆️', arrow_down: '⬇️', arrows_counterclockwise: '🔄',
+        recycle: '♻️', infinity: '♾️', no_entry: '⛔', no_entry_sign: '🚫', do_not_litter: '🚯',
+        trophy: '🏆', medal_sports: '🏅', '1st_place_medal': '🥇', dart: '🎯', goal_net: '🥅',
+        triangular_flag_on_post: '🚩', checkered_flag: '🏁', shipit: '🐿️',
+        heavy_plus_sign: '➕', heavy_minus_sign: '➖', heavy_multiplication_x: '✖️',
+        heavy_division_sign: '➗', ok: '🆗', new: '🆕', free: '🆓', top: '🔝', soon: '🔜'
+    };
+
+    function emojiFor(name) {
+        var key = String(name || '').toLowerCase();
+        return Object.prototype.hasOwnProperty.call(EMOJI, key) ? EMOJI[key] : null;
+    }
+
+    // The :names: in plain text (a title, which is never parsed as Markdown) shown as the emoji themselves. The text
+    // that is stored, copied, searched and exported is never changed; only what the reader sees is.
+    function shortcodes(text) {
+        return String(text === undefined || text === null ? '' : text).replace(/:([a-z0-9+-][a-z0-9_+-]*):/gi, function (all, name) {
+            return emojiFor(name) || all;
+        });
+    }
+
     // ---- inline: **bold**, *italic*, ~~strike~~, `code`, [text](url), bare addresses, line breaks ----
 
     // Closers are looked for within a limited distance, so a note full of unmatched * or ` stays fast
@@ -17,6 +71,13 @@
     var STRIKE = /~~(?=\S)([^\n]{0,300}?\S)~~/y;
     var BARE_URL = /https?:\/\/[^\s<>"'`]+/y;
     var ANGLE_URL = /<(https?:\/\/[^\s<>]+)>/y;
+    // Chat style (style 'slack'): one asterisk is bold, not italic, and one tilde is a strike. Bounded like the rest,
+    // so a note full of unmatched markers stays fast.
+    var SLACK_BOLD = /\*(?=\S)((?:(?!\n\n)[^*\n]){0,300}?\S)\*(?!\*)/y;
+    var SLACK_STRIKE = /~(?=\S)([^~\n]{0,300}?\S)~(?!~)/y;
+    // A :name: to turn into an emoji. Digit-leading names (for example :1st_place_medal:) are valid; only names in
+    // the table are replaced, so clock times such as 10:30:00 stay as typed.
+    var SHORT_NAME = /:([a-z0-9+-][a-z0-9_+-]*):/iy;
 
     function isWord(ch) { return /[A-Za-z0-9]/.test(ch || ''); }
 
@@ -43,8 +104,9 @@
         return re.exec(src);
     }
 
-    function parseInline(src, depth) {
+    function parseInline(src, depth, style) {
         depth = depth || 0;
+        style = style || 'markdown';
         var nodes = [];
         var buf = '';
         var i = 0;
@@ -71,7 +133,7 @@
             if ((c === '[' || c === '!') && (m = match(LINK, src, i))) {
                 flush();
                 var url = m[3];
-                var label = parseInline(m[2], depth + 1);
+                var label = parseInline(m[2], depth + 1, style);
                 if (m[1] === '!') {
                     // An image is never loaded from a note: show its description as a link
                     nodes.push({ t: 'link', href: isSafeUrl(url) ? url : null, children: label.length ? label : [{ t: 'text', v: url }], image: true });
@@ -99,25 +161,48 @@
             if ((c === '*' || c === '_') && src.charAt(i + 1) === c && (m = match(STRONG, src, i))) {
                 if (!(c === '_' && isWord(src.charAt(i - 1))) && !(c === '_' && isWord(src.charAt(i + m[0].length)))) {
                     flush();
-                    nodes.push({ t: 'strong', children: parseInline(m[2], depth + 1) });
+                    nodes.push({ t: 'strong', children: parseInline(m[2], depth + 1, style) });
                     i += m[0].length;
                     continue;
                 }
+            }
+            // Chat style: *one* asterisk is bold (in Markdown it is italic), and ~one~ tilde is a strike
+            if (style === 'slack' && c === '*' && (m = match(SLACK_BOLD, src, i))) {
+                flush();
+                nodes.push({ t: 'strong', children: parseInline(m[1], depth + 1, style) });
+                i += m[0].length;
+                continue;
             }
             if ((c === '*' || c === '_') && (m = match(EM, src, i))) {
                 // snake_case_names are not emphasis: an underscore must not touch a letter or digit on the outside
                 if (!(c === '_' && (isWord(src.charAt(i - 1)) || isWord(src.charAt(i + m[0].length))))) {
                     flush();
-                    nodes.push({ t: 'em', children: parseInline(m[2], depth + 1) });
+                    nodes.push({ t: 'em', children: parseInline(m[2], depth + 1, style) });
                     i += m[0].length;
                     continue;
                 }
             }
             if (c === '~' && src.charAt(i + 1) === '~' && (m = match(STRIKE, src, i))) {
                 flush();
-                nodes.push({ t: 'del', children: parseInline(m[1], depth + 1) });
+                nodes.push({ t: 'del', children: parseInline(m[1], depth + 1, style) });
                 i += m[0].length;
                 continue;
+            }
+            if (style === 'slack' && c === '~' && (m = match(SLACK_STRIKE, src, i))) {
+                flush();
+                nodes.push({ t: 'del', children: parseInline(m[1], depth + 1, style) });
+                i += m[0].length;
+                continue;
+            }
+            // :rocket: becomes the emoji itself; a name that is not in the table stays as it was typed
+            if (c === ':' && (m = match(SHORT_NAME, src, i))) {
+                var emoji = emojiFor(m[1]);
+                if (emoji) {
+                    flush();
+                    nodes.push({ t: 'text', v: emoji });
+                    i += m[0].length;
+                    continue;
+                }
             }
             buf += c;
             i++;
@@ -133,7 +218,14 @@
     var HR = /^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/;
     var QUOTE = /^ {0,3}>[ \t]?(.*)$/;
     var LIST_ITEM = /^( {0,3}|\t?)([-*+]|\d{1,9}[.)])[ \t]+(.*)$/;
+    // Chat style writes a bullet with a dot, not a dash
+    var SLACK_ITEM = /^( {0,3}|\t?)([•‣◦])[ \t]+(.*)$/;
     var TABLE_DELIM = /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
+
+    // The list marker on this line, in the style being read: both shapes have the same groups (indent, marker, text)
+    function itemAt(line, style) {
+        return (style === 'slack' && SLACK_ITEM.exec(line)) || LIST_ITEM.exec(line);
+    }
 
     function indentOf(line) { return /^[ \t]*/.exec(line)[0].replace(/\t/g, '    ').length; }
     function isBlank(line) { return !line.trim(); }
@@ -154,14 +246,14 @@
         return cells;
     }
 
-    function startsBlock(lines, i) {
+    function startsBlock(lines, i, style) {
         var line = lines[i];
-        return FENCE.test(line) || HEADING.test(line) || HR.test(line) || QUOTE.test(line) || LIST_ITEM.test(line) ||
+        return FENCE.test(line) || HEADING.test(line) || HR.test(line) || QUOTE.test(line) || Boolean(itemAt(line, style)) ||
             (line.indexOf('|') !== -1 && i + 1 < lines.length && TABLE_DELIM.test(lines[i + 1]) && lines[i + 1].indexOf('|') !== -1);
     }
 
-    function parseList(lines, start, depth) {
-        var first = LIST_ITEM.exec(lines[start]);
+    function parseList(lines, start, depth, style) {
+        var first = itemAt(lines[start], style);
         var ordered = /\d/.test(first[2].charAt(0));
         var baseIndent = indentOf(lines[start]);
         var items = [];
@@ -170,7 +262,7 @@
 
         while (i < lines.length) {
             var line = lines[i];
-            var item = LIST_ITEM.exec(line);
+            var item = itemAt(line, style);
             var indent = indentOf(line);
             if (item && indent <= baseIndent + 1 && /\d/.test(item[2].charAt(0)) === ordered) {
                 current = { lines: [item[3]], markerWidth: indent + item[2].length + 1 };
@@ -181,7 +273,7 @@
                 var next = i + 1;
                 while (next < lines.length && isBlank(lines[next])) next++;
                 if (next >= lines.length) break;
-                var nextItem = LIST_ITEM.exec(lines[next]);
+                var nextItem = itemAt(lines[next], style);
                 if (indentOf(lines[next]) > baseIndent || (nextItem && indentOf(lines[next]) <= baseIndent + 1 && /\d/.test(nextItem[2].charAt(0)) === ordered)) {
                     current.lines.push('');
                     i++;
@@ -197,10 +289,10 @@
 
         var parsed = items.map(function (it) {
             var task = null;
-            var first = it.lines[0];
-            var t = /^\[( |x|X)\][ \t]+(.*)$/.exec(first);
+            var firstLine = it.lines[0];
+            var t = /^\[( |x|X)\][ \t]+(.*)$/.exec(firstLine);
             if (t) { task = t[1] !== ' '; it.lines[0] = t[2]; }
-            return { task: task, blocks: parseBlocks(it.lines, depth + 1) };
+            return { task: task, blocks: parseBlocks(it.lines, depth + 1, style) };
         });
         return { block: { t: 'list', ordered: ordered, start: ordered ? parseInt(first[2], 10) : 1, items: parsed }, next: i };
     }
@@ -209,8 +301,9 @@
     // nest deeply enough to overflow the stack
     var MAX_BLOCK_DEPTH = 12;
 
-    function parseBlocks(lines, depth) {
+    function parseBlocks(lines, depth, style) {
         depth = depth || 0;
+        style = style || 'markdown';
         if (depth > MAX_BLOCK_DEPTH) return [{ t: 'p', children: [{ t: 'text', v: lines.join('\n') }] }];
         var blocks = [];
         var i = 0;
@@ -228,16 +321,16 @@
                 blocks.push({ t: 'code', lang: m[2] || '', text: code.join('\n') });
                 continue;
             }
-            if ((m = HEADING.exec(line))) { blocks.push({ t: 'heading', level: m[1].length, children: parseInline(m[2]) }); i++; continue; }
+            if ((m = HEADING.exec(line))) { blocks.push({ t: 'heading', level: m[1].length, children: parseInline(m[2], 0, style) }); i++; continue; }
             if (HR.test(line)) { blocks.push({ t: 'hr' }); i++; continue; }
             if (QUOTE.test(line)) {
                 var quoted = [];
                 while (i < lines.length && QUOTE.test(lines[i])) { quoted.push(QUOTE.exec(lines[i])[1]); i++; }
-                blocks.push({ t: 'quote', children: parseBlocks(quoted, depth + 1) });
+                blocks.push({ t: 'quote', children: parseBlocks(quoted, depth + 1, style) });
                 continue;
             }
-            if (LIST_ITEM.test(line)) {
-                var list = parseList(lines, i, depth);
+            if (itemAt(line, style)) {
+                var list = parseList(lines, i, depth, style);
                 blocks.push(list.block);
                 i = list.next;
                 continue;
@@ -253,8 +346,8 @@
                 blocks.push({
                     t: 'table',
                     aligns: aligns,
-                    header: header.map(function (cell) { return parseInline(cell); }),
-                    rows: rows.map(function (row) { return header.map(function (_, c) { return parseInline(row[c] || ''); }); }),
+                    header: header.map(function (cell) { return parseInline(cell, 0, style); }),
+                    rows: rows.map(function (row) { return header.map(function (_, c) { return parseInline(row[c] || '', 0, style); }); }),
                 });
                 continue;
             }
@@ -262,14 +355,15 @@
             // A paragraph runs until a blank line or the start of another block
             var para = [line];
             i++;
-            while (i < lines.length && !isBlank(lines[i]) && !startsBlock(lines, i)) { para.push(lines[i]); i++; }
-            blocks.push({ t: 'p', children: parseInline(para.join('\n')) });
+            while (i < lines.length && !isBlank(lines[i]) && !startsBlock(lines, i, style)) { para.push(lines[i]); i++; }
+            blocks.push({ t: 'p', children: parseInline(para.join('\n'), 0, style) });
         }
         return blocks;
     }
 
-    function parse(text) {
-        return parseBlocks(String(text || '').replace(/\r\n?/g, '\n').split('\n'));
+    // style 'markdown' (the default) or 'slack': chat style adds *bold*, ~strike~, • bullets and :emoji: names
+    function parse(text, style) {
+        return parseBlocks(String(text || '').replace(/\r\n?/g, '\n').split('\n'), 0, style === 'slack' ? 'slack' : 'markdown');
     }
 
     // ---- does a note look like Markdown? Cautious: plain notes stay plain ----
@@ -296,6 +390,31 @@
         // A heading with paragraphs under it, or a real list of three or more things
         if (heading && lines.length >= 3 && /\n[ \t]*\n/.test(t)) return true;
         return items >= 3;
+    }
+
+    // ---- does a note look like it was pasted from a chat app (Slack, Teams, Discord)? ----
+    // Those write bold with one asterisk (*text*, italic in Markdown), bullets with a dot (•) and emoji as names
+    // (:rocket:). Two or more bullets, two or more bold lines, or one known emoji name are enough; a lone bullet or a
+    // lone pair of asterisks is not, because a line like "files: *.log *.tmp" would otherwise read as bold.
+    var BULLET_LINE = /^ {0,3}[•‣◦][ \t]+\S/;
+    var SLACK_BOLD_LINE = /(^|[\s([>])[*_](?=\S)[^*_\n]{2,}?[*_](?=[\s.,;:!?)\]}]|$)/;
+    var ANY_SHORT_NAME = /:([a-z0-9+-][a-z0-9_+-]*):/gi;
+
+    function looksSlack(text) {
+        var t = String(text || '');
+        if (t.length < 8 || t.length > MAX_LENGTH) return false;
+        var lines = t.split('\n');
+        var bullets = 0;
+        var bold = 0;
+        for (var i = 0; i < lines.length; i++) {
+            if (BULLET_LINE.test(lines[i])) bullets++;
+            if (SLACK_BOLD_LINE.test(lines[i])) bold++;
+            if (bullets >= 2 || bold >= 2) return true;
+        }
+        ANY_SHORT_NAME.lastIndex = 0;
+        var m;
+        while ((m = ANY_SHORT_NAME.exec(t))) if (emojiFor(m[1])) return true;
+        return false;
     }
 
     // ---- DOM ----
@@ -398,15 +517,16 @@
         });
     }
 
-    // highlighter is window.StashlyHighlight (used to colour fenced code); it is optional
-    function render(text, highlighter) {
+    // highlighter is window.StashlyHighlight (used to colour fenced code); it is optional. style is 'markdown' (the
+    // default) or 'slack', which also understands chat formatting and :emoji: names.
+    function render(text, highlighter, style) {
         var fragment = document.createDocumentFragment();
         if (String(text || '').length > MAX_LENGTH) { fragment.appendChild(document.createTextNode(text)); return fragment; }
-        renderBlocks(parse(text), fragment, highlighter, false);
+        renderBlocks(parse(text, style), fragment, highlighter, false);
         return fragment;
     }
 
-    var api = { parse: parse, parseInline: parseInline, looks: looks, hasFence: hasFence, render: render };
+    var api = { parse: parse, parseInline: parseInline, looks: looks, looksSlack: looksSlack, hasFence: hasFence, render: render, shortcodes: shortcodes, EMOJI: EMOJI };
     if (typeof window !== 'undefined') window.StashlyMarkdown = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

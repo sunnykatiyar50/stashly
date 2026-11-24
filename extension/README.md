@@ -113,7 +113,8 @@ policy is in [PRIVACY.md](../PRIVACY.md); link to it from a store listing.
 ## Good to know
 
 - **The clip list** shows the stash's 20 newest items (pinned ones first), each note with its own copy icon, which turns into a tick once copied. Files are
-  listed by name only. A secret note can be copied without being shown. The search box searches the whole stash on
+  listed by name only. Emoji names in clip titles, such as `:rocket:`, are shown as emoji; the stored title, search and
+  copied text are unchanged. A secret note can be copied without being shown. The search box searches the whole stash on
   the server (`POST /api/stashes/:slug/query` with `{ search, limit: 20 }`, so the words stay out of addresses), a
   moment after you stop typing, and only 20 results come back. On a server older than this extension, `limit` is
   ignored and the whole list is downloaded, though still only 20 are shown.

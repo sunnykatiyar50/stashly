@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 // The browser script also works as a CommonJS module, so the parser and detector can be tested here
-const { parse, parseInline, looks, hasFence } = require('../src/views/markdown.js');
+const { parse, parseInline, looks, looksSlack, hasFence, shortcodes, EMOJI } = require('../src/views/markdown.js');
 
 const text = nodes => nodes.map(n => (n.t === 'text' ? n.v : n.children ? text(n.children) : n.v || '')).join('');
 const kinds = blocks => blocks.map(b => b.t);
@@ -150,4 +150,151 @@ test('nesting is cut off at a sensible depth', () => {
     let blocks = parse(deep);
     while (blocks[0] && blocks[0].t === 'list') { blocks = blocks[0].items[0].blocks.filter(b => b.t === 'list'); depth++; if (!blocks.length) break; }
     assert.ok(depth <= 14, 'depth ' + depth);
+});
+
+// ---- chat style: what a note pasted from Slack, Teams or Discord looks like ----
+
+const chat = [
+    ':rocket: *New fleet standards in 5.5.0*',
+    '',
+    'CIS-21755 is merging into *5.5.0*.',
+    '',
+    '*:one:  PII masking in logs*',
+    ' • Any class that can reach a log gets `@PiiMasked` — *never* `@Data`.',
+    ' • *Annotate every field* — `@Pii` to mask, `@PiiSafe` for the rest.',
+].join('\n');
+
+test('chat style: one asterisk is bold, and a dot is a bullet', () => {
+    // The note as a whole still is not Markdown: that is why it used to stay plain text
+    assert.equal(looks(chat), false);
+    assert.equal(looksSlack(chat), true);
+
+    const blocks = parse(chat, 'slack');
+    assert.deepEqual(kinds(blocks), ['p', 'p', 'p', 'list']);
+    // ":rocket: *...*" is the emoji, a space, then a bold line
+    assert.deepEqual(blocks[0].children.map(n => n.t), ['text', 'text', 'strong']);
+    assert.equal(blocks[0].children[0].v, '🚀');
+    assert.equal(text(blocks[0].children), '🚀 New fleet standards in 5.5.0');
+    assert.equal(text(blocks[2].children), '1️⃣  PII masking in logs');
+    assert.equal(blocks[2].children[0].t, 'strong');
+
+    const list = blocks[3];
+    assert.equal(list.ordered, false);
+    assert.equal(list.items.length, 2);
+    // Inline code inside a bullet stays code, and the bold in it stays bold
+    assert.deepEqual(list.items[0].blocks[0].children.map(n => n.t), ['text', 'code', 'text', 'strong', 'text', 'code', 'text']);
+    assert.equal(text(list.items[1].blocks[0].children), 'Annotate every field — @Pii to mask, @PiiSafe for the rest.');
+});
+
+test('chat style: bullets nest and numbered items still work', () => {
+    const [list] = parse(' • one\n   • nested\n • two\n\n1. first\n2. second', 'slack');
+    assert.equal(list.t, 'list');
+    assert.equal(list.items.length, 2);
+    assert.equal(list.items[0].blocks.find(b => b.t === 'list').items.length, 1);
+    const numbered = parse('1. first\n2. second', 'slack')[0];
+    assert.equal(numbered.ordered, true);
+    assert.equal(text(numbered.items[1].blocks[0].children), 'second');
+});
+
+test('chat style: Markdown still works, because chat style only adds rules', () => {
+    const blocks = parse('# Heading\n\n**bold** ~~strike~~ [link](https://a.com)\n\n```js\nconst a = 1;\n```', 'slack');
+    assert.deepEqual(kinds(blocks), ['heading', 'p', 'code']);
+    assert.deepEqual(blocks[1].children.map(n => n.t).filter(t => t !== 'text'), ['strong', 'del', 'link']);
+    assert.equal(blocks[2].text, 'const a = 1;');
+});
+
+test('chat style: a line that starts with * still reads as a bullet, not as bold', () => {
+    assert.deepEqual(parse('* item one\n* item two', 'slack').map(b => b.t), ['list']);
+    // Markdown keeps a single asterisk as italic, and a single tilde as text
+    assert.equal(parseInline('*italic*')[0].t, 'em');
+    assert.equal(parseInline('~tilde~').map(n => n.t).join(','), 'text');
+    assert.equal(parseInline('*bold*', 0, 'slack')[0].t, 'strong');
+    assert.equal(parseInline('~strike~', 0, 'slack')[0].t, 'del');
+    assert.equal(parseInline('a * b * c', 0, 'slack').map(n => n.t).join(','), 'text');
+});
+
+test('emoji names: known ones become the emoji, unknown ones stay as typed', () => {
+    assert.equal(text(parseInline(':rocket: ship it', 0, 'slack')), '🚀 ship it');
+    assert.equal(text(parseInline(':one: first', 0, 'slack')), '1️⃣ first');
+    assert.equal(text(parseInline(':+1: and :-1:', 0, 'slack')), '👍 and 👎');
+    // Case does not matter, and a name is only ever text, never markup
+    assert.equal(text(parseInline(':ROCKET:', 0, 'slack')), '🚀');
+    assert.equal(text(parseInline(':made_up: name', 0, 'slack')), ':made_up: name');
+    // A time or a path is not an emoji name
+    assert.equal(text(parseInline('at 10:30:00', 0, 'slack')), 'at 10:30:00');
+    assert.equal(text(parseInline('C:\\temp', 0, 'slack')), 'C:\\temp');
+    // Emoji are turned on in Markdown notes too, but never inside code
+    const inline = parseInline('`:rocket:` and :rocket:');
+    assert.equal(inline[0].t, 'code');
+    assert.equal(inline[0].v, ':rocket:');
+    assert.equal(inline[inline.length - 1].v, '🚀');
+    assert.deepEqual(parse('```\n:rocket: *x* ~y~\n```', 'slack')[0].text, ':rocket: *x* ~y~');
+    // A fence inside a bullet is left exactly as it is
+    const [list] = parse(' • point\n   ```\n   :rocket: *keep*\n   ```', 'slack');
+    assert.equal(list.items[0].blocks.find(b => b.t === 'code').text.trim(), ':rocket: *keep*');
+});
+
+test('the emoji table is sane: lowercase names and real emoji values', () => {
+    const names = Object.keys(EMOJI);
+    assert.ok(names.length >= 100, 'names: ' + names.length);
+    for (const name of names) {
+        assert.match(name, /^[a-z0-9_+-]+$/, name);
+        const value = EMOJI[name];
+        assert.equal(typeof value, 'string');
+        assert.ok(value.length > 0, name);
+        assert.doesNotMatch(value, /[\s<>&"']/, name);
+        assert.equal(Array.from(value).some(ch => ch.codePointAt(0) > 0x2000), true, name + ' is not an emoji');
+    }
+    assert.equal(EMOJI.rocket, '🚀');
+    assert.equal(EMOJI.one, '1️⃣');
+});
+
+test('shortcodes: a title shows the emoji, and anything already typed stays', () => {
+    assert.equal(shortcodes(':rocket: Deploy notes'), '🚀 Deploy notes');
+    assert.equal(shortcodes('Deploy day 🚀 — done'), 'Deploy day 🚀 — done');
+    assert.equal(shortcodes(':one: and :two:'), '1️⃣ and 2️⃣');
+    assert.equal(shortcodes(':made_up: stays'), ':made_up: stays');
+    assert.equal(shortcodes('10:30:00 to 11:00:00'), '10:30:00 to 11:00:00');
+    assert.equal(shortcodes(null), '');
+    assert.equal(shortcodes(''), '');
+    // A title is plain text: no Markdown is applied to it, only the names are replaced
+    assert.equal(shortcodes('*bold* stays'), '*bold* stays');
+});
+
+test('detection: a chat paste counts, and the near misses do not', () => {
+    assert.equal(looksSlack(':rocket: shipping it'), true);
+    assert.equal(looksSlack('Notes\n • one\n • two'), true);
+    assert.equal(looksSlack('*Done* — deploy is live.\n*Also* — build is green.'), true);
+
+    for (const plain of [
+        'I left the keys on the desk.\nCall me when you get in.',
+        'files: *.log *.tmp',
+        'Shopping:\n • milk',
+        'meeting 10:30:00 to 11:00:00',
+        'SELECT id FROM users WHERE name = :name;',
+        'use :made_up: here',
+        'a_b_c and 2 * 3 * 4',
+        '',
+    ]) {
+        assert.equal(looksSlack(plain), false, plain);
+    }
+    // Markdown is not chat style, and the other way round
+    assert.equal(looksSlack('# Title\n\n- one\n- two\n- three'), false);
+    assert.equal(looks('*bold* with • bullets\n*second* line'), false);
+});
+
+test('chat style parses hostile notes fast too', () => {
+    const started = Date.now();
+    for (const nasty of [
+        '*a '.repeat(40000),
+        '• a\n'.repeat(20000),
+        ':a'.repeat(50000),
+        '~a '.repeat(30000),
+        ' • '.repeat(20000),
+    ]) {
+        assert.doesNotThrow(() => parse(nasty, 'slack'));
+        assert.doesNotThrow(() => looksSlack(nasty));
+        assert.doesNotThrow(() => shortcodes(nasty));
+    }
+    assert.ok(Date.now() - started < 5000, 'took ' + (Date.now() - started) + ' ms');
 });
