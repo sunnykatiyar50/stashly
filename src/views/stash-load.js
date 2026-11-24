@@ -55,6 +55,9 @@
         sections.main.classList.toggle('role-drop', r === 'drop');
         // Options has nothing for a drop-box link (it may be in the top bar, outside the section above)
         $('optionsButton').classList.toggle('hidden', r === 'drop');
+        // Picking several clips is for someone who can change them
+        $('selectToggle').classList.toggle('hidden', r !== 'full');
+        if (r !== 'full' && P.setSelecting) P.setSelecting(false);
         // An admin chose this password: everyone using the stash sees that, and when. Changing it is only offered to
         // someone who can actually change it; everyone else is told who can.
         var reset = $('resetNotice');

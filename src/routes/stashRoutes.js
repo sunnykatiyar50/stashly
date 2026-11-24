@@ -103,6 +103,8 @@ function createStashRoutes({ controller, config }) {
     router.get('/:slug/files/:id/thumb', readLimiter, ...read, c.getThumb);
     router.put('/:slug/files/:id/thumb', postLimiter, ...write, c.thumbTarget, thumbBody, c.putThumb);
     // Revealing deletes the note, so it is not something a read-only link may do
+    // Many clips at once: delete, undo that delete, pin or unpin (the select mode of the clip list)
+    router.post('/:slug/items/bulk', postLimiter, ...full, c.bulkItems);
     router.post('/:slug/items/:id/reveal', ...full, c.reveal);
     router.delete('/:slug/items/:id', ...full, c.deleteItem);
     // Undoing a delete puts an item back (it counts against the same limits as adding one)
