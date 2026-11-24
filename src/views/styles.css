@@ -592,6 +592,11 @@ audio.detail-media { max-height: none; }
     .sidebar-toggle { display: none; }
     .sidebar-nav { flex-direction: row; }
     .nav-link { width: auto; padding: 7px 10px; }
+    /* The pinned stashes get their own row under the top bar, each with its name, scrolling sideways when there are many */
+    .sidebar-nav { display: contents; }
+    .nav-pins { order: 10; flex: 1 0 100%; flex-direction: row; align-items: center; gap: 6px; margin: 0; padding: 4px 0 0; border: none; overflow-x: auto; }
+    .nav-pins-title { display: none; }
+    .nav-pins .nav-pin { flex: 0 0 auto; max-width: 11em; }
     .sidebar-footer { margin: 0 0 0 auto; flex-direction: row; border: none; padding: 0; }
     .sidebar-footer .nav-link .label { display: none; }
     /* In the top bar on a phone: the avatar and a Sign out icon, without the name */
@@ -763,8 +768,9 @@ body:not(.stash-open) .in-topbar { display: none; }
    Row 3: short chips (time left, pages open) on the left, the action icons on the right. */
 .chip-short { display: none; }
 @media (max-width: 760px) {
-    .stash-page .sidebar { flex-wrap: nowrap; padding: 6px 10px; gap: 4px; }
+    .stash-page .sidebar { flex-wrap: wrap; padding: 6px 10px; gap: 4px; }
     .stash-page .sidebar .brand-name, .stash-page .sidebar-nav .label { display: none; }
+    .stash-page .nav-pins .nav-pin .label { display: inline; }
     .stash-page #thisStashLink { display: none; }
     .stash-page .sidebar-nav .nav-link { padding: 7px 9px; }
     .stash-page .sidebar-footer { gap: 0; }
