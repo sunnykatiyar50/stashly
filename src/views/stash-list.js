@@ -437,13 +437,13 @@
         });
     }
 
-    // On a phone, Options and Close move up into the top bar (next to Admin and Theme), so the row under the
+    // On a phone, Options and Close move up into the top bar (beside the menu button), so the row under the
     // stash name holds only the everyday buttons. On a wider screen they go back to the end of that row.
     (function placeTopButtons() {
         var phone = window.matchMedia('(max-width: 760px)');
         var moved = [$('logoutButton'), $('optionsButton')];
         function place() {
-            var target = phone.matches ? document.querySelector('.sidebar-footer') : document.querySelector('.header-actions');
+            var target = phone.matches ? document.querySelector('.mobile-bar-actions') : document.querySelector('.header-actions');
             if (phone.matches) moved.slice().reverse().forEach(function (el) { target.insertBefore(el, target.firstChild); });
             else moved.forEach(function (el) { target.appendChild(el); });
             moved.forEach(function (el) { el.classList.toggle('in-topbar', phone.matches); });

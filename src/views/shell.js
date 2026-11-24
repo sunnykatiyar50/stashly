@@ -29,8 +29,11 @@
         }
     }
 
+    // On a phone the sidebar is a slide-over menu, always shown in full, so "collapsed" only applies on a wide screen
+    var phone = window.matchMedia('(max-width: 760px)');
+
     function apply(collapsed) {
-        document.body.classList.toggle('sidebar-collapsed', collapsed);
+        document.body.classList.toggle('sidebar-collapsed', collapsed && !phone.matches);
         var button = document.getElementById('collapseButton');
         if (button) {
             button.setAttribute('aria-expanded', String(!collapsed));
@@ -63,8 +66,42 @@
         }).catch(function () { /* no version label this time */ });
     }
 
+    // The phone's slide-over menu: the menu button opens it; the dimmed page, Esc, or choosing a link closes it
+    function setupDrawer() {
+        var button = document.querySelector('.drawer-button');
+        var sidebar = document.getElementById('sidebar');
+        if (!button || !sidebar) return;
+        function set(open) {
+            document.body.classList.toggle('drawer-open', open);
+            button.setAttribute('aria-expanded', String(open));
+            button.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+            if (open) {
+                var first = sidebar.querySelector('a, button');
+                if (first) first.focus();
+            } else if (document.activeElement && sidebar.contains(document.activeElement)) {
+                button.focus();
+            }
+        }
+        button.addEventListener('click', function () { set(!document.body.classList.contains('drawer-open')); });
+        var backdrop = document.querySelector('.drawer-backdrop');
+        if (backdrop) backdrop.addEventListener('click', function () { set(false); });
+        sidebar.addEventListener('click', function (event) {
+            if (event.target.closest && event.target.closest('a[href]')) set(false);
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && document.body.classList.contains('drawer-open')) set(false);
+        });
+        // Back to a wide screen, or back to the page from the browser's cache: never leave the menu open
+        function closeIfWide() { if (!phone.matches) set(false); }
+        if (phone.addEventListener) phone.addEventListener('change', closeIfWide); else phone.addListener(closeIfWide);
+        window.addEventListener('pageshow', function () { set(false); });
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         apply(read());
+        var onPhoneChange = function () { apply(read()); };
+        if (phone.addEventListener) phone.addEventListener('change', onPhoneChange); else phone.addListener(onPhoneChange);
+        setupDrawer();
         showVersion();
         var button = document.getElementById('collapseButton');
         if (!button) return;

@@ -289,6 +289,17 @@
         });
     });
 
+    // The note box is one line tall, so on a phone a long hint would wrap and show half of its second line.
+    // The short form has no Ctrl+Enter either, which a phone's keyboard does not have.
+    (function shortPlaceholder() {
+        var box = $('noteInput');
+        var full = box.getAttribute('placeholder');
+        var phone = window.matchMedia('(max-width: 760px)');
+        function set() { box.setAttribute('placeholder', phone.matches ? 'Write or paste a note...' : full); }
+        set();
+        if (phone.addEventListener) phone.addEventListener('change', set); else phone.addListener(set);
+    })();
+
     $('noteInput').addEventListener('keydown', function (event) {
         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
             event.preventDefault();
