@@ -42,10 +42,17 @@
     // downloaded in full just to draw 34 pixels
     var SMALL_IMAGE = 1024 * 1024;
 
+    // A title can carry :rocket: names; they are shown as the emoji itself, like the note body (the stored title, the
+    // edit box, Copy and search all keep what was typed)
+    function titleText(value) {
+        var markdown = window.StashlyMarkdown;
+        return markdown && markdown.shortcodes ? markdown.shortcodes(value) : value;
+    }
+
     // A note shows its title (the first 40 characters when it was not given one); a file shows its name
     function itemTitle(item) {
-        if (item.kind !== 'note') return item.title || item.fileName;
-        return item.title || '(empty note)';
+        if (item.kind !== 'note') return titleText(item.title || item.fileName);
+        return titleText(item.title || '(empty note)');
     }
 
     // The properties of a clip, shown as small chips on the right of its row so they read as labels, not as content:

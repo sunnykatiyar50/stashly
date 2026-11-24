@@ -213,14 +213,27 @@
         autoCopyNote(text);
     });
 
+    // A notification body is plain text, so a title or a note that names an emoji (:rocket:) shows the emoji itself,
+    // as the clip does. What is stored and copied is never changed.
+    function emojiNames(text) {
+        var markdown = window.StashlyMarkdown;
+        return markdown && markdown.shortcodes ? markdown.shortcodes(text) : text;
+    }
+
+    // The first 100 characters of a note, never half of an emoji
+    function clipText(text, limit) {
+        var out = text.slice(0, limit);
+        return /[\uD800-\uDBFF]$/.test(out) ? out.slice(0, -1) : out;
+    }
+
     function notifyItem(item) {
         if (!notificationsReady() || Notification.permission !== 'granted') return;
         // Only when you are not looking at this tab
         if (document.visibilityState === 'visible' && document.hasFocus()) return;
-        var body = item.kind === 'file' ? 'New file: ' + item.fileName
+        var body = item.kind === 'file' ? 'New file: ' + emojiNames(item.fileName || '')
             : item.burn ? 'A new burn-after-reading note'
             : item.secret ? 'A new secret note'
-            : (item.hasTitle ? item.title + ': ' : '') + oneLine(item.text).slice(0, 100);
+            : (item.hasTitle ? emojiNames(item.title) + ': ' : '') + clipText(emojiNames(oneLine(item.text)), 100);
         try {
             var note = new Notification('Stashly · ' + slug, { body: body, tag: 'stashly-' + slug, icon: '/icons/icon-192.png' });
             note.onclick = function () { window.focus(); note.close(); };

@@ -236,6 +236,10 @@ function button(label, title) {
     return node;
 }
 
+// A title's :rocket: shows as 🚀, as on the stash page (see emoji.js). Only the label is converted: the clip's own
+// text, its title in the stash, Copy and the search keep what was typed.
+const shortcodes = text => (globalThis.StashlyEmoji ? globalThis.StashlyEmoji.shortcodes(text) : text);
+
 function relativeTime(iso) {
     const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
     if (seconds < 60) return 'just now';
@@ -296,7 +300,7 @@ function revealButton(slug, item, row) {
         const text = result.data.text;
         row.replaceChildren(el('div', 'note-main'), copyButton(text));
         row.firstChild.append(
-            el('div', 'note-title', item.title),
+            el('div', 'note-title', shortcodes(item.title)),
             el('div', 'note-meta', 'Revealed once · now deleted for everyone'),
             el('pre', 'note-text', text)
         );
@@ -316,7 +320,7 @@ function noteRow(slug, item, role) {
         relativeTime(item.createdAt),
     ].filter(Boolean);
     if (item.burn && role !== 'full') meta.push('only full access can reveal it');
-    main.append(el('div', 'note-title', isFile ? item.title || item.fileName : item.title), el('div', 'note-meta', meta.join(' · ')));
+    main.append(el('div', 'note-title', shortcodes(isFile ? item.title || item.fileName : item.title)), el('div', 'note-meta', meta.join(' · ')));
     row.append(main);
     // A file is listed by name only; a secret note is copied without being shown, as on the stash page
     if (!isFile && !item.burn) row.append(copyButton(item.text));

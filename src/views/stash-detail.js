@@ -207,12 +207,14 @@
         });
     }
 
-    // What a note looks like: a code or data language, 'markdown', or null for plain text. A note with a fenced code block
-    // is Markdown whatever is inside the fences; otherwise code is checked first, because a shell comment starts with
-    // the same # as a Markdown heading.
+    // What a note looks like: a code or data language, 'markdown', 'slack' for a note pasted from a chat app, or null
+    // for plain text. A note with a fenced code block is Markdown whatever is inside the fences; otherwise code is
+    // checked before Markdown, because a shell comment starts with the same # as a Markdown heading. Chat formatting is
+    // checked first: one asterisk for bold, • bullets and :emoji: names do not appear in code or in ordinary prose.
     function detectFormat(text) {
         var markdown = window.StashlyMarkdown;
         var highlight = window.StashlyHighlight;
+        if (markdown && markdown.looksSlack(text)) return 'slack';
         if (markdown && markdown.hasFence(text)) return 'markdown';
         var code = highlight ? highlight.detect(text) : null;
         if (code) return code;
@@ -259,11 +261,13 @@
             var plain = Boolean(state.plainIds[item.id]);
             var paint = function () {
                 pre.textContent = '';
-                var asMarkdown = shown && !plain && language === 'markdown' && window.StashlyMarkdown;
+                // Markdown and chat text are both drawn as blocks; the style picks which rules apply
+                var rich = language === 'markdown' || language === 'slack';
+                var asMarkdown = shown && !plain && rich && window.StashlyMarkdown;
                 pre.classList.toggle('md', Boolean(asMarkdown));
                 if (!shown) { pre.textContent = MASK; return; }
-                if (asMarkdown) pre.appendChild(window.StashlyMarkdown.render(item.text, window.StashlyHighlight));
-                else if (window.StashlyHighlight) pre.appendChild(window.StashlyHighlight.render(item.text, plain || language === 'markdown' ? null : language));
+                if (asMarkdown) pre.appendChild(window.StashlyMarkdown.render(item.text, window.StashlyHighlight, language));
+                else if (window.StashlyHighlight) pre.appendChild(window.StashlyHighlight.render(item.text, plain || rich ? null : language));
                 else pre.textContent = item.text;
             };
             paint();
@@ -276,8 +280,9 @@
                 }));
             }
             if (language) {
-                var label = language === 'markdown' ? 'Markdown' : window.StashlyHighlight.label(language);
-                var verb = language === 'markdown' ? 'Render ' : 'Highlight ';
+                var rich = language === 'markdown' || language === 'slack';
+                var label = language === 'markdown' ? 'Markdown' : language === 'slack' ? 'Slack text' : window.StashlyHighlight.label(language);
+                var verb = rich ? 'Render ' : 'Highlight ';
                 actions.appendChild(button(plain ? verb + label : 'Plain text', 'ghost', function (event) {
                     plain = !plain;
                     state.plainIds[item.id] = plain;
