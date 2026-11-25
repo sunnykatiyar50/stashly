@@ -30,9 +30,10 @@ test('the page has the three-dot button, in the header with the other buttons, a
     for (const id of ['copyLatestButton', 'copyLinkButton', 'qrButton', 'shareButton', 'extendButton', 'followStashButton', 'pinStashButton']) assert.match(html, new RegExp(`id="${id}"`));
 });
 
-test('on a phone the menu button moves to the top bar with Close and Options, and goes back on a wide screen', async () => {
+test('on a phone the menu button moves to the top bar after Close and Options, and goes back on a wide screen', async () => {
     const js = await get(makeApp(), '/stash-list.js');
-    assert.match(js, /var moved = \[\$\('moreButton'\), \$\('logoutButton'\), \$\('optionsButton'\)\];/);
+    // Close, then Options (the gear), then the three-dot menu last
+    assert.match(js, /var moved = \[\$\('logoutButton'\), \$\('optionsButton'\), \$\('moreButton'\)\];/);
 });
 
 test('the phone layout keeps the name and its chips on one row and hides the header buttons', async () => {

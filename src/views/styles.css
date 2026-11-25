@@ -244,7 +244,9 @@ body.has-account-nav #logoutButton { display: none; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 10px; background: var(--code-bg); color: var(--text-soft); font-size: 12px; font-weight: 600; }
 .chip svg { width: 13px; height: 13px; }
-.chip.owner-chip { background: var(--blue-soft); color: var(--blue); }
+.chip.owner-chip { background: var(--success-soft); color: var(--success); }
+/* On the stash page the Follow button of a stash you own reads "Owner", in the same green */
+#followStashButton.is-owner, #followStashButton.is-owner:disabled { color: var(--success); opacity: 1; }
 .chip.warn { background: var(--warning-bg); color: var(--warning-text); }
 
 /* ===== Forms ===== */

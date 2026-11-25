@@ -154,7 +154,7 @@
         if (stash.needsPassword) {
             title.appendChild(make('span', 'chip warn', 'Needs the password again'));
         } else {
-            if (stash.owned) title.appendChild(make('span', 'chip owner-chip', 'Yours'));
+            if (stash.owned) title.appendChild(make('span', 'chip owner-chip', 'Owner'));
             if (stash.hasPassword) {
                 var lock = make('span', 'chip lock-chip');
                 lock.title = 'Password protected';
@@ -199,7 +199,7 @@
         }
         // Only stashes someone else made can be unfollowed: your own stay in your list
         if (!stash.owned) {
-            var unfollow = make('button', 'ghost small', 'Unfollow');
+            var unfollow = make('button', 'ghost small danger-ghost', 'Unfollow');
             unfollow.type = 'button';
             unfollow.setAttribute('aria-label', 'Unfollow ' + stash.slug);
             unfollow.addEventListener('click', function () { unfollowStash(stash); });
