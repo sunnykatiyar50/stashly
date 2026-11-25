@@ -69,7 +69,8 @@ class AdminController {
             bytes: row.bytes,
             createdAt: row.created_at,
             expiresAt: row.expires_at,
-            canExtend: Boolean(row.ttl_ms),
+            // An admin extends a guest's stash; one with an owner is the owner's to extend
+            canExtend: Boolean(row.ttl_ms) && !row.owner_id,
             // The user who made it (null: a guest did). An admin cannot reset the password of a stash that has an owner.
             owner: row.owner || null,
             canResetPassword: this.config.adminCanResetStashPasswords && !row.owner_id,
@@ -108,10 +109,12 @@ class AdminController {
     extendStash = (req, res) => {
         const stash = this.findStash(req, res);
         if (!stash) return;
+        if (stash.owner_id) return res.status(409).json({ error: 'This stash has an owner, so only the owner can extend it.' });
         const extended = this.model.extend(stash.id, this.now());
         if (!extended) return res.status(400).json({ error: 'This stash never expires, so there is nothing to extend.' });
         this.events.publish(stash.slug, 'stash-extended', { expiresAt: extended.expires_at });
-        res.json({ expiresAt: extended.expires_at });
+        this.audit('stash.extended_by_admin', { req, stash, actor: 'admin' });
+        res.json({ expiresAt: extended.expires_at, slug: stash.slug });
     };
 
     // Gives a stash that has no owner (a guest made it, or its owner's account was deleted) to a user. The people already using it

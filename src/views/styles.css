@@ -875,25 +875,50 @@ body:not(.stash-open) .in-topbar { display: none; }
 .clip .clip-copy:hover, .clip .clip-copy:focus-visible, .clip-pin.on { opacity: 1; }
 @media (hover: none) { .clip .clip-copy, .clip.selected .clip-copy { opacity: 0.85; } }
 
-/* ===== Options: tabs across the top, one panel at a time ===== */
-#optionsDialog { width: min(560px, calc(100vw - 24px)); }
-#optionsDialog .qr-body { gap: 14px; padding: 22px 24px; }
-.opt-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
-.opt-tabs::-webkit-scrollbar { display: none; }
-.opt-tab { display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 9px 12px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; background: none; color: var(--text-soft); font-size: 14px; white-space: nowrap; }
-.opt-tab svg { width: 16px; height: 16px; }
-.opt-tab.hidden { display: none; }
-.opt-tab:hover { color: var(--text); background: var(--surface-alt); }
-.opt-tab[aria-selected="true"] { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
-.opt-tab[data-tab="danger"][aria-selected="true"] { color: var(--danger); border-bottom-color: var(--danger); }
-.opt-panel { display: flex; flex-direction: column; gap: 12px; min-height: 220px; max-height: min(60vh, 520px); overflow-y: auto; }
-.opt-panel.hidden { display: none; }
-.opt-panel .share-row { padding: 14px 16px; gap: 8px; }
+/* ===== Options: the groups (General, Organize, Access, This device, Danger zone) down the side, one at a time =====
+   On a phone the groups are tabs across the top instead, as on the admin Settings page. */
+#optionsDialog { width: min(780px, calc(100vw - 24px)); }
+#optionsDialog .qr-body { gap: 14px; padding: 20px 22px; }
+.opt-layout { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 20px; align-items: start; }
+.opt-layout.single { grid-template-columns: minmax(0, 1fr); }
+.opt-layout.single .opt-nav { display: none; }
+.opt-nav { display: flex; flex-direction: column; gap: 3px; padding-right: 14px; border-right: 1px solid var(--border); align-self: stretch; }
+.opt-nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 0; border-radius: 8px; background: none; color: var(--text-soft); font: inherit; font-size: 14px; text-align: left; cursor: pointer; white-space: nowrap; }
+.opt-nav-item svg { width: 16px; height: 16px; flex: none; }
+.opt-nav-item:hover { background: var(--surface-alt); color: var(--text); }
+.opt-nav-item:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.opt-nav-item[aria-selected="true"] { background: var(--blue-soft); color: var(--blue); font-weight: 600; }
+.opt-nav-item.danger { color: var(--danger); }
+.opt-nav-item.danger[aria-selected="true"] { background: var(--danger-soft); color: var(--danger); }
+.opt-nav-item.hidden { display: none; }
+.opt-scroll { min-width: 0; min-height: 260px; max-height: min(62vh, 520px); overflow-y: auto; padding-right: 4px; }
+.opt-section { display: flex; flex-direction: column; gap: 10px; }
+.opt-section.hidden { display: none; }
+.opt-section .share-row { padding: 12px 14px; gap: 6px; }
 .content-choices { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+/* A short hint, with its small "i": the rest is the tooltip, and the "i" opens it under the hint on a touch screen */
+.opt-hintline { display: inline-flex; align-items: flex-start; gap: 6px; }
+.opt-info { flex: none; width: 17px; height: 17px; margin-top: 1px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%; background: none; color: var(--muted); font: italic 700 11px/1 var(--serif, Georgia, serif); cursor: pointer; }
+.opt-info:hover, .opt-info:focus-visible, .opt-info[aria-expanded="true"] { border-color: var(--blue); color: var(--blue); outline: none; }
+.opt-detail { font-size: 12.5px; }
+.opt-detail.hidden { display: none; }
+/* The name is a field with its button, always there */
+.inline-form { display: flex; gap: 8px; align-items: center; }
+.inline-form input { flex: 1 1 auto; min-width: 0; }
+/* Tags: each with its count, and what can be done to it */
+.tag-manager { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
+.tag-manage-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 30px; }
+.tag-manage-count { font-size: 12.5px; }
+.tag-manage-actions { margin-left: auto; display: inline-flex; gap: 6px; }
+.tag-rename-form { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; flex-wrap: wrap; }
+.tag-rename-form input { flex: 1 1 120px; min-width: 0; max-width: 220px; }
 @media (max-width: 760px) {
     #optionsDialog .qr-body { padding: 16px; }
-    .opt-tab { padding: 8px 10px; font-size: 13px; gap: 6px; }
-    .opt-panel { min-height: 0; max-height: 65vh; }
+    .opt-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .opt-nav { flex-direction: row; overflow-x: auto; padding: 0 0 8px; border-right: none; border-bottom: 1px solid var(--border); scrollbar-width: none; }
+    .opt-nav::-webkit-scrollbar { display: none; }
+    .opt-nav-item { width: auto; flex: none; gap: 7px; padding: 8px 11px; font-size: 13.5px; }
+    .opt-scroll { min-height: 0; max-height: 64vh; }
 }
 
 /* ===== What the stash takes: hide what cannot be added ===== */
@@ -970,3 +995,15 @@ body:not(.stash-open) .in-topbar { display: none; }
 .mcp-detail { display: flex; flex-direction: column; gap: 8px; }
 .mcp-detail strong { margin-top: 8px; }
 .mcp-box .input-row { max-width: 640px; }
+
+/* Keeping a stash longer: the clock chip is a button when this person may extend it, and the dialog lists the lengths */
+.chip.extendable { cursor: pointer; }
+.chip.extendable:hover, .chip.extendable:focus-visible { border-color: var(--blue); color: var(--blue); outline: none; }
+.extend-choices { display: flex; flex-direction: column; gap: 8px; margin: 4px 0; }
+.extend-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 10px 12px; text-align: left; background: var(--surface-alt); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); cursor: pointer; }
+.extend-choice:hover:not(:disabled), .extend-choice:focus-visible { border-color: var(--blue); background: var(--blue-soft); outline: none; }
+.extend-choice.restart { border-color: var(--blue); }
+.extend-choice .muted { font-size: 12.5px; }
+.table tr.just-extended td { animation: extended-flash 2.4s ease-out; }
+@keyframes extended-flash { from { background: var(--success-soft); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .table tr.just-extended td { animation: none; background: var(--success-soft); } }

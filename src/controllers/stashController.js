@@ -737,7 +737,12 @@ class StashController {
             shareLinks: req.role === 'full' ? { view: Boolean(stash.view_token_hash), drop: Boolean(stash.drop_token_hash) } : null,
             // When this browser's sign-in ends (only a password-protected stash has one)
             sessionEndsAt: this.sessionEnd(req, stash, req.role),
-            canExtend: req.role === 'full' && Boolean(stash.ttl_ms),
+            // Whether this person manages the stash: its owner, or anyone with full access on a guest's stash. The page shows the
+            // stash's settings (name, expiry, tags, what it holds, delete) only to them.
+            canManage: this.canManage(req, stash),
+            canExtend: this.canManage(req, stash) && Boolean(stash.ttl_ms),
+            // What it can be extended to (only for someone who may), so the page can offer the choice
+            extendChoices: this.canManage(req, stash) ? this.extendChoices(stash) : [],
             keepLast: stash.keep_last || null,
             content: contentOf(stash),
             usage: dropOnly ? { items: 0, files: 0, bytes: 0 } : this.model.usage(stash.id),
@@ -989,6 +994,97 @@ class StashController {
         const item = this.presentItem(stash.slug, updated);
         this.events.publish(stash.slug, 'item-updated', item);
         res.json(item);
+    };
+
+    // ---- tags across the stash (Options > Organize) ----
+
+    tagList(stash) {
+        return this.model.tagCounts(stash.id, this.now()).map(entry => ({ name: entry.tag, count: entry.count }));
+    }
+
+    // { from, to }: renames a tag on every clip that has it. A clip that already has the new name just loses the old one.
+    renameTag = (req, res) => {
+        const stash = req.stash;
+        const from = parseTag(req.body && req.body.from);
+        const to = parseTag(req.body && req.body.to);
+        if (from.error) return res.status(400).json({ error: from.error, field: 'from' });
+        if (to.error) return res.status(400).json({ error: to.error, field: 'to' });
+        if (from.value === to.value) return res.status(400).json({ error: 'That is already its name.', field: 'to' });
+        const changed = this.model.renameTag(stash.id, from.value, to.value);
+        if (!changed) return res.status(404).json({ error: 'No clip has that tag.', field: 'from' });
+        this.events.publish(stash.slug, 'tags-changed', {});
+        this.audit('stash.tags_changed', { req, stash, detail: { action: 'rename', clips: changed } });
+        res.json({ changed, tags: this.tagList(stash) });
+    };
+
+    // Removes a tag from every clip that has it (the clips stay)
+    deleteTag = (req, res) => {
+        const stash = req.stash;
+        const tag = parseTag(req.params.name);
+        if (tag.error) return res.status(400).json({ error: tag.error });
+        const changed = this.model.deleteTag(stash.id, tag.value);
+        if (!changed) return res.status(404).json({ error: 'No clip has that tag.' });
+        this.events.publish(stash.slug, 'tags-changed', {});
+        this.audit('stash.tags_changed', { req, stash, detail: { action: 'delete', clips: changed } });
+        res.json({ changed, tags: this.tagList(stash) });
+    };
+
+    // ---- moving and copying clips to another stash of yours ----
+    // { ids, to, copy? }. The person must be signed in and own the target stash (a guest cannot prove they own another one).
+    // Move keeps each clip's id (a file keeps its bytes), copy makes new items. Clips that cannot go (gone, a burn note being
+    // copied, a kind the target does not take) are listed under skipped; if the target would pass a limit nothing is moved.
+    moveClips = (req, res) => {
+        const stash = req.stash;
+        const body = req.body || {};
+        if (!req.user) return res.status(403).json({ error: 'Sign in to move clips to a stash of yours.' });
+        const ids = body.ids;
+        if (!Array.isArray(ids) || !ids.length || ids.length > MAX_BULK || !ids.every(id => Number.isInteger(id) && id > 0)) {
+            return res.status(400).json({ error: `Send between 1 and ${MAX_BULK} clip ids.` });
+        }
+        const copy = body.copy === true;
+        const now = this.now();
+        const target = typeof body.to === 'string' ? this.model.findBySlug(body.to.trim().toLowerCase()) : null;
+        if (!target || (target.expires_at && target.expires_at <= now.toISOString())) return res.status(404).json({ error: 'There is no such stash (it may have expired).', field: 'to' });
+        if (target.id === stash.id) return res.status(400).json({ error: 'Pick a different stash.', field: 'to' });
+        if (!this.ownedBy(req.user, target)) return res.status(403).json({ error: 'You can only move clips to a stash you own.', field: 'to' });
+
+        const takes = contentOf(target);
+        const rows = [];
+        const skipped = [];
+        for (const id of Array.from(new Set(ids))) {
+            const row = this.model.getLiveItem(stash.id, id, now);
+            if (!row) skipped.push({ id, reason: 'gone' });
+            else if (copy && row.burn) skipped.push({ id, reason: 'burn' });
+            else if ((row.kind === 'file' && takes === 'notes') || (row.kind === 'note' && takes === 'files')) skipped.push({ id, reason: 'kind' });
+            else rows.push(row);
+        }
+        if (!rows.length) return res.json({ moved: [], copied: [], skipped, target: target.slug });
+        // The place they have now, top first, is the place they keep
+        rows.sort((a, b) => (b.sort_order - a.sort_order) || (b.id - a.id));
+
+        const usage = this.model.usage(target.id);
+        const files = rows.filter(row => row.kind === 'file');
+        const bytes = files.reduce((sum, row) => sum + row.file_size, 0);
+        const c = this.config;
+        if (usage.items + rows.length > c.maxItemsPerStash) return res.status(413).json({ error: `${target.slug} would pass its ${c.maxItemsPerStash} items. Nothing was moved.` });
+        if (usage.files + files.length > c.maxFilesPerStash) return res.status(413).json({ error: `${target.slug} can hold ${c.maxFilesPerStash} files. Nothing was moved.` });
+        if (usage.bytes + bytes > c.maxStashBytes) return res.status(413).json({ error: `${target.slug} would pass its ${Math.round(c.maxStashBytes / 1048576)} MB limit. Nothing was moved.` });
+        if (copy && this.model.totalBytes() + bytes > c.maxTotalBytes) return res.status(507).json({ error: 'The server is out of file space. Nothing was copied.' });
+
+        const order = rows.map(row => row.id);
+        if (copy) {
+            const made = this.model.copyItems(stash.id, target.id, order);
+            made.forEach(row => this.events.publish(target.slug, 'item-added', this.presentItem(target.slug, row)));
+            this.audit('items.copied', { req, stash, detail: { count: made.length } });
+            return res.json({ moved: [], copied: made.map(row => row.id), skipped, target: target.slug });
+        }
+        this.model.moveItems(stash.id, target.id, order);
+        for (const row of rows) {
+            this.events.publish(stash.slug, 'item-deleted', { id: row.id });
+            this.events.publish(target.slug, 'item-added', this.presentItem(target.slug, this.model.getItem(target.id, row.id)));
+        }
+        this.audit('items.moved', { req, stash, detail: { count: rows.length } });
+        res.json({ moved: order, copied: [], skipped, target: target.slug });
     };
 
     // Puts clips in a new order. The body lists ids top to bottom; only those clips move, among their own places.
@@ -1697,11 +1793,52 @@ class StashController {
         res.json({ items, missing });
     };
 
+    // Who may manage a stash (change when it expires, rename it, organize it, delete it, change what it holds): someone with full
+    // access, except that a stash with an owner is the owner's (a person who only knows its password cannot, and neither can an
+    // admin: they may extend a guest's stash)
+    canManage(req, stash) {
+        return req.role === 'full' && (!stash.owner_id || this.isOwner(req, stash));
+    }
+
+    // The lengths the stash can be extended to, as the page offers them: only those that end later than it ends now ("Never"
+    // when the server allows it), and the one that is the stash's own length marked as the way to restart its timer
+    // Route guard: only someone who may manage this stash gets through (run after loadStash and the full-access check)
+    manageOnly = (req, res, next) => {
+        if (!this.canManage(req, req.stash)) return res.status(403).json({ error: 'Only the owner of this stash can do that.' });
+        next();
+    };
+
+    extendChoices(stash, now = this.now()) {
+        if (!stash.ttl_ms) return [];
+        const current = stash.expires_at ? new Date(stash.expires_at).getTime() : Infinity;
+        return this.config.ttlOptions
+            .filter(option => option.ms === null || now.getTime() + option.ms > current)
+            .map(option => ({ key: option.key, label: option.label, ms: option.ms, restart: option.ms === stash.ttl_ms, never: option.ms === null }));
+    }
+
+    // Extends the stash. Without a body it restarts the timer for the stash's own length (as before); { ttl: "7d" } picks a
+    // length from the list (the same keys as when a stash is made), which must end later than it ends now.
     extend = (req, res) => {
-        const stash = this.model.extend(req.stash.id, this.now());
-        if (!stash) return res.status(400).json({ error: 'This stash never expires, so there is nothing to extend.' });
-        this.events.publish(stash.slug, 'stash-extended', { expiresAt: stash.expires_at });
-        res.json({ expiresAt: stash.expires_at });
+        const stash = req.stash;
+        if (!this.canManage(req, stash)) return res.status(403).json({ error: 'Only the owner of this stash can change when it expires.' });
+        const now = this.now();
+        const key = req.body && req.body.ttl;
+        let updated;
+        if (key === undefined || key === null || key === '') {
+            updated = this.model.extend(stash.id, now);
+            if (!updated) return res.status(400).json({ error: 'This stash never expires, so there is nothing to extend.' });
+        } else {
+            const option = this.config.ttlOptions.find(item => item.key === key);
+            if (!option) return res.status(400).json({ error: 'Pick one of the listed lengths.', field: 'ttl' });
+            if (!stash.ttl_ms) return res.status(400).json({ error: 'This stash never expires, so there is nothing to extend.' });
+            const until = option.ms === null ? Infinity : now.getTime() + option.ms;
+            const current = stash.expires_at ? new Date(stash.expires_at).getTime() : Infinity;
+            if (until <= current) return res.status(409).json({ error: 'That ends sooner than the stash does now. Pick a longer time.', field: 'ttl' });
+            updated = this.model.setExpiry(stash.id, option.ms, now);
+        }
+        this.events.publish(updated.slug, 'stash-extended', { expiresAt: updated.expires_at });
+        this.audit('stash.extended', { req, stash: updated, detail: { by: this.isOwner(req, updated) ? 'owner' : 'visitor', ttl: key || 'restart' } });
+        res.json({ expiresAt: updated.expires_at, canExtend: Boolean(updated.ttl_ms), extendChoices: this.extendChoices(updated, now) });
     };
 
     remove = (req, res) => {

@@ -201,6 +201,13 @@ class FileStore {
         }
     }
 
+    // Copies a file, and its thumbnail when it has one, to another item id (a clip copied to another stash)
+    copy(fromId, toId) {
+        this.ensure();
+        fs.copyFileSync(this.pathOf(fromId), this.pathOf(toId), fs.constants.COPYFILE_EXCL);
+        if (this.existsThumb(fromId)) fs.copyFileSync(this.pathOfThumb(fromId), this.pathOfThumb(toId), fs.constants.COPYFILE_EXCL);
+    }
+
     // Writes a file's bytes under its item id (used when moving files out of the old database layout)
     write(id, bytes) {
         this.ensure();

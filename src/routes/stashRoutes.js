@@ -16,6 +16,8 @@ function createStashRoutes({ controller, config }) {
     const c = controller;
     // Who may use each route: full access (no password, or unlocked), a read-only share link, or a drop-box link
     const full = [c.loadStash, c.allow('full')];
+    // The stash's own settings and what removes or reorganizes it: its owner (anyone with full access on a guest's stash)
+    const manage = [c.loadStash, c.allow('full'), c.manageOnly];
     const read = [c.loadStash, c.allow('full', 'view')];
     const write = [c.loadStash, c.allow('full', 'drop')];
     const anyRole = [c.loadStash, c.allow('full', 'view', 'drop')];
@@ -118,17 +120,21 @@ function createStashRoutes({ controller, config }) {
     router.delete('/:slug/items/:id/share', postLimiter, ...full, c.revokeClipShare);
     // Dragging clips into a new order; a read-only or drop-box link cannot rearrange
     router.post('/:slug/reorder', ...full, c.reorder);
-    router.put('/:slug/keep-last', ...full, c.setKeepLast);
-    router.put('/:slug/content', ...full, c.setContent);
+    router.put('/:slug/keep-last', ...manage, c.setKeepLast);
+    router.put('/:slug/content', ...manage, c.setContent);
     router.post('/:slug/extend', ...full, c.extend);
     // The wrong-password limit applies here too: a stranger at an unlocked browser cannot guess the current password
     router.post('/:slug/password', unlockLimiter, ...full, c.changePassword);
-    router.post('/:slug/rename', postLimiter, ...full, c.rename);
+    router.post('/:slug/rename', postLimiter, ...manage, c.rename);
+    // Tags across the whole stash, and moving or copying clips to another stash of yours
+    router.post('/:slug/tags/rename', postLimiter, ...manage, c.renameTag);
+    router.delete('/:slug/tags/:name', postLimiter, ...manage, c.deleteTag);
+    router.post('/:slug/items/move', postLimiter, ...manage, c.moveClips);
     router.post('/:slug/owner', postLimiter, ...full, c.transferOwner);
     router.post('/:slug/sign-out-others', ...full, c.signOutOthers);
     router.post('/:slug/share-links', ...full, c.createShareLink);
     router.delete('/:slug/share-links/:kind', ...full, c.revokeShareLink);
-    router.delete('/:slug', ...full, c.remove);
+    router.delete('/:slug', ...manage, c.remove);
 
     return router;
 }

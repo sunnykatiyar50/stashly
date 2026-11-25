@@ -89,6 +89,8 @@
         var stash = state.stash;
         $('lockChip').classList.toggle('hidden', !stash.hasPassword);
         $('extendButton').classList.toggle('hidden', !stash.canExtend);
+        // The clock chip is the way in to extending, when this person may (stash-options.js)
+        if (P.paintExpiryAction) P.paintExpiryAction();
         updateExpiry();
         var f = state.filters;
         var chip = $('rangeChip');

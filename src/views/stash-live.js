@@ -171,8 +171,15 @@
         es.addEventListener('presence', function (event) { showPresence(JSON.parse(event.data).count); });
         es.addEventListener('item-deleted', function (event) { onItemDeleted(JSON.parse(event.data).id); });
         es.addEventListener('stash-extended', function (event) {
-            if (state.stash) { state.stash.expiresAt = JSON.parse(event.data).expiresAt; updateExpiry(); }
+            if (!state.stash) return;
+            state.stash.expiresAt = JSON.parse(event.data).expiresAt;
+            // Extended to "never" somewhere else: nothing left to extend
+            if (!state.stash.expiresAt) { state.stash.canExtend = false; state.stash.extendChoices = []; }
+            if (window.StashlyPage.paintExpiryAction) window.StashlyPage.paintExpiryAction();
+            updateExpiry();
         });
+        // Tags were renamed or deleted across the stash (Options > Organize): the list is read again
+        es.addEventListener('tags-changed', function () { if (P.onTagsChanged) P.onTagsChanged(); });
         es.addEventListener('stash-gone', gone);
         // Someone changed what the stash takes
         es.addEventListener('content-changed', function (event) {
