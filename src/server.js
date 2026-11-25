@@ -5,6 +5,7 @@ const StashController = require('./controllers/stashController');
 const AdminController = require('./controllers/adminController');
 const createStashRoutes = require('./routes/stashRoutes');
 const { createClipRoutes } = require('./routes/clipRoutes');
+const { createMcpRoutes } = require('./routes/mcpRoutes');
 const createAdminRoutes = require('./routes/adminRoutes');
 const createUserRoutes = require('./routes/userRoutes');
 const UserController = require('./controllers/userController');
@@ -163,6 +164,10 @@ function createApp({ config, model, events, secret, now, logOut, auditOut, mail 
     app.use('/api/stashes', createStashRoutes({ controller, config }));
     // A link to one clip: public, the token is the access (no stash, no cookie)
     app.use('/api/clips', createClipRoutes({ controller, config }));
+    // The MCP endpoint exists only when it was switched on (Admin > Settings > MCP) as the server started, so turning it on or
+    // off takes effect after a restart. Off, /mcp is simply not there.
+    config.mcpRunning = Boolean(config.mcpEnabled);
+    if (config.mcpRunning) app.use('/mcp', createMcpRoutes({ model, config, audit }));
     app.use('/api/admin', createAdminRoutes({ controller: adminController, users: userController, adminAuth, config }));
     app.use('/api', createUserRoutes({ controller: userController, config }));
     app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));

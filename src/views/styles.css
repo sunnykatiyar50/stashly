@@ -944,3 +944,8 @@ body:not(.stash-open) .in-topbar { display: none; }
 .clip-share-head h1 { font-size: 24px; overflow-wrap: anywhere; }
 .clip-share-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .clip-share-note { font-size: 12.5px; }
+
+/* The MCP tab: address, access token and the connect command, stacked */
+.mcp-detail { display: flex; flex-direction: column; gap: 8px; }
+.mcp-detail strong { margin-top: 8px; }
+.mcp-box .input-row { max-width: 640px; }

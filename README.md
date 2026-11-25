@@ -54,7 +54,7 @@ stashly export NAME --out all.zip          # the whole stash as a zip
 
 ## For AI assistants (MCP)
 
-`bin/stashly-mcp.js` is a Model Context Protocol server, so Claude and other assistants can create a stash for a topic, push notes into it (with tags) and read them back. One file, no dependencies, and it never deletes anything. Setup and the tools are in [docs/mcp.md](docs/mcp.md).
+Stashly can be a Model Context Protocol server, so Claude Code and other assistants can create a stash for a topic, push notes into it (with tags) and read them back. Switch it on in **Admin > Settings > MCP** (then restart), make an access token there and connect a client to `https://<your stashly>/mcp`; or run `bin/stashly-mcp.js` from the client instead. It never deletes anything. Setup and the tools are in [docs/mcp.md](docs/mcp.md).
 
 ## Browser extension
 
@@ -82,7 +82,7 @@ docker compose pull; docker compose up -d     # update later
 
 Open http://localhost:3000. Copy `.env.example` to `.env` next to `docker-compose.yml` and set at least `SESSION_SECRET` and `ADMIN_PASSWORD`.
 
-**Keep your data on a volume.** The database (`/data/stashly.sqlite`) and uploaded files (`/data/files`) must be on a volume or bind mount, because updating the image recreates the container and deletes anything stored inside it. The compose file already does this; leave `SQLITE_PATH` unset.
+**Keep your data on a volume.** The database (`/data/stashly.sqlite`) and uploaded files (`/data/files`) must be on a volume or bind mount, because updating the image recreates the container and deletes anything stored inside it. The compose file already does this: it pins `SQLITE_PATH` to `/data/stashly.sqlite`, so a `SQLITE_PATH` in your `.env` (such as the `./stashly.sqlite` used when running without Docker) cannot move the database off the volume. Leave it unset.
 
 Without Compose:
 
