@@ -21,22 +21,47 @@
     var autoTried = {};     // stashes this page already tried to follow by itself, so a failure is not retried in a loop
     var SEEN_EVERY_MS = 30000;
 
-    // Someone who was signed in last time sees "My stashes" in the menu straight away (the check in refresh() confirms
-    // it), so the menu does not change under them after the page has drawn
-    try { if (localStorage.getItem('sl_signed_in') === '1') $('accountLink').classList.remove('hidden'); } catch (e) { /* stays hidden until known */ }
+    // The menu is the same in every state of the page (loading, locked, open, gone) and for everyone who can see it, as on the
+    // home page: "My stashes" in the main menu for someone signed in, "Sign in" above Theme for a visitor, and neither when the
+    // server has no accounts. What was seen last time is drawn at once, and the server's answer (asked as the page starts, not
+    // when the stash has loaded, so a locked stash gets it too) confirms it. Otherwise the entry would be missing exactly
+    // when someone has just signed out and is asked for the stash's password.
+    function paintAccountLinks(enabled, signedIn) {
+        $('accountLink').classList.toggle('hidden', !signedIn);
+        $('signInLink').classList.toggle('hidden', !(enabled && !signedIn));
+    }
+    try {
+        var seen = localStorage.getItem('sl_signed_in');
+        var seenAccounts = localStorage.getItem('sl_accounts_on');
+        if (seen === '1') paintAccountLinks(true, true);
+        else if (seenAccounts === '1') paintAccountLinks(true, false);
+    } catch (e) { /* stays hidden until known */ }
+
+    // Who is signed in, asked once; the rest of the page waits on this promise
+    var meReady = null;
+    function probeMe() {
+        if (!meReady) {
+            // account-nav.js asked at page start already; reuse that answer
+            var nav = window.StashlyAccountNav;
+            meReady = (nav && nav.firstMe ? nav.firstMe() : api('/api/me')).then(function (res) {
+                var enabled = Boolean(res.ok && res.body && res.body.enabled);
+                accounts = Boolean(enabled && res.body.user);
+                paintAccountLinks(enabled, accounts);
+                try {
+                    localStorage.setItem('sl_signed_in', accounts ? '1' : '0');
+                    localStorage.setItem('sl_accounts_on', enabled ? '1' : '0');
+                } catch (e) { /* not remembered */ }
+            });
+        }
+        return meReady;
+    }
+    probeMe().catch(function () { /* the menu keeps what it shows */ });
 
     // Called by the rest of the page every time the stash is (re)loaded
     function refresh() {
         if (!probed) {
             probed = true;
-            // account-nav.js asked at page start already; reuse that answer
-            var nav = window.StashlyAccountNav;
-            (nav && nav.firstMe ? nav.firstMe() : api('/api/me')).then(function (res) {
-                accounts = Boolean(res.ok && res.body && res.body.enabled && res.body.user);
-                $('accountLink').classList.toggle('hidden', !accounts);
-                try { localStorage.setItem('sl_signed_in', accounts ? '1' : '0'); } catch (e) { /* not remembered */ }
-                if (accounts) refresh();
-            }).catch(function () { /* no account features this time */ });
+            probeMe().then(function () { if (accounts) refresh(); }).catch(function () { /* no account features this time */ });
             return;
         }
         var button = $('followStashButton');
