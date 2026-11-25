@@ -113,7 +113,15 @@
                 </div>
             </header>
 
-            <ul id="followList" class="follow-list" aria-label="Followed stashes"></ul>
+            <!-- Two lists: the stashes you own, and the ones you follow (account.js) -->
+            <section id="ownedGroup" class="stash-group hidden" aria-labelledby="ownedTitle">
+                <h2 id="ownedTitle" class="group-title">Your stashes <span id="ownedCount" class="group-count"></span></h2>
+                <ul id="ownedList" class="follow-list" aria-label="Your stashes"></ul>
+            </section>
+            <section id="followGroup" class="stash-group hidden" aria-labelledby="followTitle">
+                <h2 id="followTitle" class="group-title">Following <span id="followCount" class="group-count"></span></h2>
+                <ul id="followList" class="follow-list" aria-label="Followed stashes"></ul>
+            </section>
             <p id="followEmpty" class="empty-state hidden">You are not following any stash yet. Open or create a stash on the <a href="/">New stash</a> page and it appears here by itself.</p>
             <p id="refreshInfo" class="muted refresh-info"></p>
         </section>

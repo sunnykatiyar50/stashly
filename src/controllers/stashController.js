@@ -743,6 +743,8 @@ class StashController {
             canExtend: this.canManage(req, stash) && Boolean(stash.ttl_ms),
             // What it can be extended to (only for someone who may), so the page can offer the choice
             extendChoices: this.canManage(req, stash) ? this.extendChoices(stash) : [],
+            // Whether this server lets stashes never expire (an admin setting); the Extend dialog says so when it does not
+            neverAllowed: Boolean(this.config.allowNoExpiry),
             keepLast: stash.keep_last || null,
             content: contentOf(stash),
             usage: dropOnly ? { items: 0, files: 0, bytes: 0 } : this.model.usage(stash.id),

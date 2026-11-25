@@ -184,3 +184,28 @@ test('the pages carry the controls: the extend dialog, the clock chip as a butto
     assert.match(css, /\.chip\.extendable \{ cursor: pointer; \}/);
     assert.match(css, /\.table tr\.just-extended td \{ animation: extended-flash/);
 });
+
+test('Extend in Options opens the dialog on top of Options, so Cancel returns to Options instead of closing it', async () => {
+    const ctx = makeApp();
+    const options = (await request(ctx.app).get('/stash-options.js').expect(200)).text;
+    assert.match(options, /\$\('optExtendButton'\)\.addEventListener\('click', openExtend\);/);
+    assert.doesNotMatch(options, /\$\('optionsDialog'\)\.close\(\);\s*openExtend\(\)/);
+    // Selecting clips is different: it needs the page, so that one does close Options
+    assert.match(options, /\$\('optSelectClips'\)\.addEventListener\('click', function \(\) \{\s*\$\('optionsDialog'\)\.close\(\);/);
+});
+
+test('the listing says whether Never is allowed, and the Extend dialog explains when it is not', async () => {
+    const ctx = makeApp();
+    await request(ctx.app).post('/api/stashes').send({ slug: 'never-hint-stash', ttl: '1d' }).expect(201);
+    const off = (await request(ctx.app).get('/api/stashes/never-hint-stash').expect(200)).body;
+    assert.equal(off.neverAllowed, false);
+    assert.ok(!off.extendChoices.some(c => c.never), 'no Never choice');
+    ctx.settings.update({ allowNoExpiry: true });
+    const on = (await request(ctx.app).get('/api/stashes/never-hint-stash').expect(200)).body;
+    assert.equal(on.neverAllowed, true);
+    assert.ok(on.extendChoices.some(c => c.never), 'a Never choice');
+
+    const options = (await request(ctx.app).get('/stash-options.js').expect(200)).text;
+    assert.match(options, /state\.stash\.expiresAt && !state\.stash\.neverAllowed/);
+    assert.match(options, /Never is not offered: this server does not allow stashes that never expire\. An admin can turn it on in Admin > Settings > Stashes\./);
+});
