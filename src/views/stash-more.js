@@ -33,6 +33,8 @@
         window.removeEventListener('scroll', onAway, true);
         button.setAttribute('aria-expanded', 'false');
         open = null;
+        // Not open any more: its history entry (see back.js) goes too
+        if (window.StashlyBack) window.StashlyBack.release('more-menu');
         if (returnFocus) button.focus();
     }
 
@@ -92,6 +94,8 @@
         menu.style.left = Math.max(8, Math.min(window.innerWidth - width - 8, at.right - width)) + 'px';
         button.setAttribute('aria-expanded', 'true');
         open = { menu: menu };
+        // Back closes the menu (back.js)
+        if (window.StashlyBack) window.StashlyBack.push('more-menu', function () { close(false); });
         document.addEventListener('pointerdown', onOutside, true);
         document.addEventListener('keydown', onKey, true);
         window.addEventListener('resize', onAway);

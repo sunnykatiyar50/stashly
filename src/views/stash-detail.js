@@ -99,6 +99,11 @@
         $('split').classList.toggle('show-detail', pane === 'right');
         // On a phone the composer would crowd out an open clip
         sections.main.classList.toggle('detail-open', pane === 'right');
+        // On a phone the clip takes the whole screen, so Back goes from it to the list (back.js) instead of leaving the stash
+        if (window.StashlyBack && narrow.matches) {
+            if (pane === 'right') window.StashlyBack.push('clip', function () { setPane('list'); });
+            else window.StashlyBack.release('clip');
+        }
     }
 
     // Nothing open: the right pane shows a hint
