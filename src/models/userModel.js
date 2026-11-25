@@ -206,6 +206,27 @@ class UserModel {
             .run(userId);
     }
 
+    // Makes toUserId the owner of the stash (a stash row as read from the database). Both people are put in each other's
+    // position in one step: the new owner gets a follow row (an owner needs none to open the stash, but the dashboard and the
+    // new-items counts work from it), and the previous owner, when there was one, stays on as a follower with the access they
+    // had, so a transfer does not lock them out. That access ends the way any follower's does: when the password changes or
+    // the stash signs everyone out, which the new owner can do. Returns false when the stash or the user is gone.
+    setStashOwner(stash, toUserId, previousOwnerId = null, now = new Date()) {
+        const grant = { role: 'full', salt: stash.password_salt || null, version: stash.session_version || 0 };
+        this.db.exec('BEGIN');
+        try {
+            const changed = this.db.prepare('UPDATE stashes SET owner_id = ? WHERE id = ?').run(toUserId, stash.id).changes;
+            if (!changed) { this.db.exec('ROLLBACK'); return false; }
+            this.follow(toUserId, stash.id, grant, now);
+            if (previousOwnerId && previousOwnerId !== toUserId) this.follow(previousOwnerId, stash.id, grant, now);
+            this.db.exec('COMMIT');
+            return true;
+        } catch (err) {
+            this.db.exec('ROLLBACK');
+            throw err;
+        }
+    }
+
     unfollow(userId, stashId) {
         return this.db.prepare('DELETE FROM user_stashes WHERE user_id = ? AND stash_id = ?').run(userId, stashId).changes > 0;
     }

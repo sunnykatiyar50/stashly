@@ -12,6 +12,7 @@ const { noopAudit } = require('../utils/auditLog');
 const { noopMetrics } = require('../utils/metrics');
 const { validAddress } = require('../utils/mailer');
 const { generateLinkToken, hashLinkToken } = require('../utils/token');
+const { normalizeUsername } = require('../models/userModel');
 const templates = require('../utils/emailTemplates');
 
 // Windows can briefly hold a file that was just closed, so a few tries
@@ -72,6 +73,9 @@ class AdminController {
             // The user who made it (null: a guest did). An admin cannot reset the password of a stash that has an owner.
             owner: row.owner || null,
             canResetPassword: this.config.adminCanResetStashPasswords && !row.owner_id,
+            // An admin can give a guest's stash to a user. On a password-protected one that also lets that user in without the
+            // password, which is the same power as resetting its password, so it is switched off together with it.
+            canSetOwner: Boolean(this.users) && !row.owner_id && (!row.has_password || this.config.adminCanResetStashPasswords),
         };
     }
 
@@ -108,6 +112,26 @@ class AdminController {
         if (!extended) return res.status(400).json({ error: 'This stash never expires, so there is nothing to extend.' });
         this.events.publish(stash.slug, 'stash-extended', { expiresAt: extended.expires_at });
         res.json({ expiresAt: extended.expires_at });
+    };
+
+    // Gives a stash that has no owner (a guest made it, or its owner's account was deleted) to a user. The people already using it
+    // keep what they have; the user becomes its owner, with all that means (always in their list, opens with no password, may
+    // change the password and transfer it on). A stash that already has an owner can only be passed on by that owner.
+    setOwner = (req, res) => {
+        const stash = this.findStash(req, res);
+        if (!stash) return;
+        if (!this.users) return res.status(404).json({ error: 'Accounts are not enabled on this server.' });
+        if (stash.owner_id) {
+            return res.status(409).json({ error: 'This stash already has an owner. Only its owner can pass it on.' });
+        }
+        if (stash.password_hash && !this.config.adminCanResetStashPasswords) {
+            return res.status(403).json({ error: 'Choosing an owner for a password-protected stash lets that user in without the password, so it is switched off together with resetting stash passwords on this server.' });
+        }
+        const user = this.users.findByUsername(normalizeUsername(req.body && req.body.username));
+        if (!user || user.disabled) return res.status(404).json({ error: 'No active user has that username.', field: 'username' });
+        if (!this.users.setStashOwner(stash, user.id, null, this.now())) return res.status(404).json({ error: 'That stash does not exist (it may have expired).' });
+        this.audit('stash.owner_set_by_admin', { req, stash, actor: 'admin', detail: { user: user.id } });
+        res.json({ ok: true, owner: user.username });
     };
 
     // Sets (or replaces) a stash's password. Everyone signed in to it is signed out, its read-only and drop-box links

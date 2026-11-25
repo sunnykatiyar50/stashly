@@ -124,6 +124,7 @@ function createStashRoutes({ controller, config }) {
     // The wrong-password limit applies here too: a stranger at an unlocked browser cannot guess the current password
     router.post('/:slug/password', unlockLimiter, ...full, c.changePassword);
     router.post('/:slug/rename', postLimiter, ...full, c.rename);
+    router.post('/:slug/owner', postLimiter, ...full, c.transferOwner);
     router.post('/:slug/sign-out-others', ...full, c.signOutOthers);
     router.post('/:slug/share-links', ...full, c.createShareLink);
     router.delete('/:slug/share-links/:kind', ...full, c.revokeShareLink);

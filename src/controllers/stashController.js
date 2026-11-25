@@ -15,7 +15,7 @@ const { ZipWriter } = require('../utils/zipWriter');
 const { planExport } = require('../utils/stashExport');
 const { noopAudit } = require('../utils/auditLog');
 const { noopMetrics } = require('../utils/metrics');
-const { grantRole } = require('../models/userModel');
+const { grantRole, normalizeUsername } = require('../models/userModel');
 
 // Three cookies per stash: full access (the password), or one of the two share links. The names cannot collide,
 // because the prefixes differ before the stash name starts.
@@ -554,6 +554,23 @@ class StashController {
         this.audit('stash.renamed', { req, stash: updated, detail: { from: this.audit.tag(stash.slug), to: this.audit.tag(updated.slug) } });
         this.events.closeAll(stash.slug, 'stash-renamed', { slug: updated.slug, origin: this.withOrigin({}, req).origin });
         res.json({ ok: true, slug: updated.slug, url: `/s/${updated.slug}` });
+    };
+
+    // The owner passes the stash on to another user (by username). Only the owner can: someone who merely knows the password
+    // cannot, and neither can an admin (they can only give an ownerless stash an owner). The previous owner stays on as a
+    // follower with the access they had; the new owner can change the password to end that. The new owner is told nothing but
+    // finds it in My stashes, marked Yours.
+    transferOwner = (req, res) => {
+        const stash = req.stash;
+        if (!this.users) return res.status(404).json({ error: 'Accounts are not enabled on this server.' });
+        if (!this.isOwner(req, stash)) return res.status(403).json({ error: 'Only the owner of this stash can pass it on.' });
+        const to = this.users.findByUsername(normalizeUsername(req.body && req.body.username));
+        // The same answer for a name that does not exist and an account that is switched off
+        if (!to || to.disabled) return res.status(404).json({ error: 'No active user has that username.', field: 'username' });
+        if (to.id === req.user.id) return res.status(400).json({ error: 'You already own this stash.', field: 'username' });
+        if (!this.users.setStashOwner(stash, to.id, req.user.id, this.now())) return res.status(404).json({ error: 'That stash does not exist (it may have expired).' });
+        this.audit('stash.ownership_transferred', { req, stash, detail: { to: to.id } });
+        res.json({ ok: true, owner: to.username });
     };
 
     // Changes the stash's password. Stashly has no accounts, so there is no separate "owner": the owner is whoever knows

@@ -237,6 +237,23 @@
             </div>
         </form>
     </dialog>
+    <dialog id="ownerDialog" class="qr-dialog share-dialog" aria-labelledby="ownerTitle">
+        <form id="ownerForm" class="qr-body share-body" novalidate>
+            <h2 id="ownerTitle">Set owner</h2>
+            <p class="muted" id="ownerIntro"></p>
+            <p class="muted">The user becomes the owner: the stash is always in their My stashes, they open it with no password, and they can change its password and pass it on. People already using it keep the access they have. Only an owner can pass a stash on later, so this cannot be changed from here afterwards.</p>
+            <p class="muted hidden" id="ownerLockedNote">This stash has a password. Its new owner can open it without the password.</p>
+            <div class="field">
+                <label for="ownerSelect">New owner</label>
+                <select id="ownerSelect"></select>
+                <small class="field-error" id="ownerError" role="alert"></small>
+            </div>
+            <div class="qr-actions">
+                <button type="button" id="ownerCancel" class="ghost">Cancel</button>
+                <button type="submit" id="ownerSave" class="primary">Set owner</button>
+            </div>
+        </form>
+    </dialog>
     <dialog id="userPasswordDialog" class="qr-dialog share-dialog" aria-labelledby="userPasswordTitle">
         <form id="userPasswordForm" class="qr-body share-body" novalidate>
             <h2 id="userPasswordTitle">Reset password</h2>

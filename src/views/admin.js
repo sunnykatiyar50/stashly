@@ -171,7 +171,7 @@
         var ownerCell = cell(stash.owner || 'Guest', stash.owner ? 'owner-cell' : 'owner-cell muted');
         ownerCell.title = stash.owner
             ? 'Made by ' + stash.owner + '. The owner can change its password; an admin cannot reset it.'
-            : 'Made by a guest, so it has no owner.';
+            : 'Made by a guest, so it has no owner. An admin can give it one (More actions > Set owner).';
         tr.appendChild(ownerCell);
         tr.appendChild(cell(String(stash.items), 'num'));
         tr.appendChild(cell(String(stash.files), 'num'));
@@ -196,6 +196,11 @@
         var items = [];
         if (stash.canResetPassword) {
             items.push({ label: stash.hasPassword ? 'Change password' : 'Set password', onClick: function () { openPasswordDialog(stash); }, ariaLabel: (stash.hasPassword ? 'Change password of ' : 'Set a password on ') + stash.slug });
+            items.push(null);
+        }
+        // A stash no user owns (a guest made it, or its owner was deleted) can be given an owner
+        if (stash.canSetOwner) {
+            items.push({ label: 'Set owner', onClick: function () { openOwnerDialog(stash); }, ariaLabel: 'Set the owner of ' + stash.slug });
             items.push(null);
         }
         items.push({ label: 'Delete', danger: true, onClick: function () { deleteStash(stash); }, ariaLabel: 'Delete ' + stash.slug });
@@ -252,6 +257,64 @@
         }).catch(function () {
             $('passwordSave').disabled = false;
             $('passwordError').textContent = 'Could not reach the server.';
+        });
+    });
+
+    // ---- give a stash with no owner to a user ----
+
+    var ownerDialog = $('ownerDialog');
+    var ownerTarget = null;
+
+    function openOwnerDialog(stash) {
+        ownerTarget = stash;
+        $('ownerTitle').textContent = 'Set the owner of ' + stash.slug;
+        $('ownerIntro').textContent = 'A guest made this stash, so it has no owner.';
+        $('ownerLockedNote').classList.toggle('hidden', !stash.hasPassword);
+        $('ownerError').textContent = '';
+        var select = $('ownerSelect');
+        select.textContent = '';
+        select.disabled = true;
+        $('ownerSave').disabled = true;
+        if (typeof ownerDialog.showModal === 'function') ownerDialog.showModal(); else ownerDialog.setAttribute('open', '');
+        // The accounts as they are now, switched-off ones left out
+        api('/api/admin/users').then(function (res) {
+            if (userStatus(res)) { ownerDialog.close(); return; }
+            if (!res.ok) { $('ownerError').textContent = 'Could not load the users.'; return; }
+            var users = res.body.users.filter(function (user) { return !user.disabled; });
+            if (!users.length) { $('ownerError').textContent = 'There is no active user to give it to. Make an account first (Users).'; return; }
+            users.forEach(function (user) {
+                var option = document.createElement('option');
+                option.value = user.username;
+                option.textContent = user.displayName ? user.displayName + ' (' + user.username + ')' : user.username;
+                select.appendChild(option);
+            });
+            select.disabled = false;
+            $('ownerSave').disabled = false;
+            select.focus();
+        }).catch(function () { $('ownerError').textContent = 'Could not reach the server.'; });
+    }
+
+    $('ownerCancel').addEventListener('click', function () { ownerDialog.close(); });
+    ownerDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
+    $('ownerForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        var username = $('ownerSelect').value;
+        if (!username || !ownerTarget) return;
+        $('ownerError').textContent = '';
+        $('ownerSave').disabled = true;
+        api('/api/admin/stashes/' + encodeURIComponent(ownerTarget.slug) + '/owner', { method: 'POST', body: { username: username } }).then(function (res) {
+            $('ownerSave').disabled = false;
+            if (res.status === 401) { ownerDialog.close(); return expired(); }
+            if (res.ok) {
+                ownerDialog.close();
+                toast('"' + ownerTarget.slug + '" is now owned by ' + res.body.owner + '.');
+                loadStashes();
+            } else {
+                $('ownerError').textContent = (res.body && res.body.error) || 'Could not set the owner.';
+            }
+        }).catch(function () {
+            $('ownerSave').disabled = false;
+            $('ownerError').textContent = 'Could not reach the server.';
         });
     });
 
