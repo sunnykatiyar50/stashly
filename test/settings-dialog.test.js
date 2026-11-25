@@ -60,7 +60,12 @@ test('the hints are short lines with the rest in data-more (a tooltip, and an "i
 
 test('select mode has Move to..., and its dialog offers move or copy to a chosen stash', () => {
     const html = src('stash.html');
-    assert.match(html, /id="bulkMove" class="ghost small hidden" disabled>Move to\.\.\.</);
+    // The selection actions are icon buttons, each named by its tooltip and label
+    const bar = html.slice(html.indexOf('<span class="bulk-actions">'), html.indexOf('</span>', html.indexOf('<span class="bulk-actions">')));
+    for (const [id, label] of [['bulkPin', 'Pin'], ['bulkUnpin', 'Unpin'], ['bulkMove', 'Move to...'], ['bulkTag', 'Tag'], ['bulkUntag', 'Untag'], ['bulkDelete', 'Delete']]) {
+        assert.ok(bar.includes('id="' + id + '"') && bar.includes('title="' + label + '" aria-label="' + label + '"'), id);
+    }
+    assert.match(bar, /id="bulkMove" class="ghost small icon-action hidden"/);
     const move = html.slice(html.indexOf('<dialog id="moveDialog"'), html.indexOf('<dialog id="shareDialog"'));
     assert.match(move, /id="moveTarget"/);
     assert.match(move, /name="moveMode" value="move" checked/);
