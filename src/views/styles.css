@@ -908,6 +908,8 @@ body:not(.stash-open) .in-topbar { display: none; }
 .opt-nav-item.danger { color: var(--danger); }
 .opt-nav-item.danger[aria-selected="true"] { background: var(--danger-soft); color: var(--danger); }
 .opt-nav-item.hidden { display: none; }
+/* The short label is for a phone only */
+.opt-short { display: none; }
 /* A fixed height, so the dialog is the same size whichever group is open; it changes only with the window */
 .opt-scroll { min-width: 0; height: min(62vh, 480px); overflow-y: auto; padding-right: 4px; }
 .opt-section { display: flex; flex-direction: column; gap: 10px; }
@@ -933,9 +935,12 @@ body:not(.stash-open) .in-topbar { display: none; }
 @media (max-width: 760px) {
     #optionsDialog .qr-body { padding: 16px; }
     .opt-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-    .opt-nav { flex-direction: row; overflow-x: auto; padding: 0 0 8px; border-right: none; border-bottom: 1px solid var(--border); scrollbar-width: none; }
-    .opt-nav::-webkit-scrollbar { display: none; }
-    .opt-nav-item { width: auto; flex: none; gap: 7px; padding: 8px 11px; font-size: 13.5px; }
+    /* The tabs share one row, equal widths, the icon above a short label: all of them are in view, nothing to scroll to */
+    .opt-nav { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; padding: 0 0 8px; border-right: none; border-bottom: 1px solid var(--border); }
+    .opt-nav-item { flex-direction: column; justify-content: center; gap: 4px; width: auto; padding: 7px 2px; font-size: 11.5px; text-align: center; white-space: normal; }
+    .opt-nav-item svg { width: 18px; height: 18px; }
+    .opt-long { display: none; }
+    .opt-short { display: inline; }
     .opt-scroll { height: min(64vh, 520px); }
 }
 

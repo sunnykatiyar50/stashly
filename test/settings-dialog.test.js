@@ -26,6 +26,9 @@ test('Options has five groups as a side list of tabs, one panel each, and the ro
     assert.deepEqual(tabs, ['general', 'organize', 'access', 'device', 'danger']);
     const panels = [...dialog.matchAll(/id="optSection-([a-z]+)"[^>]*role="tabpanel" aria-labelledby="optNav-\1"/g)].map(m => m[1]);
     assert.deepEqual(panels, tabs);
+    // The two long labels have a short form for a phone
+    assert.match(dialog, /<span class="opt-long">This device<\/span><span class="opt-short">Device<\/span>/);
+    assert.match(dialog, /<span class="opt-long">Danger zone<\/span><span class="opt-short">Danger<\/span>/);
     // Panels start hidden; the script shows the one that is open
     assert.equal((dialog.match(/class="opt-section[^"]* hidden"/g) || []).length, 5);
     assert.deepEqual(rowsIn(sectionOf(dialog, 'general')), ['rename', 'expiry', 'owner']);
@@ -102,5 +105,9 @@ test('the styles put the groups down the side, and across the top on a phone, wi
     assert.match(css, /\.opt-layout \{ display: grid; grid-template-columns: 170px minmax\(0, 1fr\);/);
     // On a phone: one column, and the list becomes a row of tabs
     const phone = css.slice(css.indexOf('.opt-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }'));
-    assert.match(phone, /\.opt-nav \{ flex-direction: row; overflow-x: auto;/);
+    // The tabs share the row in equal widths (all in view, nothing to scroll to), icon above a short label
+    assert.match(phone, /\.opt-nav \{ display: grid; grid-auto-flow: column; grid-auto-columns: minmax\(0, 1fr\);/);
+    assert.doesNotMatch(phone, /\.opt-nav \{[^}]*overflow-x/);
+    assert.match(phone, /\.opt-nav-item \{ flex-direction: column;/);
+    assert.match(phone, /\.opt-long \{ display: none; \}\s*\.opt-short \{ display: inline; \}/);
 });

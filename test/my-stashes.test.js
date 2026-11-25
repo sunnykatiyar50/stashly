@@ -73,5 +73,5 @@ test('the Options dialog keeps one size whichever group is open: fixed width and
     assert.match(css, /\.opt-scroll \{ min-width: 0; height: min\(62vh, 480px\); overflow-y: auto;/);
     assert.doesNotMatch(css, /\.opt-scroll \{[^}]*(?:min|max)-height/);
     // The same on a phone
-    assert.match(css.slice(css.indexOf('.opt-nav-item { width: auto; flex: none;')), /\.opt-scroll \{ height: min\(64vh, 520px\); \}/);
+    assert.match(css, /\.opt-scroll \{ height: min\(64vh, 520px\); \}/);
 });
