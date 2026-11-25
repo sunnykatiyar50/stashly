@@ -42,6 +42,7 @@ function createAdminRoutes({ controller, users, adminAuth, config }) {
     router.delete('/stashes/:slug', admin, c.deleteStash);
     router.post('/stashes/:slug/extend', admin, c.extendStash);
     router.put('/stashes/:slug/password', admin, c.setPassword);
+    router.post('/stashes/:slug/owner', admin, c.setOwner);
     router.get('/backup', admin, backupLimiter, c.backup);
     router.get('/settings', admin, c.getSettings);
     router.put('/settings', admin, c.putSettings);

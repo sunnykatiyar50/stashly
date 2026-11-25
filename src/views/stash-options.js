@@ -85,6 +85,48 @@
         }).catch(function () { $('renameSave').disabled = false; error.textContent = 'Could not reach the server.'; });
     });
 
+    // Passing ownership on (the owner only). The server checks everything; this asks once more, since only the new owner can
+    // undo it. Afterwards the page is loaded again, because it no longer belongs to you.
+    var ownerForm = $('ownerForm');
+
+    function closeOwnerForm() {
+        ownerForm.classList.add('hidden');
+        ownerForm.reset();
+        $('ownerError').textContent = '';
+        $('ownerToggle').classList.remove('hidden');
+    }
+
+    $('ownerToggle').addEventListener('click', function (event) {
+        ownerForm.classList.remove('hidden');
+        event.currentTarget.classList.add('hidden');
+        $('ownerInput').focus();
+    });
+
+    $('ownerCancel').addEventListener('click', closeOwnerForm);
+
+    ownerForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var error = $('ownerError');
+        error.textContent = '';
+        var username = $('ownerInput').value.trim();
+        if (!username) { error.textContent = 'Enter the username of the new owner.'; $('ownerInput').focus(); return; }
+        if (!window.confirm('Pass "' + slug + '" on to ' + username + '? You will no longer own it, and only they can pass it on again.')) return;
+        $('ownerSave').disabled = true;
+        api(base + '/owner', { method: 'POST', body: { username: username } }).then(function (res) {
+            $('ownerSave').disabled = false;
+            if (res.ok) {
+                toast('"' + slug + '" now belongs to ' + res.body.owner + '.');
+                location.reload();
+            } else if (res.status === 401) {
+                $('optionsDialog').close();
+                locked();
+            } else {
+                error.textContent = (res.body && res.body.error) || 'Could not pass the stash on.';
+                $('ownerInput').focus();
+            }
+        }).catch(function () { $('ownerSave').disabled = false; error.textContent = 'Could not reach the server.'; });
+    });
+
     // Deleting the stash lives in Options, and needs the stash's name typed in, so it cannot happen by accident
     var deleteForm = $('deleteStashForm');
 
@@ -226,6 +268,9 @@
         document.querySelector('[data-option="keep"]').classList.toggle('hidden', !full);
         document.querySelector('[data-option="danger"]').classList.toggle('hidden', !full);
         document.querySelector('[data-option="rename"]').classList.toggle('hidden', !full);
+        // Only the owner can pass the stash on (the server checks it too)
+        document.querySelector('[data-option="owner"]').classList.toggle('hidden', !(full && state.stash && state.stash.owned));
+        closeOwnerForm();
         document.querySelector('[data-option="content"]').classList.toggle('hidden', !full);
         Array.prototype.forEach.call(document.querySelectorAll('input[name="stashContent"]'), function (input) {
             input.checked = input.value === stashContent();
