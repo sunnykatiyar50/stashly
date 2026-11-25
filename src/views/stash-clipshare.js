@@ -40,9 +40,7 @@
         var btn = button('Share', 'ghost', function () {
             var open = !(ui[item.id] && ui[item.id].open);
             ui[item.id] = Object.assign(ui[item.id] || {}, { open: open });
-            var box = document.querySelector('#detailBody .share-panel');
-            if (box) box.remove();
-            if (open) mount(item);
+            if (open) mount(item); else removePanel();
             btn.setAttribute('aria-expanded', String(open));
         });
         btn.setAttribute('aria-expanded', String(Boolean(ui[item.id] && ui[item.id].open)));
@@ -50,16 +48,20 @@
         return btn;
     }
 
-    // Puts the panel at the top of the clip's body (below the tags, when it has that line)
+    function removePanel() {
+        var old = document.querySelector('#detail .share-panel');
+        if (old) old.remove();
+    }
+
+    // Puts the panel straight under the row of buttons (back, actions), pushing the title and the clip below it
     function mount(item) {
-        var body = document.getElementById('detailBody');
-        var panel = panelFor(item);
-        var after = body.querySelector('.tag-editor');
-        if (after) after.after(panel); else body.insertBefore(panel, body.firstChild);
+        removePanel();
+        document.querySelector('#detail .pane-head').appendChild(panelFor(item));
     }
 
     // Called when the clip's pane is drawn: brings back the panel if it was open
     function restore(item) {
+        removePanel();
         if (canShare(item) && ui[item.id] && ui[item.id].open) mount(item);
     }
 

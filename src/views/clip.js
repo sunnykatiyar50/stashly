@@ -42,9 +42,27 @@
         $('clipBody').appendChild(make('p', 'muted', 'It may have expired, or the person who shared it may have cancelled it. Ask them for a new one.'));
     }
 
-    function button(label, className, onClick) {
-        var b = make('button', className, label);
+    var ICONS = {
+        copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+        check: '<polyline points="20 6 9 17 4 12"/>',
+        download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+        open: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>'
+    };
+
+    // Puts an icon and the words on a button or link, replacing what was there
+    function setLabel(el, icon, label) {
+        el.textContent = '';
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.innerHTML = ICONS[icon];
+        el.appendChild(svg);
+        el.appendChild(make('span', 'btn-text', label));
+    }
+
+    function button(label, icon, className, onClick) {
+        var b = make('button', className);
         b.type = 'button';
+        setLabel(b, icon, label);
         b.addEventListener('click', onClick);
         return b;
     }
@@ -75,16 +93,17 @@
                 pre.textContent = text;
             }
             body.appendChild(pre);
-            actions.appendChild(button('Copy', 'primary', function (event) {
+            actions.appendChild(button('Copy', 'copy', 'primary', function (event) {
                 var target = event.currentTarget;
                 copy(text).then(function (ok) {
-                    target.textContent = ok ? 'Copied' : 'Select the text and copy it';
-                    setTimeout(function () { target.textContent = 'Copy'; }, 1500);
+                    setLabel(target, ok ? 'check' : 'copy', ok ? 'Copied' : 'Select the text and copy it');
+                    setTimeout(function () { setLabel(target, 'copy', 'Copy'); }, 1500);
                 });
             }));
         } else {
             $('clipMeta').textContent = [clip.fileName, size(clip.fileSize), when].join(' · ');
-            var download = make('a', 'button-link primary-link', 'Download');
+            var download = make('a', 'button-link primary-link');
+            setLabel(download, 'download', 'Download');
             download.href = clip.fileUrl + '?download=1';
             download.setAttribute('download', clip.fileName);
             actions.appendChild(download);
@@ -115,7 +134,8 @@
                 card.appendChild(info);
                 body.appendChild(card);
                 if (type === 'application/pdf') {
-                    var open = make('a', 'button-link', 'Open');
+                    var open = make('a', 'button-link');
+                    setLabel(open, 'open', 'Open');
                     open.href = clip.fileUrl + '?view=1';
                     open.target = '_blank';
                     open.rel = 'noopener noreferrer';
@@ -124,8 +144,7 @@
             }
         }
 
-        $('clipNote').textContent = (clip.expiresAt ? 'This link works until ' + new Date(clip.expiresAt).toLocaleString() + '. ' : 'This link does not expire. ') +
-            'It opens only this clip, nothing else in the stash.';
+        $('clipNote').textContent = clip.expiresAt ? 'Expires ' + new Date(clip.expiresAt).toLocaleString() : 'Does not expire';
     }
 
     if (!token) { gone(); return; }

@@ -961,7 +961,8 @@ body:not(.stash-open) .in-topbar { display: none; }
 /* ===== Open clip: buttons on the first row, the title across the full width under them ===== */
 #detail .pane-head { align-items: center; row-gap: 12px; }
 #detail .detail-actions { order: 1; margin-left: auto; justify-content: flex-end; }
-#detail .pane-title { order: 2; flex: 1 1 100%; }
+#detail .share-panel { order: 2; flex: 1 1 100%; margin: 0; }
+#detail .pane-title { order: 3; flex: 1 1 100%; }
 #detail .pane-title h2 { font-size: 18px; }
 @media (max-width: 760px) {
     /* Phones: the open clip's buttons are icons only, so they fit on one row with the back button */
@@ -995,7 +996,8 @@ body:not(.stash-open) .in-topbar { display: none; }
 }
 
 /* Share one clip by link. The panel sits above the open clip; the public page (clip.html) is a single centred column. */
-.share-panel { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-alt); }
+.share-panel { margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface-alt); }
+.detail-actions button[aria-expanded="true"] { border-color: var(--blue); color: var(--blue); background: var(--blue-soft); }
 .share-panel-body { display: flex; flex-direction: column; gap: 8px; }
 .share-title { font-size: 14px; }
 .share-state { font-size: 13px; }
@@ -1004,10 +1006,16 @@ body:not(.stash-open) .in-topbar { display: none; }
 .share-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .share-expiry { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-soft); }
 .share-expiry select { width: auto; padding: 4px 8px; }
-.clip-share { width: min(820px, 100%); margin: auto; display: flex; flex-direction: column; gap: 14px; padding: 12px 0; }
-.clip-share-head { display: flex; flex-direction: column; gap: 4px; }
-.clip-share-head h1 { font-size: 24px; overflow-wrap: anywhere; }
-.clip-share-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.view:has(> .clip-share) { display: flex; min-height: calc(100vh - 48px); }
+.clip-share { width: min(820px, 100%); margin: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px 0; }
+.clip-share-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 14px; }
+.clip-share-head h1 { font-size: 24px; overflow-wrap: anywhere; min-width: 0; flex: 1 1 0; }
+.clip-share .detail-actions { flex: 0 0 auto; }
+.clip-share .detail-actions svg { width: 15px; height: 15px; }
+.clip-share-meta { font-size: 13px; }
+.clip-share-body { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; min-width: 0; padding: 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-alt); }
+.clip-share-body > * { max-width: 100%; }
+.clip-share-body .detail-text { width: 100%; border: 0; background: none; padding: 0; }
 .clip-share-note { font-size: 12.5px; }
 
 /* Files that arrived with a share (the share page): one row each, with a way to drop it before sending */
