@@ -73,6 +73,13 @@
             button.addEventListener('click', function () { extendTo(choice, button); });
             list.appendChild(button);
         });
+        // "Never" is an admin setting; without it the list stops at the longest length, so say why there is no such choice
+        if (state.stash.expiresAt && !state.stash.neverAllowed) {
+            var note = document.createElement('p');
+            note.className = 'muted extend-note';
+            note.textContent = 'Never is not offered: this server does not allow stashes that never expire. An admin can turn it on in Admin > Settings > Stashes.';
+            list.appendChild(note);
+        }
         if (typeof extendDialog.showModal === 'function') extendDialog.showModal(); else extendDialog.setAttribute('open', '');
         var first = list.querySelector('button');
         if (first) first.focus();
