@@ -31,7 +31,7 @@ const IN_SETTINGS = [
     'STASH_UNLOCK_WINDOW_MIN', 'RATE_USER_LOGIN', 'RATE_ADMIN_LOGIN', 'FILE_TYPES', 'ALLOW_NO_EXPIRY', 'UNDO_SECONDS',
     'REQUIRE_ADMIN_TO_CREATE', 'REQUIRE_LOGIN_TO_CREATE', 'ADMIN_CAN_RESET_STASH_PASSWORDS', 'RATE_CREATE', 'RATE_POST',
     'RATE_UPLOAD', 'RATE_READ', 'SMTP_ENABLED', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURITY', 'SMTP_USER', 'SMTP_PASSWORD',
-    'SMTP_FROM', 'SMTP_FROM_NAME', 'EMAIL_PER_HOUR', 'PUBLIC_URL',
+    'SMTP_FROM', 'SMTP_FROM_NAME', 'EMAIL_PER_HOUR', 'PUBLIC_URL', 'MCP_ENABLED',
 ];
 
 const example = fs.readFileSync(path.join(root, '.env.example'), 'utf8');
@@ -66,5 +66,5 @@ test('every variable that has a setting is a real setting, and is documented in 
     }
     // the settings page has a setting for each group the configuration doc names
     const groups = new Set(Object.values(FIELDS).map(field => field.group));
-    for (const group of ['Limits', 'Security', 'Files', 'Stashes', 'Rate limits', 'Email']) assert.ok(groups.has(group), group);
+    for (const group of ['Limits', 'Security', 'Files', 'Stashes', 'Rate limits', 'Email', 'MCP']) assert.ok(groups.has(group), group);
 });

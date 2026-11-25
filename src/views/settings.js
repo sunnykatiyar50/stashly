@@ -232,6 +232,7 @@
         Stashes: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>',
         'Rate limits': '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>',
         Email: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg>',
+        MCP: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="1"/><rect x="4" y="14" width="16" height="6" rx="1"/><line x1="8" y1="7" x2="8.01" y2="7"/><line x1="8" y1="17" x2="8.01" y2="17"/></svg>',
         other: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg>'
     };
 
@@ -296,9 +297,123 @@
             if (group.name === ACCOUNT_TAB) panel.appendChild($('accountContent'));
             group.fields.forEach(function (field) { panel.appendChild(settingRow(field)); });
             if (group.name === 'Email') panel.appendChild(emailTestBox());
+            if (group.name === 'MCP') panel.appendChild(mcpBox());
         });
         setTabOrientation();
         selectGroup(activeGroup, false);
+    }
+
+    // The MCP tab: where the endpoint is, whether it is running (it starts with the server, so turning it on needs a restart), and
+    // its access token, which is made here, shown once and can be replaced or cancelled
+    function mcpBox() {
+        var box = document.createElement('div');
+        box.className = 'email-test mcp-box';
+        var title = document.createElement('h3');
+        title.textContent = 'Connect an AI assistant';
+        var status = document.createElement('p');
+        status.className = 'form-status';
+        status.setAttribute('role', 'status');
+        var detail = document.createElement('div');
+        detail.className = 'mcp-detail';
+        box.appendChild(title);
+        box.appendChild(status);
+        box.appendChild(detail);
+
+        function el(tag, className, text) {
+            var node = document.createElement(tag);
+            if (className) node.className = className;
+            if (text !== undefined) node.textContent = text;
+            return node;
+        }
+
+        function copy(text, trigger) {
+            var done = function (ok) {
+                var label = trigger.textContent;
+                trigger.textContent = ok ? 'Copied' : 'Select and copy by hand';
+                setTimeout(function () { trigger.textContent = label; }, 1500);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+            else done(false);
+        }
+
+        function readonlyRow(value, label) {
+            var row = el('div', 'input-row');
+            var input = el('input', 'wide-input');
+            input.type = 'text';
+            input.readOnly = true;
+            input.value = value;
+            input.setAttribute('aria-label', label);
+            input.addEventListener('focus', function () { input.select(); });
+            var button = el('button', 'ghost', 'Copy');
+            button.type = 'button';
+            button.addEventListener('click', function () { copy(value, button); });
+            row.appendChild(input);
+            row.appendChild(button);
+            return row;
+        }
+
+        function draw(state, freshToken) {
+            detail.textContent = '';
+            var url = location.origin + state.path;
+            // Saved on, running on: good. Saved differently from what is running: a restart is what is missing.
+            if (state.enabled && state.running) status.textContent = 'The MCP server is running.';
+            else if (state.enabled && !state.running) status.textContent = 'The MCP server is switched on, but it starts with the server: restart Stashly to start it.';
+            else if (!state.enabled && state.running) status.textContent = 'The MCP server is still running. It stops when Stashly is restarted.';
+            else status.textContent = 'The MCP server is off. Turn on "Enable the MCP server" above, save, and restart Stashly.';
+            status.classList.toggle('error', state.enabled !== state.running);
+
+            detail.appendChild(el('strong', null, 'Address'));
+            detail.appendChild(readonlyRow(url, 'MCP address'));
+
+            detail.appendChild(el('strong', null, 'Access token'));
+            detail.appendChild(el('small', 'field-hint', state.tokenSet
+                ? 'A token is active (made ' + new Date(state.tokenCreatedAt).toLocaleString() + '). It is not shown again; make a new one to replace it, which stops the old one working at once.'
+                : 'No token yet. Assistants cannot connect until you make one. It is shown once, then only its hash is kept.'));
+            if (freshToken) {
+                detail.appendChild(readonlyRow(freshToken, 'New access token'));
+                detail.appendChild(el('small', 'field-hint', 'Copy it now: it is not shown again.'));
+            }
+            var actions = el('div', 'input-row');
+            var make = el('button', 'ghost', state.tokenSet ? 'Make a new token' : 'Make a token');
+            make.type = 'button';
+            make.addEventListener('click', function () {
+                if (state.tokenSet && !window.confirm('Make a new token? Assistants using the current one will stop working until they are given the new one.')) return;
+                make.disabled = true;
+                api('/api/admin/mcp/token', { method: 'POST' }).then(function (res) {
+                    if (res.status === 401 || res.status === 403) return adminEnded();
+                    if (res.ok) draw(res.body, res.body.token);
+                    else { make.disabled = false; toast((res.body && res.body.error) || 'Could not make the token.', true); }
+                    return null;
+                }).catch(function () { make.disabled = false; toast('Could not reach the server.', true); });
+            });
+            actions.appendChild(make);
+            if (state.tokenSet) {
+                var revoke = el('button', 'danger-ghost', 'Revoke');
+                revoke.type = 'button';
+                revoke.addEventListener('click', function () {
+                    if (!window.confirm('Revoke the token? Assistants using it stop working at once.')) return;
+                    revoke.disabled = true;
+                    api('/api/admin/mcp/token', { method: 'DELETE' }).then(function (res) {
+                        if (res.status === 401 || res.status === 403) return adminEnded();
+                        if (res.ok) draw(res.body, null); else revoke.disabled = false;
+                        return null;
+                    }).catch(function () { revoke.disabled = false; toast('Could not reach the server.', true); });
+                });
+                actions.appendChild(revoke);
+            }
+            detail.appendChild(actions);
+
+            detail.appendChild(el('strong', null, 'Connect Claude Code'));
+            detail.appendChild(readonlyRow('claude mcp add --transport http stashly ' + url + ' --header "Authorization: Bearer ' + (freshToken || '<your token>') + '"', 'Command to connect Claude Code'));
+            detail.appendChild(el('small', 'field-hint', 'Other clients that can send an Authorization header take the same address and token. Claude Desktop starts a local program instead; see docs/mcp.md.'));
+        }
+
+        api('/api/admin/mcp').then(function (res) {
+            if (res.status === 401 || res.status === 403) return adminEnded();
+            if (res.ok) draw(res.body, null); else status.textContent = 'Could not load the MCP status.';
+            return null;
+        }).catch(function () { status.textContent = 'Could not reach the server.'; });
+        return box;
     }
 
     // "Send a test email": uses the settings as they are saved, and shows what the mail server said when it fails

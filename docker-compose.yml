@@ -15,6 +15,11 @@ services:
     env_file:
       - path: .env
         required: false
+    # Pinned here, and not left to .env: an "environment" entry wins over env_file, so a SQLITE_PATH copied from a local-run
+    # setup (./stashly.sqlite) cannot move the database off the /data volume, into the container's own deletable filesystem.
+    # The uploaded files follow it (/data/files). To keep the data somewhere else, change the volume below, not this path.
+    environment:
+      SQLITE_PATH: /data/stashly.sqlite
     volumes:
       - stashly-data:/data
     restart: unless-stopped
