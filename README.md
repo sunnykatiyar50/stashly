@@ -51,6 +51,10 @@ stashly pull NAME ID --out copy.pdf        # download a file
 stashly export NAME --out all.zip          # the whole stash as a zip
 ```
 
+## For AI assistants (MCP)
+
+`bin/stashly-mcp.js` is a Model Context Protocol server, so Claude and other assistants can create a stash for a topic, push notes into it (with tags) and read them back. One file, no dependencies, and it never deletes anything. Setup and the tools are in [docs/mcp.md](docs/mcp.md).
+
 ## Browser extension
 
 A small extension for Chrome, Edge and Firefox sends notes, links and files to a stash from any tab, and lists, searches and copies your notes. Each release attaches it built for that version; see [extension/README.md](extension/README.md). What it and the server do with your data is in [PRIVACY.md](PRIVACY.md).
