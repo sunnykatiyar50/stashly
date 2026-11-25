@@ -138,45 +138,58 @@
         }).catch(function () { /* the next refresh tries again */ });
     }
 
+    // The stashes you own, then the ones you follow: two lists (each hidden when empty), pinned first in each
     function renderList(stashes) {
-        var list = $('followList');
-        list.textContent = '';
-        stashes.forEach(function (stash) { list.appendChild(buildCard(stash)); });
+        var owned = stashes.filter(function (stash) { return stash.owned; });
+        var followed = stashes.filter(function (stash) { return !stash.owned; });
+        fillGroup('owned', owned);
+        fillGroup('follow', followed);
         $('followEmpty').classList.toggle('hidden', stashes.length > 0);
     }
 
-    function buildCard(stash) {
-        var li = make('li', 'follow-item card' + (stash.needsPassword ? ' stale' : ''));
-        var main = make('div', 'follow-main');
+    function fillGroup(name, stashes) {
+        var list = $(name + 'List');
+        list.textContent = '';
+        stashes.forEach(function (stash) { list.appendChild(buildRow(stash)); });
+        $(name + 'Group').classList.toggle('hidden', stashes.length === 0);
+        $(name + 'Count').textContent = stashes.length ? String(stashes.length) : '';
+    }
 
-        var title = make('div', 'follow-title');
-        title.appendChild(make('span', 'mono follow-name', stash.slug));
+    // Constant markup from this file only
+    var PIN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 3h6l-1 7 4 3v2H6v-2l4-3z"/></svg>';
+    var GEAR_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+
+    // One compact row: the name with its tags, a line of facts, and the buttons
+    function buildRow(stash) {
+        var li = make('li', 'stash-row card' + (stash.needsPassword ? ' stale' : ''));
+
+        var id = make('div', 'stash-id');
+        id.appendChild(make('span', 'mono follow-name', stash.slug));
         if (stash.needsPassword) {
-            title.appendChild(make('span', 'chip warn', 'Needs the password again'));
+            id.appendChild(make('span', 'chip warn', 'Needs the password'));
         } else {
-            if (stash.owned) title.appendChild(make('span', 'chip owner-chip', 'Owner'));
+            if (stash.owned) id.appendChild(make('span', 'chip owner-chip', 'Owner'));
             if (stash.hasPassword) {
                 var lock = make('span', 'chip lock-chip');
                 lock.title = 'Password protected';
                 lock.setAttribute('role', 'img');
                 lock.setAttribute('aria-label', 'Password protected');
                 lock.innerHTML = LOCK_ICON;
-                title.appendChild(lock);
+                id.appendChild(lock);
             }
-            if (!stash.owned) title.appendChild(make('span', 'chip' + (stash.role === 'view' ? ' role-view' : ''), stash.role === 'view' ? 'Read-only' : 'Full access'));
-            if (stash.newItems > 0) title.appendChild(make('span', 'chip new-chip', stash.newItems + ' new'));
+            if (!stash.owned) id.appendChild(make('span', 'chip' + (stash.role === 'view' ? ' role-view' : ''), stash.role === 'view' ? 'Read-only' : 'Full access'));
+            if (stash.newItems > 0) id.appendChild(make('span', 'chip new-chip', stash.newItems + ' new'));
         }
-        main.appendChild(title);
+        li.appendChild(id);
 
-        var sub = make('div', 'follow-sub muted');
+        var sub = make('div', 'stash-meta muted');
         if (stash.needsPassword) {
-            sub.textContent = 'Its password or read-only link changed, so this account can no longer open it. Enter the password to follow it again.';
+            sub.textContent = 'Its password or link changed. Enter the password to follow it again.';
         } else {
             sub.textContent = stash.items + (stash.items === 1 ? ' item' : ' items') + (stash.files ? ' (' + stash.files + (stash.files === 1 ? ' file' : ' files') + ')' : '') +
-                ' · ' + (stash.latestAt ? 'last activity ' + relativeTime(stash.latestAt) : 'no activity yet') + ' · ' + expiryText(stash.expiresAt);
+                ' · ' + (stash.latestAt ? 'last ' + relativeTime(stash.latestAt) : 'no activity yet') + ' · ' + expiryText(stash.expiresAt);
         }
-        main.appendChild(sub);
-        li.appendChild(main);
+        li.appendChild(sub);
 
         var actions = make('div', 'row-actions');
         if (stash.needsPassword) {
@@ -188,14 +201,23 @@
             var open = make('a', 'button-link primary-link small', 'Open');
             open.href = '/s/' + encodeURIComponent(stash.slug);
             actions.appendChild(open);
-        }
-        if (!stash.needsPassword) {
-            var pin = make('button', 'ghost small pin-button' + (stash.pinned ? ' pinned' : ''), stash.pinned ? 'Unpin' : 'Pin');
+            var pin = make('button', 'ghost small icon-action pin-button' + (stash.pinned ? ' pinned' : ''));
             pin.type = 'button';
+            pin.innerHTML = PIN_ICON;
             pin.setAttribute('aria-pressed', String(Boolean(stash.pinned)));
-            pin.title = stash.pinned ? 'Remove from the pinned list in the left menu' : 'Show this stash in the left menu for quick switching';
+            pin.setAttribute('aria-label', (stash.pinned ? 'Unpin ' : 'Pin ') + stash.slug);
+            pin.title = stash.pinned ? 'Pinned: press to remove it from the left menu' : 'Pin it to the left menu for quick switching';
             pin.addEventListener('click', function () { pinStash(stash, !stash.pinned); });
             actions.appendChild(pin);
+            // Your own stash: its settings, without opening it first (the stash opens on its Options)
+            if (stash.owned) {
+                var settings = make('a', 'button-link ghost small icon-action');
+                settings.href = '/s/' + encodeURIComponent(stash.slug) + '#options';
+                settings.innerHTML = GEAR_ICON;
+                settings.setAttribute('aria-label', 'Settings for ' + stash.slug);
+                settings.title = 'Settings: name, expiry, tags, owner...';
+                actions.appendChild(settings);
+            }
         }
         // Only stashes someone else made can be unfollowed: your own stay in your list
         if (!stash.owned) {

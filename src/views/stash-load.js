@@ -145,7 +145,8 @@
         var data = null;
         try { data = JSON.parse(el.textContent); } catch (e) { data = null; }
         el.remove();
-        return location.hash || !data || !Array.isArray(data.items) ? null : data;
+        // (a link to the settings, #options, is not a share link: the page's own first batch is still used)
+        return (location.hash && !/^#options(=[a-z]+)?$/.test(location.hash)) || !data || !Array.isArray(data.items) ? null : data;
     })();
 
     // The listing request for one page. Sent in the body, not the address, so search words never end up in a proxy's
@@ -248,6 +249,8 @@
                 state.started = true;
                 // Desktop opens the newest clip (the usual reason to visit); a phone starts on the list
                 if (!narrow.matches && state.items.length) openItem(state.items[0].id);
+                // Arrived from the gear on My stashes: open the stash's Options (stash-options.js)
+                if (P.openOptionsFromAddress) P.openOptionsFromAddress();
             } else if (state.selectedId !== null && state.revealedId !== state.selectedId) {
                 if (findItem(state.selectedId)) { if (state.editingId !== state.selectedId) renderDetail(findItem(state.selectedId)); }
                 else showSomethingElse(previousIndex);

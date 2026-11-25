@@ -600,17 +600,34 @@ audio.detail-media { max-height: none; }
 .chip.role-admin { background: var(--blue-soft); color: var(--blue); }
 .chip.status-off { background: var(--danger-soft); color: var(--danger); }
 .refresh-info { font-size: 12px; }
-/* The My stashes page: a centred column with room to breathe, not a strip packed into the top-left corner */
-#viewAccount { padding: 32px clamp(16px, 4vw, 56px) 40px; gap: 20px; }
-#viewAccount > * { width: 100%; max-width: 860px; margin-inline: auto; }
-#viewAccount .view-header { gap: 12px 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+/* The My stashes page: wide, compact rows in two lists (the stashes you own, the ones you follow) */
+#viewAccount { padding: 28px clamp(16px, 4vw, 56px) 40px; gap: 18px; }
+#viewAccount > * { width: 100%; max-width: 1100px; margin-inline: auto; }
+#viewAccount .view-header { gap: 12px 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 #viewAccount .view-title h1 { font-size: 26px; }
 #viewAccount .view-title .muted { font-size: 14px; }
-#viewAccount .follow-list { max-width: 860px; gap: 14px; }
-#viewAccount .follow-item { padding: 18px 22px; gap: 14px 20px; }
-#viewAccount .follow-main { gap: 8px; }
-#viewAccount .follow-name { font-size: 17px; }
-#viewAccount .follow-sub { font-size: 13.5px; line-height: 1.5; }
+.stash-group { display: flex; flex-direction: column; gap: 8px; }
+.stash-group.hidden { display: none; }
+.group-title { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.group-count { padding: 0 8px; border-radius: 999px; background: var(--surface-alt); border: 1px solid var(--border); font-size: 11.5px; letter-spacing: 0; color: var(--text-soft); }
+#viewAccount .follow-list { max-width: none; gap: 6px; }
+/* One line on a wide screen: name and tags, facts, buttons */
+.stash-row { display: grid; grid-template-columns: minmax(200px, 1.15fr) minmax(0, 1.5fr) auto; align-items: center; gap: 6px 18px; padding: 8px 14px; min-height: 48px; }
+.stash-row.stale { border-style: dashed; }
+.stash-id { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.stash-id .follow-name { font-size: 15px; }
+.stash-meta { min-width: 0; font-size: 13px; line-height: 1.4; }
+.stash-row .row-actions { justify-content: flex-end; gap: 6px; }
+.icon-action { display: inline-flex; align-items: center; justify-content: center; padding: 5px 7px; }
+.icon-action svg { width: 16px; height: 16px; }
+.icon-action.pinned { color: var(--blue); border-color: var(--blue); }
+.icon-action.pinned svg { fill: currentColor; }
+@media (max-width: 760px) {
+    /* A phone: the name and the buttons on one line, the facts under them */
+    .stash-row { grid-template-columns: minmax(0, 1fr) auto; padding: 8px 12px; }
+    .stash-meta { grid-column: 1 / -1; grid-row: 2; }
+    .stash-row .row-actions { grid-column: 2; grid-row: 1; }
+}
 #viewAccount .empty-state { padding: 36px 16px; text-align: center; }
 #viewAccount .refresh-info { text-align: center; }
 .users-card { gap: 10px; }
@@ -883,7 +900,7 @@ body:not(.stash-open) .in-topbar { display: none; }
 .opt-layout.single { grid-template-columns: minmax(0, 1fr); }
 .opt-layout.single .opt-nav { display: none; }
 .opt-nav { display: flex; flex-direction: column; gap: 3px; padding-right: 14px; border-right: 1px solid var(--border); align-self: stretch; }
-.opt-nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 0; border-radius: 8px; background: none; color: var(--text-soft); font: inherit; font-size: 14px; text-align: left; cursor: pointer; white-space: nowrap; }
+.opt-nav-item { display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: 100%; padding: 9px 12px; border: 0; border-radius: 8px; background: none; color: var(--text-soft); font: inherit; font-size: 14px; text-align: left; cursor: pointer; white-space: nowrap; }
 .opt-nav-item svg { width: 16px; height: 16px; flex: none; }
 .opt-nav-item:hover { background: var(--surface-alt); color: var(--text); }
 .opt-nav-item:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }

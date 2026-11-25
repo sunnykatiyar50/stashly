@@ -110,7 +110,9 @@
     $('extendCancel').addEventListener('click', function () { extendDialog.close(); });
     extendDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
     $('extendButton').addEventListener('click', openExtend);
-    $('optExtendButton').addEventListener('click', function () { $('optionsDialog').close(); openExtend(); });
+    // Opened on top of Options, which stays under it: Cancel, Escape or Back come back to Options, and after extending the
+    // Expires row there already shows the new time
+    $('optExtendButton').addEventListener('click', openExtend);
 
     // The clock chip becomes the way in when the stash can be extended: easy to find, and it says what it does
     var expiryChip = $('expiryInfo');
@@ -642,6 +644,19 @@
     }
 
     $('optionsButton').addEventListener('click', function () { openOptions(); });
+
+    // A link to a stash's settings (the gear on My stashes) ends in #options, or #options=general / organize / access. Once the
+    // stash has loaded, Options opens on it and the address goes back to the stash's own.
+    function openOptionsFromAddress() {
+        var found = /^#options(?:=([a-z]+))?$/.exec(location.hash);
+        if (!found) return;
+        try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* the address keeps it */ }
+        // The stash's first batch can arrive while the page is still being read, before back.js is watching dialogs: wait until it is
+        // ready, so that Back closes Options instead of leaving the page
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { openOptions(found[1]); });
+        else openOptions(found[1]);
+    }
+    P.openOptionsFromAddress = openOptionsFromAddress;
 
     // From the notice that an admin chose this stash's password, straight to the form that puts it right
     $('resetNoticePassword').addEventListener('click', function () {

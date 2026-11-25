@@ -184,3 +184,12 @@ test('the pages carry the controls: the extend dialog, the clock chip as a butto
     assert.match(css, /\.chip\.extendable \{ cursor: pointer; \}/);
     assert.match(css, /\.table tr\.just-extended td \{ animation: extended-flash/);
 });
+
+test('Extend in Options opens the dialog on top of Options, so Cancel returns to Options instead of closing it', async () => {
+    const ctx = makeApp();
+    const options = (await request(ctx.app).get('/stash-options.js').expect(200)).text;
+    assert.match(options, /\$\('optExtendButton'\)\.addEventListener\('click', openExtend\);/);
+    assert.doesNotMatch(options, /\$\('optionsDialog'\)\.close\(\);\s*openExtend\(\)/);
+    // Selecting clips is different: it needs the page, so that one does close Options
+    assert.match(options, /\$\('optSelectClips'\)\.addEventListener\('click', function \(\) \{\s*\$\('optionsDialog'\)\.close\(\);/);
+});
