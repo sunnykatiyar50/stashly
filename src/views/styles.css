@@ -944,3 +944,8 @@ body:not(.stash-open) .in-topbar { display: none; }
 .clip-share-head h1 { font-size: 24px; overflow-wrap: anywhere; }
 .clip-share-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .clip-share-note { font-size: 12.5px; }
+
+/* Files that arrived with a share (the share page): one row each, with a way to drop it before sending */
+.share-files { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.share-file { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-alt); font-size: 13px; }
+.share-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }

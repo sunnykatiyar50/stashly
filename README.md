@@ -19,7 +19,7 @@ Everything else is optional:
 - **Keep it tidy**: pin items, drag to reorder, search, filter by date, or keep only the last N items so a stash works like a rolling clipboard.
 - **Handle sensitive notes**: **Burn after reading** shows a note once and deletes it; **Secret** hides it as dots; a note can delete itself after 5 minutes to a day.
 - **Undo a delete** for a couple of minutes, and **edit** notes in place.
-- **Install it on your phone** (HTTPS needed) and use your phone's share sheet to send text or links straight to a stash.
+- **Install it on your phone** (HTTPS needed) and use your phone's share sheet to send text, links, photos or any files straight to a stash (reinstall the app once if you installed it before files were supported: the share sheet only lists an app for files when the installed copy knows it takes them; iPhones and iPads do not offer web apps in the share sheet at all).
 - **Optional accounts**: if the server has them on, sign in to follow your stashes in one place, pin the ones you use most, and manage your details under **Settings**.
 
 All of it, with the details, is in [docs/features.md](docs/features.md).

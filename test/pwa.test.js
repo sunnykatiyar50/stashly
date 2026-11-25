@@ -12,8 +12,8 @@ test('the web app manifest is served with a share target that reaches the share 
     assert.equal(manifest.share_target.action, '/share');
     // POST, so what is shared never appears in an address (proxy logs, browser history)
     assert.equal(manifest.share_target.method, 'POST');
-    assert.equal(manifest.share_target.enctype, 'application/x-www-form-urlencoded');
-    assert.deepEqual(Object.keys(manifest.share_target.params).sort(), ['text', 'title', 'url']);
+    assert.equal(manifest.share_target.enctype, 'multipart/form-data');
+    assert.deepEqual(Object.keys(manifest.share_target.params).sort(), ['files', 'text', 'title', 'url']);
     // The share target must be inside the app's scope
     assert.ok(manifest.share_target.action.startsWith(manifest.scope));
 });
@@ -75,4 +75,56 @@ test('a note shared from the share page is added like any other', async () => {
         .expect(201);
     assert.equal(res.body.title, 'An article');
     assert.match(res.body.text, /https:\/\/example\.com\/a$/);
+});
+
+test('the share target accepts files of any type, so the app is offered for images and other files in the share sheet', async () => {
+    const { app } = makeApp();
+    const manifest = JSON.parse((await request(app).get('/manifest.webmanifest').expect(200)).text);
+    // Without a "files" entry a phone lists the app for text and links only
+    const files = manifest.share_target.params.files;
+    assert.ok(Array.isArray(files) && files.length === 1);
+    assert.equal(files[0].name, 'files');
+    assert.deepEqual(files[0].accept, ['*/*']);
+    assert.equal(manifest.share_target.enctype, 'multipart/form-data');
+});
+
+test('the service worker takes the share POST itself, keeps it in IndexedDB and sends the page to the share page; nothing goes to the server', async () => {
+    const { app } = makeApp();
+    const sw = (await request(app).get('/sw.js').expect(200)).text;
+    assert.match(sw, /request\.method !== 'POST'/);
+    assert.match(sw, /pathname !== '\/share'/);
+    assert.match(sw, /formData\(\)/);
+    assert.match(sw, /form\.getAll\('files'\)/);
+    assert.match(sw, /indexedDB\.open\('stashly-share'|DB_NAME = 'stashly-share'/);
+    assert.match(sw, /Response\.redirect\('\/share\?received=1', 303\)/);
+    // Still no cache: it is IndexedDB for one share at a time, never Cache Storage
+    assert.doesNotMatch(sw, /caches\.|cache\.put|addAll/);
+    // The share page reads from the same database and store
+    const page = (await request(app).get('/share.js').expect(200)).text;
+    assert.match(page, /indexedDB\.open\('stashly-share', 1\)/);
+    assert.match(page, /transaction\('pending'/);
+    assert.match(page, /get\('latest'\)/);
+});
+
+test('the share page lists shared files and loads the uploader it sends them with', async () => {
+    const { app } = makeApp();
+    const text = (await request(app).get('/share?received=1').expect(200)).text.replace(/\?v=[0-9a-f]+"/g, '"');
+    assert.match(text, /id="shareFiles"/);
+    assert.match(text, /id="shareUploads"/);
+    assert.ok(text.indexOf('src="/upload.js"') < text.indexOf('src="/share.js"'), 'upload.js loads before share.js');
+});
+
+test('files shared from the page go up like any other upload, with a title when there is one', async () => {
+    // The share page uses the ordinary single-file endpoint for a small file
+    const ctx = makeApp();
+    await request(ctx.app).post('/api/stashes').send({ slug: 'phone-files' }).expect(201);
+    const sent = await request(ctx.app)
+        .post('/api/stashes/phone-files/files')
+        .set('X-File-Name', encodeURIComponent('IMG_0001.png'))
+        .set('X-Title', encodeURIComponent('Receipt'))
+        .set('Content-Type', 'application/octet-stream')
+        .send(require('./helpers/app').PNG)
+        .expect(201);
+    assert.equal(sent.body.title, 'Receipt');
+    assert.equal(sent.body.fileName, 'IMG_0001.png');
 });

@@ -16,7 +16,12 @@
     "share_target": {
         "action": "/share",
         "method": "POST",
-        "enctype": "application/x-www-form-urlencoded",
-        "params": { "title": "title", "text": "text", "url": "url" }
+        "enctype": "multipart/form-data",
+        "params": {
+            "title": "title",
+            "text": "text",
+            "url": "url",
+            "files": [{ "name": "files", "accept": ["*/*"] }]
+        }
     }
 }
