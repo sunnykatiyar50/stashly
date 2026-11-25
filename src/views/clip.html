@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- The link is the access: keep it out of search engines, and never send it on as a referrer -->
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="referrer" content="no-referrer">
+    <meta name="theme-color" content="#2563eb">
+    <title>Shared clip · Stashly</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="expect" href="#pageReady" blocking="render">
+    <script src="/theme.js"></script>
+</head>
+<body class="app">
+    <main class="content">
+        <section class="view">
+            <div class="clip-share">
+                <header class="clip-share-head">
+                    <h1 id="clipTitle">Shared clip</h1>
+                    <span id="clipMeta" class="muted"></span>
+                </header>
+                <div id="clipActions" class="detail-actions"></div>
+                <div id="clipBody" class="clip-share-body"></div>
+                <p id="clipNote" class="muted clip-share-note"></p>
+            </div>
+        </section>
+    </main>
+    <script src="/highlight.js"></script>
+    <script src="/markdown.js"></script>
+    <script src="/clip.js"></script>
+    <div id="pageReady" hidden></div>
+</body>
+</html>

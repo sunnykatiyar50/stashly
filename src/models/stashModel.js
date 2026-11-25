@@ -194,7 +194,74 @@ class StashModel {
         this.db
             .prepare('UPDATE stashes SET password_hash = ?, password_salt = ?, view_token_hash = NULL, drop_token_hash = NULL, password_reset_at = ? WHERE id = ?')
             .run(hash, salt, resetAt, id);
+        this.deleteSharesOfStash(id);
         return this.getStashById(id);
+    }
+
+    // ---- links to one clip ----
+
+    // Gives a clip its share link (the hash of the token), replacing the one it had. expiresAt null never expires.
+    createItemShare(stashId, itemId, tokenHash, now, expiresAt) {
+        this.db.exec('BEGIN');
+        try {
+            this.db.prepare('DELETE FROM item_shares WHERE item_id = ?').run(itemId);
+            this.db
+                .prepare('INSERT INTO item_shares (token_hash, stash_id, item_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)')
+                .run(tokenHash, stashId, itemId, now.toISOString(), expiresAt ? expiresAt.toISOString() : null);
+            this.db.exec('COMMIT');
+        } catch (err) {
+            this.db.exec('ROLLBACK');
+            throw err;
+        }
+        // Read back as it was just stored (no time check: the caller's clock made it)
+        return this.db.prepare('SELECT * FROM item_shares WHERE item_id = ?').get(itemId);
+    }
+
+    // The clip's link (without its token, which is not kept), or null. Past its time it counts as gone.
+    getItemShare(stashId, itemId, now = new Date()) {
+        return (
+            this.db
+                .prepare('SELECT * FROM item_shares WHERE stash_id = ? AND item_id = ? AND (expires_at IS NULL OR expires_at > ?)')
+                .get(stashId, itemId, now.toISOString()) || null
+        );
+    }
+
+    deleteItemShare(stashId, itemId) {
+        return this.db.prepare('DELETE FROM item_shares WHERE stash_id = ? AND item_id = ?').run(stashId, itemId).changes > 0;
+    }
+
+    // The clip a link opens, with `share_id` and `share_expires_at`, or null when there is no such link, it has expired,
+    // or the clip or its stash has (a burn-after-reading note is never reachable this way)
+    findSharedItem(tokenHash, now = new Date()) {
+        const at = now.toISOString();
+        return (
+            this.db
+                .prepare(
+                    `SELECT i.*, s.id AS share_id, s.expires_at AS share_expires_at
+                     FROM item_shares s
+                     JOIN items i ON i.id = s.item_id
+                     JOIN stashes st ON st.id = s.stash_id
+                     WHERE s.token_hash = ? AND i.burn = 0
+                       AND (s.expires_at IS NULL OR s.expires_at > ?)
+                       AND (i.expires_at IS NULL OR i.expires_at > ?)
+                       AND (st.expires_at IS NULL OR st.expires_at > ?)`
+                )
+                .get(tokenHash, at, at, at) || null
+        );
+    }
+
+    recordShareView(shareId, now = new Date()) {
+        this.db.prepare('UPDATE item_shares SET views = views + 1, last_viewed_at = ? WHERE id = ?').run(now.toISOString(), shareId);
+    }
+
+    // Removes links whose time is up; returns how many
+    purgeExpiredShares(now = new Date()) {
+        return this.db.prepare('DELETE FROM item_shares WHERE expires_at IS NOT NULL AND expires_at <= ?').run(now.toISOString()).changes;
+    }
+
+    // Ends every clip link of a stash (its password changed: they were given out under the old one)
+    deleteSharesOfStash(stashId) {
+        return this.db.prepare('DELETE FROM item_shares WHERE stash_id = ?').run(stashId).changes;
     }
 
     // Ends every sign-in to the stash (the cookies are tied to this number)

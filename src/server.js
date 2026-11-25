@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const StashController = require('./controllers/stashController');
 const AdminController = require('./controllers/adminController');
 const createStashRoutes = require('./routes/stashRoutes');
+const { createClipRoutes } = require('./routes/clipRoutes');
 const createAdminRoutes = require('./routes/adminRoutes');
 const createUserRoutes = require('./routes/userRoutes');
 const UserController = require('./controllers/userController');
@@ -160,6 +161,8 @@ function createApp({ config, model, events, secret, now, logOut, auditOut, mail 
     });
     app.get('/api/config', controller.appConfig);
     app.use('/api/stashes', createStashRoutes({ controller, config }));
+    // A link to one clip: public, the token is the access (no stash, no cookie)
+    app.use('/api/clips', createClipRoutes({ controller, config }));
     app.use('/api/admin', createAdminRoutes({ controller: adminController, users: userController, adminAuth, config }));
     app.use('/api', createUserRoutes({ controller: userController, config }));
     app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
@@ -188,6 +191,8 @@ function createApp({ config, model, events, secret, now, logOut, auditOut, mail 
         const first = controller.initialPage(req, req.params.slug);
         return html.replace('<!-- initial-page -->', first ? `<script type="application/json" id="initialPage">${inlineJson(first)}</script>` : '');
     }));
+    // A link to one clip. One HTML file; the script reads the token from the address and asks /api/clips/<token>.
+    app.get('/c/:token', page.send('clip.html'));
     // Where the phone's share sheet sends what was shared (the manifest's share target)
     app.get('/share', page.send('share.html'));
     // The share sheet POSTs what was shared, so it never lands in an address that proxies log or browsers keep in

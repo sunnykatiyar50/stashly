@@ -928,3 +928,19 @@ body:not(.stash-open) .in-topbar { display: none; }
     .sidebar { view-transition-name: sidebar; }
     ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 120ms; }
 }
+
+/* Share one clip by link. The panel sits above the open clip; the public page (clip.html) is a single centred column. */
+.share-panel { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-alt); }
+.share-panel-body { display: flex; flex-direction: column; gap: 8px; }
+.share-title { font-size: 14px; }
+.share-state { font-size: 13px; }
+.share-link-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.share-link-row input { flex: 1 1 220px; min-width: 0; }
+.share-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.share-expiry { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-soft); }
+.share-expiry select { width: auto; padding: 4px 8px; }
+.clip-share { width: min(820px, 100%); margin: auto; display: flex; flex-direction: column; gap: 14px; padding: 12px 0; }
+.clip-share-head { display: flex; flex-direction: column; gap: 4px; }
+.clip-share-head h1 { font-size: 24px; overflow-wrap: anywhere; }
+.clip-share-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.clip-share-note { font-size: 12.5px; }

@@ -27,6 +27,9 @@ const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 // The most clips one reorder may move (a stash holds at most a few thousand; a page shows them all)
 const MAX_REORDER = 5000;
+// How long a link to one clip may last, as the page offers it, and what it gets when none is asked for (null never expires)
+const SHARE_TTLS = { '1h': HOUR, '1d': DAY, '7d': 7 * DAY, '30d': 30 * DAY, never: null };
+const DEFAULT_SHARE_TTL = '7d';
 // The most clips one bulk delete, restore, pin or unpin may name
 const MAX_BULK = 500;
 // The most items one listing can be asked for with `limit` (the extension asks for a few; without a limit, all come)
@@ -869,6 +872,94 @@ class StashController {
         res.json(item);
     };
 
+    // ---- a link to one clip ----
+    // The owner (full access) makes a link that opens just this note or file, at /c/<token>, with no other access to the
+    // stash: the public routes below look the clip up by the token's hash and nothing else. Only the hash is stored, so the
+    // link can be shown once and never again. A clip has at most one link; making another replaces it.
+
+    // The clip a share request is about (live, in this stash), or null
+    shareTarget(req) {
+        const id = Number(req.params.id);
+        return Number.isInteger(id) ? this.model.getLiveItem(req.stash.id, id, this.now()) : null;
+    }
+
+    shareState(share) {
+        return share ? { shared: true, createdAt: share.created_at, expiresAt: share.expires_at, views: share.views, lastViewedAt: share.last_viewed_at } : { shared: false };
+    }
+
+    // Does the clip have a link, and until when (never the link itself)
+    getClipShare = (req, res) => {
+        const row = this.shareTarget(req);
+        if (!row) return res.status(404).json({ error: 'Item not found.' });
+        res.json(this.shareState(this.model.getItemShare(req.stash.id, row.id, this.now())));
+    };
+
+    createClipShare = (req, res) => {
+        const stash = req.stash;
+        const row = this.shareTarget(req);
+        if (!row) return res.status(404).json({ error: 'Item not found.' });
+        if (row.kind === 'note' && row.burn) {
+            return res.status(400).json({ error: 'A burn-after-reading note cannot be shared by link: opening the link would use it up.' });
+        }
+        const key = (req.body && req.body.expires) || DEFAULT_SHARE_TTL;
+        if (!Object.hasOwn(SHARE_TTLS, key)) return res.status(400).json({ error: 'Pick how long the link lasts.', field: 'expires' });
+        const now = this.now();
+        // The link never outlives the clip itself (a note's own expiry); the stash going takes it along anyway
+        let until = SHARE_TTLS[key] === null ? null : new Date(now.getTime() + SHARE_TTLS[key]);
+        if (row.expires_at && (!until || new Date(row.expires_at) < until)) until = new Date(row.expires_at);
+        const token = generateLinkToken();
+        const share = this.model.createItemShare(stash.id, row.id, hashLinkToken(token), now, until);
+        this.audit('item.share_created', { req, stash, detail: { expires: key } });
+        // The token is shown once. Unlike a stash's read-only link it sits in the path, so the link works anywhere a link
+        // does (chat apps, a browser's address bar, curl); the access log records only the route pattern, never the path.
+        res.status(201).json({ ...this.shareState(share), token, path: `/c/${token}` });
+    };
+
+    revokeClipShare = (req, res) => {
+        const row = this.shareTarget(req);
+        if (!row) return res.status(404).json({ error: 'Item not found.' });
+        const removed = this.model.deleteItemShare(req.stash.id, row.id);
+        if (removed) this.audit('item.share_revoked', { req, stash: req.stash, detail: {} });
+        res.json({ ok: true });
+    };
+
+    // The clip behind a link, or null. The same answer for a link that never existed, one that was cancelled and one
+    // that ran out, so a link says nothing about why it does not work.
+    sharedClip(req) {
+        const token = String(req.params.token || '');
+        if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
+        return this.model.findSharedItem(hashLinkToken(token), this.now());
+    }
+
+    // GET /api/clips/:token: the clip itself and nothing about the stash around it (not its name, not its other items)
+    viewClip = (req, res) => {
+        const row = this.sharedClip(req);
+        if (!row) return res.status(404).json({ error: 'This link does not exist or has expired.' });
+        this.model.recordShareView(row.share_id, this.now());
+        const isFile = row.kind === 'file';
+        res.set({ 'Cache-Control': 'private, no-store', 'X-Robots-Tag': 'noindex, nofollow' });
+        res.json({
+            kind: row.kind,
+            title: isFile ? row.title || row.file_name : row.title || deriveTitle(row.text),
+            text: isFile ? null : row.text,
+            fileName: isFile ? row.file_name : null,
+            fileType: isFile ? row.file_type : null,
+            fileSize: isFile ? row.file_size : null,
+            isImage: isFile && row.file_type.startsWith('image/'),
+            fileUrl: isFile ? `/api/clips/${req.params.token}/file` : null,
+            createdAt: row.created_at,
+            expiresAt: row.share_expires_at || null,
+        });
+    };
+
+    // GET /api/clips/:token/file: the bytes, when the clip is a file
+    clipFile = (req, res) => {
+        const row = this.sharedClip(req);
+        res.set('X-Robots-Tag', 'noindex, nofollow');
+        if (!row || row.kind !== 'file') return res.status(404).json({ error: 'This link does not exist or has expired.' });
+        this.serveFile(req, res, row);
+    };
+
     // A clip's tags: { tags: [...] } replaces them (an empty list clears them). Like pinning, tagging is not an edit.
     setTags = (req, res) => {
         const stash = req.stash;
@@ -1241,8 +1332,10 @@ class StashController {
         return row && row.kind === 'file' ? row : null;
     }
 
-    getFile = (req, res) => {
-        const row = this.fileRow(req);
+    getFile = (req, res) => this.serveFile(req, res, this.fileRow(req));
+
+    // Sends a file item's bytes (or a 404 when there is no such file). Shared by the stash route and a clip's own link.
+    serveFile(req, res, row) {
         // The size on disk is what is served; a row whose file has gone missing is the same as no file
         const length = row ? this.model.files.size(row.id) : null;
         if (length === null) return res.status(404).json({ error: 'File not found.' });
@@ -1281,7 +1374,7 @@ class StashController {
         pipeline(this.model.files.stream(row.id, range || null), res, () => {
             // A client that goes away part way ends the stream; nothing more to do
         });
-    };
+    }
 
     // ---- thumbnails ----
     // The server has no image library, so the page makes the thumbnail in the browser (a canvas) and sends it here.
@@ -1630,6 +1723,8 @@ class StashController {
             this.events.closeAll(slug, 'stash-gone', { reason: 'expired' });
         }
         for (const item of this.model.purgeExpiredItems(this.now())) this.events.publish(item.slug, 'item-deleted', { id: item.id });
+        // Clip links whose time is up (they stop working on their own at their time; this only tidies the table)
+        this.model.purgeExpiredShares(this.now());
         // Deleted items whose undo time is up are removed for good (with undo turned off, everything waiting goes)
         this.model.purgeTrash(new Date(this.now().getTime() - this.config.undoSeconds * 1000));
         // Resumable uploads that got no new piece for UPLOAD_IDLE_HOURS are given up (one with a piece arriving is left)

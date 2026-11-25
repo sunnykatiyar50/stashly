@@ -366,12 +366,16 @@
 
         if (role() === 'full') {
             if (item.kind === 'file') actions.appendChild(button('Edit', 'ghost', function () { editFileTitle(item); }));
+            var shareBtn = P.clipShareButton ? P.clipShareButton(item) : null;
+            if (shareBtn) actions.appendChild(shareBtn);
             actions.appendChild(button(item.pinned ? 'Unpin' : 'Pin', 'ghost', function () { setPinned(item, !item.pinned); }));
             actions.appendChild(button('Delete', 'danger-ghost', function () { removeItem(item); }));
         }
         // Tags: shown above the clip, and the only place they are added or removed
         var tagBox = P.tagEditor ? P.tagEditor(item) : null;
         if (tagBox) body.insertBefore(tagBox, body.firstChild);
+        // The share panel, when it was open for this clip before the pane was drawn again
+        if (P.restoreClipShare) P.restoreClipShare(item);
         body.scrollTop = 0;
     }
 
