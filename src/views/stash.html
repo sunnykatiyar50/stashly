@@ -216,7 +216,7 @@
                 <aside class="pane clip-pane" aria-label="Clips">
                     <div class="clip-tools">
                         <div class="search-row">
-                            <input type="search" id="searchInput" placeholder="Search notes and files" aria-label="Search" />
+                            <input type="search" id="searchInput" placeholder="Search notes and files, or #tag" aria-label="Search" />
                             <!-- Only with full access (stash-load.js): pick several clips to pin, unpin or delete them together -->
                             <button type="button" id="selectToggle" class="ghost icon-only hidden" title="Select several clips" aria-label="Select several clips" aria-pressed="false">
                                 <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -233,6 +233,9 @@
                             <label class="date-field"><span>To</span><input type="date" id="endDate" /></label>
                             <button id="resetButton" type="button" class="ghost small" title="Clear filters">Reset</button>
                         </div>
+                        <!-- The stash's tags as one scrolling line of chips; press one to show only the clips that have it (stash-tags.js) -->
+                        <div id="tagBar" class="tag-bar hidden" role="group" aria-label="Filter by tag"></div>
+                        <datalist id="tagSuggestions"></datalist>
                         <!-- Shown while selecting (stash-select.js) -->
                         <div id="bulkBar" class="bulk-bar hidden" role="toolbar" aria-label="Actions for the selected clips">
                             <span id="bulkCount" class="bulk-count" aria-live="polite">Nothing selected</span>
@@ -241,6 +244,8 @@
                             <span class="bulk-actions">
                                 <button type="button" id="bulkPin" class="ghost small" disabled>Pin</button>
                                 <button type="button" id="bulkUnpin" class="ghost small" disabled>Unpin</button>
+                                <button type="button" id="bulkTag" class="ghost small" disabled>Tag</button>
+                                <button type="button" id="bulkUntag" class="ghost small" disabled>Untag</button>
                                 <button type="button" id="bulkDelete" class="ghost small danger-ghost" disabled>Delete</button>
                             </span>
                         </div>
@@ -449,6 +454,7 @@
     <script src="/stash-detail.js"></script>
     <script src="/stash-items.js"></script>
     <script src="/stash-select.js"></script>
+    <script src="/stash-tags.js"></script>
     <script src="/stash-load.js"></script>
     <script src="/stash-live.js"></script>
     <script src="/stash-options.js"></script>

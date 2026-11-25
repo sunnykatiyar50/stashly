@@ -154,6 +154,7 @@
         // The first item of the list is opened at once, so it comes in full
         if (offset === 0) query.fullFirst = true;
         if (f.search) query.search = f.search;
+        if (f.tags && f.tags.length) query.tag = f.tags;
         if (f.startDate) query.startDate = f.startDate;
         if (f.endDate) query.endDate = f.endDate;
         return query;
@@ -172,7 +173,7 @@
             var inline = initialPage;
             initialPage = null;
             // The page's own first page fits only the first load: from the top, no search or dates, the usual size
-            var usable = inline && !out.items.length && !out.dupes && limit === PAGE_SIZE && !f.search && !f.startDate && !f.endDate;
+            var usable = inline && !out.items.length && !out.dupes && limit === PAGE_SIZE && !f.search && !f.startDate && !f.endDate && !(f.tags && f.tags.length);
             var request = usable
                 ? Promise.resolve({ ok: true, status: 200, body: inline })
                 : api(base + '/query', { method: 'POST', body: queryFor(out.items.length + out.dupes, limit) });
@@ -220,6 +221,7 @@
             var list = $('items');
             var scrolled = list.scrollTop;
             state.stash = out.first;
+            state.tagList = out.first.tags || [];
             state.items = out.items;
             state.total = out.last.total;
             state.hasMore = out.last.hasMore;
@@ -234,6 +236,7 @@
             applyContent();
             sections.main.classList.contains('hidden') && show('main');
             updateHeader();
+            P.renderTagBar();
             renderItems();
             // A quiet reload leaves the list where it was; a new search, date range or Refresh starts from the top
             list.scrollTop = quiet ? scrolled : 0;
@@ -330,6 +333,7 @@
             search: $('searchInput').value.trim(),
             startDate: $('startDate').value,
             endDate: $('endDate').value,
+            tags: state.filters.tags || [],
         };
         if (next.startDate && next.endDate && next.startDate > next.endDate) {
             toast('The From date is after the To date.', true);
@@ -364,6 +368,7 @@
         $('searchInput').value = '';
         $('startDate').value = '';
         $('endDate').value = '';
+        state.filters.tags = [];
         applyFilters();
     });
 

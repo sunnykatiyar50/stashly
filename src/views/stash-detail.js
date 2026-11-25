@@ -369,6 +369,9 @@
             actions.appendChild(button(item.pinned ? 'Unpin' : 'Pin', 'ghost', function () { setPinned(item, !item.pinned); }));
             actions.appendChild(button('Delete', 'danger-ghost', function () { removeItem(item); }));
         }
+        // Tags: shown above the clip, and the only place they are added or removed
+        var tagBox = P.tagEditor ? P.tagEditor(item) : null;
+        if (tagBox) body.insertBefore(tagBox, body.firstChild);
         body.scrollTop = 0;
     }
 

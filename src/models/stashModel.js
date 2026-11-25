@@ -1,6 +1,8 @@
 // All SQL lives here, so the model can be ported to another database in one place.
 // What an item row holds, in the order the trash table keeps it (moving a row between the two tables copies these)
-const ITEM_COLUMNS = 'id, stash_id, kind, title, text, file_name, file_type, file_size, created_at, expires_at, burn, secret, pinned, edited_at, sort_order, has_thumb';
+const ITEM_COLUMNS = 'id, stash_id, kind, title, text, file_name, file_type, file_size, created_at, expires_at, burn, secret, pinned, edited_at, sort_order, has_thumb, tags';
+
+const { tagsOf, serializeTags } = require('../utils/tags');
 
 const escapeLike = value => value.replace(/[\\%_]/g, c => `\\${c}`);
 
@@ -368,13 +370,18 @@ class StashModel {
         return this.db.prepare(`SELECT COUNT(*) AS n FROM items WHERE ${where}`).get(...params).n;
     }
 
-    itemFilter(stashId, { search, from, to, now = new Date() }) {
+    itemFilter(stashId, { search, from, to, tags, now = new Date() }) {
         const where = ['stash_id = ?', '(expires_at IS NULL OR expires_at > ?)'];
         const params = [stashId, now.toISOString()];
         if (search) {
             where.push(`((burn = 0 AND text LIKE ? ESCAPE '\\') OR file_name LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\')`);
             const pattern = `%${escapeLike(search)}%`;
             params.push(pattern, pattern, pattern);
+        }
+        // Every tag asked for must be on the clip. A tag never holds a quote, so its quoted form matches only that tag.
+        for (const tag of tags || []) {
+            where.push("tags LIKE ? ESCAPE '\\'");
+            params.push(`%"${escapeLike(tag)}"%`);
         }
         if (from) {
             where.push('created_at >= ?');
@@ -502,6 +509,40 @@ class StashModel {
     setPinned(stashId, id, pinned) {
         const changed = this.db.prepare('UPDATE items SET pinned = ? WHERE stash_id = ? AND id = ?').run(pinned ? 1 : 0, stashId, id).changes;
         return changed ? this.getItem(stashId, id) : null;
+    }
+
+    // Replaces a clip's tags (a list the caller has checked). Tagging is not an edit, so the edited time stays.
+    setTags(stashId, id, tags) {
+        const changed = this.db.prepare('UPDATE items SET tags = ? WHERE stash_id = ? AND id = ?').run(serializeTags(tags), stashId, id).changes;
+        return changed ? this.getItem(stashId, id) : null;
+    }
+
+    // Adds or removes one tag on a clip. Returns the clip, or null when it is gone; `full` is set on the result when the
+    // clip is already at the tag limit and the tag could not be added.
+    changeTag(stashId, id, tag, add, maxTags) {
+        const row = this.getItem(stashId, id);
+        if (!row) return null;
+        const tags = tagsOf(row);
+        if (add) {
+            if (tags.includes(tag)) return row;
+            if (tags.length >= maxTags) return { ...row, full: true };
+            tags.push(tag);
+        } else {
+            if (!tags.includes(tag)) return row;
+            tags.splice(tags.indexOf(tag), 1);
+        }
+        return this.setTags(stashId, id, tags);
+    }
+
+    // The tags in use in a stash with how many clips carry each, most used first (clips past their own expiry are left out)
+    tagCounts(stashId, now = new Date(), limit = 200) {
+        return this.db
+            .prepare(
+                `SELECT j.value AS tag, COUNT(*) AS count FROM items, json_each(items.tags) AS j
+                 WHERE stash_id = ? AND (expires_at IS NULL OR expires_at > ?)
+                 GROUP BY j.value ORDER BY count DESC, tag LIMIT ?`
+            )
+            .all(stashId, now.toISOString(), limit);
     }
 
     // Gives a file a title of its own (null goes back to its name). The file and its name stay as they were.

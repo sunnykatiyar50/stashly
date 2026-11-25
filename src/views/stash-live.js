@@ -44,12 +44,21 @@
     }
 
     // Live items only join the list when they fit the active search and dates
+    // Whether a clip carries every tag the list is filtered by (the tag chips and the #words typed in the search)
+    function hasWantedTags(item) {
+        var wanted = P.splitSearch(state.filters.search).tags.concat(state.filters.tags || []);
+        return wanted.every(function (tag) { return (item.tags || []).indexOf(tag) !== -1; });
+    }
+
     function matchesFilters(item) {
         var f = state.filters;
-        if (f.search) {
+        // "#work" words in the search are tags, as on the server
+        var typed = P.splitSearch(f.search);
+        if (typed.text) {
             var hay = ((item.text || '') + ' ' + (item.fileName || '') + ' ' + (item.hasTitle ? item.title : '')).toLowerCase();
-            if (hay.indexOf(f.search.toLowerCase()) === -1) return false;
+            if (hay.indexOf(typed.text.toLowerCase()) === -1) return false;
         }
+        if (!hasWantedTags(item)) return false;
         var created = new Date(item.createdAt).getTime();
         if (f.startDate && created < localDayStart(f.startDate)) return false;
         if (f.endDate && created >= localDayStart(f.endDate) + 86400000) return false;
@@ -106,6 +115,13 @@
         // A live update never carries who sent it
         delete item.origin;
         state.items[index] = item;
+        if (P.syncTagCounts) P.syncTagCounts(before.tags, item.tags);
+        // A clip that no longer carries the tags being filtered by leaves the list
+        if (!hasWantedTags(item)) { onItemDeleted(item.id); return; }
+        // Only its tags changed: the open clip's editor updates itself, redrawing the pane would drop what is being typed
+        var onlyTags = before.title === item.title && before.pinned === item.pinned && before.editedAt === item.editedAt &&
+            before.thumbUrl === item.thumbUrl && before.expiresAt === item.expiresAt && before.burn === item.burn && before.secret === item.secret &&
+            JSON.stringify(before.tags || []) !== JSON.stringify(item.tags || []);
         if (wasPinned !== item.pinned) { sortItems(); renderItems(); } else {
             var el = document.querySelector('.clip[data-id="' + item.id + '"]');
             if (el) el.replaceWith(buildClip(item));
@@ -116,6 +132,7 @@
         var onlyThumb = item.kind === 'file' && !before.thumbUrl && Boolean(item.thumbUrl) &&
             before.title === item.title && before.pinned === item.pinned && before.editedAt === item.editedAt;
         // The open clip shows the change, unless it is being edited right now (that would throw the typing away)
+        if (onlyTags) { if (P.refreshTagEditor) P.refreshTagEditor(item); return; }
         if (!onlyThumb && state.selectedId === item.id && state.editingId !== item.id && state.revealedId !== item.id) renderDetail(item);
     }
 

@@ -393,7 +393,30 @@ body.has-account-nav #logoutButton { display: none; }
 .bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 8px; border: 1px solid var(--blue); border-radius: 6px; background: var(--blue-soft); }
 .bulk-count { margin-right: auto; font-size: 13px; font-weight: 600; }
 .bulk-actions { order: 3; flex: 1 0 100%; display: flex; gap: 6px; }
-.bulk-actions button { flex: 1 1 0; }
+.bulk-actions button { flex: 1 1 0; padding-left: 4px; padding-right: 4px; }
+
+/* Tags. A tag is a small pill; in a row they sit on one line under the title, above the list they are one scrolling
+   strip, and in the open clip they are an editable line. Only the strip and the open clip take up room when unused. */
+.tag-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 0 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-alt); color: var(--text-soft); font: inherit; font-size: 11.5px; line-height: 18px; white-space: nowrap; cursor: pointer; }
+.tag-chip::before { content: '#'; opacity: .55; }
+.tag-chip:hover { border-color: var(--blue); color: var(--blue); }
+.tag-chip.on { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); font-weight: 600; }
+.tag-chip.static { cursor: default; padding-right: 3px; }
+.tag-chip.static:hover { border-color: var(--border); color: var(--text-soft); }
+.tag-chip.static:not(:has(.tag-remove)) { padding-right: 7px; }
+.clip-tags { display: flex; align-items: center; gap: 4px; margin-top: 2px; overflow: hidden; }
+.clip-tags .tag-chip { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tag-more { color: var(--muted); font-size: 11.5px; cursor: help; }
+.tag-bar { display: flex; flex-wrap: nowrap; gap: 5px; overflow-x: auto; padding: 2px 0 4px; scrollbar-width: thin; }
+.tag-bar .tag-chip { flex: none; }
+.tag-count { color: var(--muted); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.tag-chip.on .tag-count { color: inherit; opacity: .75; }
+.tag-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }
+.tag-editor-label { color: var(--muted); font-size: 12px; font-weight: 600; }
+.tag-editor-chips { display: contents; }
+.tag-remove { all: unset; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; }
+.tag-remove:hover, .tag-remove:focus-visible { background: var(--border); color: var(--text); }
+.tag-input { flex: 1 1 140px; min-width: 120px; max-width: 260px; padding: 3px 8px; font-size: 13px; }
 .clip-list.drag-active, .clip-list.drag-active * { cursor: grabbing; user-select: none; }
 .clip.dragging { background: var(--surface-alt); border-color: var(--blue); box-shadow: 0 4px 14px rgba(0, 0, 0, .18); position: relative; z-index: 1; }
 .clip-preview { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; line-height: 1.4; }

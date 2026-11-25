@@ -144,6 +144,9 @@
         text.appendChild(make('span', 'clip-title', itemTitle(item)));
         var sub = itemSub(item);
         if (sub) text.appendChild(make('span', item.kind === 'note' ? 'clip-sub clip-preview' : 'clip-sub', sub));
+        // Tags sit on their own small line, only for a clip that has some
+        var tagLine = P.rowTags ? P.rowTags(item) : null;
+        if (tagLine) text.appendChild(tagLine);
         var flags = clipFlags(item);
         var flagLine = null;
         if (flags.length) {
@@ -338,7 +341,7 @@
 
     function filtersActive() {
         var f = state.filters;
-        return Boolean(f.search || f.startDate || f.endDate);
+        return Boolean(f.search || f.startDate || f.endDate || (f.tags && f.tags.length));
     }
 
     // "37 clips", or while more are waiting on the server "100 of 250 clips". The total is what the server counted
@@ -351,7 +354,7 @@
         var empty = $('emptyState');
         empty.classList.toggle('hidden', n > 0);
         empty.textContent = filtersActive()
-            ? 'No clips match your search or dates.'
+            ? 'No clips match your search or filters.'
             : 'Nothing here yet. Add a note or drop a file.';
         $('filterToggle').classList.toggle('active', Boolean(state.filters.startDate || state.filters.endDate));
         updateMore();

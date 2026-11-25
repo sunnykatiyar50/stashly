@@ -231,6 +231,13 @@ const MIGRATIONS = [
         const columns = db.prepare('PRAGMA table_info(users)').all().map(column => column.name);
         if (!columns.includes('email')) db.exec('ALTER TABLE users ADD COLUMN email TEXT');
     },
+
+    // 11: tags on clips. A clip's tags are a JSON array of short lowercase words (null = none), kept on the item and
+    // carried through the trash so an undone delete brings them back (see utils/tags.js for what a tag may be).
+    db => {
+        addColumn(db, 'items', 'tags', 'TEXT');
+        addColumn(db, 'trash', 'tags', 'TEXT');
+    },
 ];
 
 const SCHEMA_VERSION = MIGRATIONS.length;

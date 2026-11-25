@@ -5,6 +5,7 @@ const { detectFile, detectThumb, cleanFileName, extensionProblem } = require('..
 const crypto = require('crypto');
 const { dateRange } = require('../utils/time');
 const { parseTitle, deriveTitle } = require('../utils/title');
+const { parseTag, parseTags, tagsOf, splitSearch, MAX_TAGS } = require('../utils/tags');
 const { listZip } = require('../utils/zip');
 const { emailReady } = require('../utils/mailer');
 const { UnlockLockout } = require('../utils/lockout');
@@ -135,6 +136,7 @@ class StashController {
             burn,
             secret,
             pinned: Boolean(row.pinned),
+            tags: tagsOf(row),
             // The item's place in the list (higher is nearer the top); the page sorts by it
             order: row.sort_order,
             editedAt: row.edited_at || null,
@@ -674,7 +676,13 @@ class StashController {
         const stash = req.stash;
         const range = dateRange(input);
         if (range.error) return { status: 400, body: { error: range.error } };
-        const search = typeof input.search === 'string' ? input.search.trim().slice(0, 200) : '';
+        // "#work" words in the search box (and `tag`, one name or a list) narrow the list to clips that carry every one
+        // of those tags; the other words search the text as before
+        const typed = splitSearch(typeof input.search === 'string' ? input.search.trim().slice(0, 200) : '');
+        const search = typed.text;
+        const asked = parseTags(input.tag === undefined ? [] : Array.isArray(input.tag) ? input.tag : [input.tag]);
+        if (asked.error) return { status: 400, body: { error: asked.error, field: 'tag' } };
+        const tags = Array.from(new Set([...typed.tags, ...asked.value]));
         // Optional: only the first `limit` items (pinned, then newest), with `total` still counting every match
         const preview = input.preview === true || input.preview === '1' || input.preview === 'true';
         const limit = parseLimit(input.limit);
@@ -689,7 +697,7 @@ class StashController {
 
         // A drop-box visitor can add but not read: they get the stash's shape and no items or counts
         const dropOnly = req.role === 'drop';
-        const filters = { search, from: range.from, to: range.to, now: this.now() };
+        const filters = { search, tags, from: range.from, to: range.to, now: this.now() };
         const rows = dropOnly ? [] : this.model.listItems(stash.id, { ...filters, limit: limit.value, offset: skip });
         // The whole list is only counted when the rows above are not already all of it (a full page, or a page that
         // starts past the first item)
@@ -718,6 +726,8 @@ class StashController {
             total,
             // True when items remain after this page, so a page can offer "Show more" without doing the sums
             hasMore: skip + rows.length < total,
+            // Every tag in use in the stash, with how many clips carry it (for the tag filter and the editor's suggestions)
+            tags: dropOnly ? [] : this.model.tagCounts(stash.id, this.now()).map(entry => ({ name: entry.tag, count: entry.count })),
             items: rows.map((row, i) => this.presentItem(stash.slug, row, { preview: preview && !(fullFirst && i === 0) })),
         } };
     }
@@ -853,6 +863,20 @@ class StashController {
         if (typeof pinned !== 'boolean') return res.status(400).json({ error: 'Say whether to pin or unpin.' });
         const row = Number.isInteger(id) ? this.model.getLiveItem(stash.id, id, this.now()) : null;
         const updated = row ? this.model.setPinned(stash.id, id, pinned) : null;
+        if (!updated) return res.status(404).json({ error: 'Item not found.' });
+        const item = this.presentItem(stash.slug, updated);
+        this.events.publish(stash.slug, 'item-updated', item);
+        res.json(item);
+    };
+
+    // A clip's tags: { tags: [...] } replaces them (an empty list clears them). Like pinning, tagging is not an edit.
+    setTags = (req, res) => {
+        const stash = req.stash;
+        const id = Number(req.params.id);
+        const tags = parseTags(req.body && req.body.tags);
+        if (tags.error) return res.status(400).json({ error: tags.error, field: 'tags' });
+        const row = Number.isInteger(id) ? this.model.getLiveItem(stash.id, id, this.now()) : null;
+        const updated = row ? this.model.setTags(stash.id, id, tags.value) : null;
         if (!updated) return res.status(404).json({ error: 'Item not found.' });
         const item = this.presentItem(stash.slug, updated);
         this.events.publish(stash.slug, 'item-updated', item);
@@ -1486,8 +1510,8 @@ class StashController {
         const stash = req.stash;
         const action = req.body && req.body.action;
         const ids = req.body && req.body.ids;
-        if (!['delete', 'restore', 'pin', 'unpin'].includes(action)) {
-            return res.status(400).json({ error: 'Say what to do: delete, restore, pin or unpin.' });
+        if (!['delete', 'restore', 'pin', 'unpin', 'tag', 'untag'].includes(action)) {
+            return res.status(400).json({ error: 'Say what to do: delete, restore, pin, unpin, tag or untag.' });
         }
         if (!Array.isArray(ids) || !ids.length || ids.length > MAX_BULK || !ids.every(id => Number.isInteger(id) && id > 0)) {
             return res.status(400).json({ error: `Send between 1 and ${MAX_BULK} clip ids.` });
@@ -1528,6 +1552,25 @@ class StashController {
             }
             if (items.length) this.audit('items.restored', { req, stash, detail: { count: items.length } });
             return res.json({ items, missing, error: problem ? problem.error : null });
+        }
+
+        if (action === 'tag' || action === 'untag') {
+            // One tag added to, or removed from, every named clip. A clip already at the tag limit is reported in `full`.
+            const tag = parseTag(req.body.tag);
+            if (tag.error) return res.status(400).json({ error: tag.error, field: 'tag' });
+            const items = [];
+            const missing = [];
+            const full = [];
+            unique.forEach(id => {
+                const live = this.model.getLiveItem(stash.id, id, now);
+                const changed = live ? this.model.changeTag(stash.id, id, tag.value, action === 'tag', MAX_TAGS) : null;
+                if (!changed) { missing.push(id); return; }
+                if (changed.full) { full.push(id); return; }
+                const item = this.presentItem(stash.slug, changed);
+                items.push(item);
+                this.events.publish(stash.slug, 'item-updated', item);
+            });
+            return res.json({ items, missing, full });
         }
 
         const pinned = action === 'pin';
