@@ -193,6 +193,11 @@ const FIELDS = {
         help: 'The most emails the whole server sends in an hour. A stolen account or a bug cannot send more than this.',
         read: c => c.emailsPerHour, write: (c, v) => { c.emailsPerHour = v; },
     },
+    mcpEnabled: {
+        group: 'MCP', label: 'Enable the MCP server', type: 'bool',
+        help: 'Lets AI assistants (Claude Code, Cursor and other MCP clients) create stashes, add notes and read them through this server, at /mcp. They need the access token made below. It starts only when the server starts, so a change here takes effect after a restart. Needs the admin area.',
+        read: c => c.mcpEnabled, write: (c, v) => { c.mcpEnabled = v; },
+    },
     requireLoginToCreate: {
         group: 'Stashes', label: 'Only signed-in users can create stashes', type: 'bool',
         help: 'Users the admin made, and admins, can create stashes; anyone else can still open and use stashes they have the link to. "Only the admin" above wins when both are on.',
@@ -258,6 +263,7 @@ class SettingsStore {
         if (!this.config.adminPassword) {
             this.config.requireAdminToCreate = false;
             this.config.requireLoginToCreate = false;
+            this.config.mcpEnabled = false;
         }
     }
 
@@ -347,6 +353,7 @@ class SettingsStore {
             if (!merged.smtpFromAddress && !errors.smtpFromAddress) errors.smtpFromAddress = 'Enter the address the emails come from.';
             if (merged.smtpUser && !merged.smtpPassword && !errors.smtpPassword) errors.smtpPassword = 'Enter the password for that username.';
         }
+        if (merged.mcpEnabled && !this.config.adminPassword) errors.mcpEnabled = 'Admin is not enabled (the access token is made there).';
         if (merged.requireAdminToCreate && !this.config.adminPassword) errors.requireAdminToCreate = 'Admin is not enabled.';
         if (merged.requireLoginToCreate && !this.config.adminPassword) errors.requireLoginToCreate = 'Accounts are not enabled (they need the admin area).';
         if (Object.keys(errors).length) return { errors };

@@ -74,6 +74,10 @@ function loadConfig(env = process.env, overrides = {}) {
         // Accounts exist only when the admin area is on (ADMIN_PASSWORD set). With this on, only a signed-in user (any
         // role) or the admin may create stashes; visitors can still open any stash they have the link to.
         requireLoginToCreate: Boolean(adminPassword) && flag(env.REQUIRE_LOGIN_TO_CREATE),
+        // The server's own MCP endpoint (POST /mcp). Off by default; it needs the admin area, where its access token is made.
+        // It is read when the server starts, so a change takes effect after a restart. mcpRunning is what this run started with.
+        mcpEnabled: Boolean(adminPassword) && flag(env.MCP_ENABLED),
+        mcpRunning: false,
         // Whether the admin may choose a new password for a stash that has no owner (a guest made it). Off: never.
         // Email (Admin > Settings > Email). The environment gives the starting values; the SMTP password may be given here
         // too, but is better typed in the admin page, where it is kept encrypted.

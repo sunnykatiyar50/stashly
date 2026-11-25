@@ -11,6 +11,7 @@ const { ZipWriter, STORE, DEFLATE } = require('../utils/zipWriter');
 const { noopAudit } = require('../utils/auditLog');
 const { noopMetrics } = require('../utils/metrics');
 const { validAddress } = require('../utils/mailer');
+const { generateLinkToken, hashLinkToken } = require('../utils/token');
 const templates = require('../utils/emailTemplates');
 
 // Windows can briefly hold a file that was just closed, so a few tries
@@ -153,6 +154,34 @@ class AdminController {
             this.audit('email.send_failed', { req, actor: 'admin', detail: { kind: 'test', reason: err.code || 'failed' } });
             res.status(err.code === 'rate' ? 429 : 502).json({ error: err.message, reason: err.code || 'failed', detail: err.detail || '' });
         }
+    };
+
+    // ---- the MCP endpoint's access token ----
+    // The endpoint (POST /mcp) is mounted at startup when the setting is on; `running` is what this run started with, so the
+    // page can say that a restart is still needed. The token is shown once, when it is made: only its hash is kept.
+    mcpState() {
+        const token = this.model.getMcpToken();
+        return {
+            enabled: Boolean(this.config.mcpEnabled),
+            running: Boolean(this.config.mcpRunning),
+            tokenSet: Boolean(token),
+            tokenCreatedAt: token ? token.createdAt : null,
+            path: '/mcp',
+        };
+    }
+
+    getMcp = (req, res) => res.json(this.mcpState());
+
+    createMcpToken = (req, res) => {
+        const token = `stm_${generateLinkToken()}`;
+        this.model.setMcpToken(hashLinkToken(token), this.now());
+        this.audit('admin.mcp_token_created', { req, actor: 'admin' });
+        res.status(201).json({ ...this.mcpState(), token });
+    };
+
+    revokeMcpToken = (req, res) => {
+        if (this.model.clearMcpToken()) this.audit('admin.mcp_token_revoked', { req, actor: 'admin' });
+        res.json(this.mcpState());
     };
 
     getSettings = (req, res) => {

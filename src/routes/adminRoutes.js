@@ -46,6 +46,10 @@ function createAdminRoutes({ controller, users, adminAuth, config }) {
     router.get('/settings', admin, c.getSettings);
     router.put('/settings', admin, c.putSettings);
     router.post('/settings/reset', admin, c.resetSettings);
+    // The access token of the MCP endpoint (made, shown once, or cancelled here)
+    router.get('/mcp', admin, c.getMcp);
+    router.post('/mcp/token', admin, c.createMcpToken);
+    router.delete('/mcp/token', admin, c.revokeMcpToken);
     // A test message goes to a real mail server, so it is limited like the other things an admin can repeat
     router.post('/email/test', admin, rateLimit({
         windowMs: 10 * 60 * 1000,

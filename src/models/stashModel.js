@@ -732,6 +732,29 @@ class StashModel {
             .run(JSON.stringify(overrides));
     }
 
+    // The access token of the MCP endpoint: only its hash is kept (with when it was made), in the meta table, so it is never
+    // shown again and a copy of the database holds no working token. null when there is none.
+    getMcpToken() {
+        const row = this.db.prepare("SELECT value FROM meta WHERE key = 'mcp_token'").get();
+        if (!row) return null;
+        try {
+            const parsed = JSON.parse(row.value);
+            return parsed && typeof parsed.hash === 'string' ? parsed : null;
+        } catch {
+            return null;
+        }
+    }
+
+    setMcpToken(hash, createdAt) {
+        this.db
+            .prepare("INSERT INTO meta (key, value) VALUES ('mcp_token', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+            .run(JSON.stringify({ hash, createdAt: createdAt.toISOString() }));
+    }
+
+    clearMcpToken() {
+        return this.db.prepare("DELETE FROM meta WHERE key = 'mcp_token'").run().changes > 0;
+    }
+
     ping() {
         this.db.prepare('SELECT 1').get();
     }
