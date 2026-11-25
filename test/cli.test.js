@@ -237,7 +237,7 @@ test('--help prints the usage and exits 0', async () => {
 
 test('the package exposes the command and the script is under 300 lines', () => {
     const pkg = require('../package.json');
-    assert.deepEqual(pkg.bin, { stashly: 'bin/stashly.js' });
+    assert.deepEqual(pkg.bin, { stashly: 'bin/stashly.js', 'stashly-mcp': 'bin/stashly-mcp.js' });
     const source = fs.readFileSync(CLI, 'utf8');
     assert.ok(source.startsWith('#!/usr/bin/env node'));
     assert.ok(source.split('\n').length < 300);
