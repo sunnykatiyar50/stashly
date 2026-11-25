@@ -289,6 +289,13 @@ class StashModel {
         return this.getStashById(id);
     }
 
+    // Sets how long the stash lives from now (null: never expires) and when it ends. Returns the stash.
+    setExpiry(id, ttlMs, now = new Date()) {
+        const expiresAt = ttlMs ? new Date(now.getTime() + ttlMs).toISOString() : null;
+        this.db.prepare('UPDATE stashes SET ttl_ms = ?, expires_at = ? WHERE id = ?').run(ttlMs || null, expiresAt, id);
+        return this.getStashById(id);
+    }
+
     deleteStash(id, now = new Date()) {
         const stash = this.getStashById(id);
         if (!stash) return false;

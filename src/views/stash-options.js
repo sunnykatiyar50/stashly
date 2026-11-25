@@ -27,17 +27,121 @@
     function setTabFlag() { return P.setTabFlag.apply(null, arguments); }
     function notificationsReady() { return P.notificationsReady.apply(null, arguments); }
 
-    $('extendButton').addEventListener('click', function () {
-        api(base + '/extend', { method: 'POST' }).then(function (res) {
+    // ---- keeping the stash longer ----
+    // The clock chip in the header, the Extend button (and its place in the phone's three-dot menu) and Options > Expires all
+    // open one dialog: pick how long, counted from now. Only lengths that end later than the stash does now are offered, and
+    // the server decides who may (the owner; for a guest's stash anyone with full access).
+    var extendDialog = $('extendDialog');
+    var DATE_FORMAT = { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
+
+    function canExtend() { return Boolean(state.stash && state.stash.canExtend); }
+
+    // The lengths that still end later than the stash does now (it may have been extended elsewhere since the page loaded)
+    function choicesNow() {
+        var ends = state.stash && state.stash.expiresAt ? new Date(state.stash.expiresAt).getTime() : null;
+        return ((state.stash && state.stash.extendChoices) || []).filter(function (choice) {
+            return choice.ms === null || ends === null || Date.now() + choice.ms > ends;
+        });
+    }
+
+    function openExtend() {
+        if (!canExtend()) return;
+        var choices = choicesNow();
+        $('extendError').textContent = '';
+        $('extendNow').textContent = state.stash.expiresAt
+            ? expiryText(state.stash.expiresAt) + ' (' + new Date(state.stash.expiresAt).toLocaleString(undefined, DATE_FORMAT) + '). Pick a new end time, counted from now.'
+            : 'This stash never expires.';
+        var list = $('extendChoices');
+        list.textContent = '';
+        if (!choices.length) {
+            var none = document.createElement('p');
+            none.className = 'muted';
+            none.textContent = 'There is no longer time to choose: this is already the longest.';
+            list.appendChild(none);
+        }
+        choices.forEach(function (choice) {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'extend-choice' + (choice.restart ? ' restart' : '');
+            var name = document.createElement('strong');
+            name.textContent = choice.never ? 'Never delete it' : choice.label;
+            var when = document.createElement('span');
+            when.className = 'muted';
+            when.textContent = (choice.never ? 'It stays until someone deletes it' : 'Ends ' + new Date(Date.now() + choice.ms).toLocaleString(undefined, DATE_FORMAT)) + (choice.restart ? ' · restarts its usual length' : '');
+            button.appendChild(name);
+            button.appendChild(when);
+            button.addEventListener('click', function () { extendTo(choice, button); });
+            list.appendChild(button);
+        });
+        if (typeof extendDialog.showModal === 'function') extendDialog.showModal(); else extendDialog.setAttribute('open', '');
+        var first = list.querySelector('button');
+        if (first) first.focus();
+    }
+
+    function extendTo(choice, trigger) {
+        Array.prototype.forEach.call($('extendChoices').querySelectorAll('button'), function (b) { b.disabled = true; });
+        api(base + '/extend', { method: 'POST', body: { ttl: choice.key } }).then(function (res) {
             if (res.ok) {
                 state.stash.expiresAt = res.body.expiresAt;
+                state.stash.canExtend = res.body.canExtend;
+                state.stash.extendChoices = res.body.extendChoices;
+                extendDialog.close();
+                paintExpiryAction();
                 updateExpiry();
-                toast('Extended. ' + expiryText(res.body.expiresAt));
+                // Say clearly that it worked and what it ends now
+                toast(res.body.expiresAt
+                    ? 'Extended "' + slug + '". ' + expiryText(res.body.expiresAt) + ' (' + new Date(res.body.expiresAt).toLocaleString(undefined, DATE_FORMAT) + ').'
+                    : 'Extended "' + slug + '". It no longer expires.');
+            } else if (res.status === 401) {
+                extendDialog.close();
+                locked();
             } else {
-                toast((res.body && res.body.error) || 'Could not extend.', true);
+                Array.prototype.forEach.call($('extendChoices').querySelectorAll('button'), function (b) { b.disabled = false; });
+                $('extendError').textContent = (res.body && res.body.error) || 'Could not extend.';
+                // Someone may have extended it already: do not offer what no longer helps
+                if (res.status === 409) { trigger.remove(); }
             }
+        }).catch(function () {
+            Array.prototype.forEach.call($('extendChoices').querySelectorAll('button'), function (b) { b.disabled = false; });
+            $('extendError').textContent = 'Could not reach the server.';
         });
+    }
+
+    $('extendCancel').addEventListener('click', function () { extendDialog.close(); });
+    extendDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
+    $('extendButton').addEventListener('click', openExtend);
+    $('optExtendButton').addEventListener('click', function () { $('optionsDialog').close(); openExtend(); });
+
+    // The clock chip becomes the way in when the stash can be extended: easy to find, and it says what it does
+    var expiryChip = $('expiryInfo');
+
+    function paintExpiryAction() {
+        var on = canExtend();
+        expiryChip.classList.toggle('extendable', on);
+        if (on) { expiryChip.setAttribute('role', 'button'); expiryChip.tabIndex = 0; } else { expiryChip.removeAttribute('role'); expiryChip.removeAttribute('tabindex'); }
+        expiryChip.dataset.tip = on ? 'Press to keep it longer' : 'When this stash is deleted';
+        $('extendButton').classList.toggle('hidden', !on);
+        paintExpiryRow();
+    }
+
+    expiryChip.addEventListener('click', function () { if (canExtend()) openExtend(); });
+    expiryChip.addEventListener('keydown', function (event) {
+        if ((event.key === 'Enter' || event.key === ' ') && canExtend()) { event.preventDefault(); openExtend(); }
     });
+
+    // Options > Stash > Expires: when it ends, and the same way to extend it
+    function paintExpiryRow() {
+        var row = document.querySelector('[data-option="expiry"]');
+        var full = role() === 'full';
+        row.classList.toggle('hidden', !full || !state.stash);
+        if (!full || !state.stash) return;
+        $('optExpiry').textContent = state.stash.expiresAt
+            ? expiryText(state.stash.expiresAt) + ' (' + new Date(state.stash.expiresAt).toLocaleString(undefined, DATE_FORMAT) + ').'
+            : 'This stash never expires.';
+        $('optExtendButton').classList.toggle('hidden', !canExtend());
+    }
+
+    P.paintExpiryAction = paintExpiryAction;
 
     // Renaming the stash (full access only). The address changes, so this page moves to the new one when it is done.
     var renameForm = $('renameForm');
@@ -268,6 +372,7 @@
         document.querySelector('[data-option="keep"]').classList.toggle('hidden', !full);
         document.querySelector('[data-option="danger"]').classList.toggle('hidden', !full);
         document.querySelector('[data-option="rename"]').classList.toggle('hidden', !full);
+        paintExpiryRow();
         // Only the owner can pass the stash on (the server checks it too)
         document.querySelector('[data-option="owner"]').classList.toggle('hidden', !(full && state.stash && state.stash.owned));
         closeOwnerForm();

@@ -737,7 +737,9 @@ class StashController {
             shareLinks: req.role === 'full' ? { view: Boolean(stash.view_token_hash), drop: Boolean(stash.drop_token_hash) } : null,
             // When this browser's sign-in ends (only a password-protected stash has one)
             sessionEndsAt: this.sessionEnd(req, stash, req.role),
-            canExtend: req.role === 'full' && Boolean(stash.ttl_ms),
+            canExtend: this.canChangeExpiry(req, stash) && Boolean(stash.ttl_ms),
+            // What it can be extended to (only for someone who may), so the page can offer the choice
+            extendChoices: this.canChangeExpiry(req, stash) ? this.extendChoices(stash) : [],
             keepLast: stash.keep_last || null,
             content: contentOf(stash),
             usage: dropOnly ? { items: 0, files: 0, bytes: 0 } : this.model.usage(stash.id),
@@ -1697,11 +1699,45 @@ class StashController {
         res.json({ items, missing });
     };
 
+    // Who may change when a stash expires: someone with full access, except that a stash with an owner is the owner's to
+    // extend (a person who only knows its password cannot, and neither can an admin: they may extend a guest's stash)
+    canChangeExpiry(req, stash) {
+        return req.role === 'full' && (!stash.owner_id || this.isOwner(req, stash));
+    }
+
+    // The lengths the stash can be extended to, as the page offers them: only those that end later than it ends now ("Never"
+    // when the server allows it), and the one that is the stash's own length marked as the way to restart its timer
+    extendChoices(stash, now = this.now()) {
+        if (!stash.ttl_ms) return [];
+        const current = stash.expires_at ? new Date(stash.expires_at).getTime() : Infinity;
+        return this.config.ttlOptions
+            .filter(option => option.ms === null || now.getTime() + option.ms > current)
+            .map(option => ({ key: option.key, label: option.label, ms: option.ms, restart: option.ms === stash.ttl_ms, never: option.ms === null }));
+    }
+
+    // Extends the stash. Without a body it restarts the timer for the stash's own length (as before); { ttl: "7d" } picks a
+    // length from the list (the same keys as when a stash is made), which must end later than it ends now.
     extend = (req, res) => {
-        const stash = this.model.extend(req.stash.id, this.now());
-        if (!stash) return res.status(400).json({ error: 'This stash never expires, so there is nothing to extend.' });
-        this.events.publish(stash.slug, 'stash-extended', { expiresAt: stash.expires_at });
-        res.json({ expiresAt: stash.expires_at });
+        const stash = req.stash;
+        if (!this.canChangeExpiry(req, stash)) return res.status(403).json({ error: 'Only the owner of this stash can change when it expires.' });
+        const now = this.now();
+        const key = req.body && req.body.ttl;
+        let updated;
+        if (key === undefined || key === null || key === '') {
+            updated = this.model.extend(stash.id, now);
+            if (!updated) return res.status(400).json({ error: 'This stash never expires, so there is nothing to extend.' });
+        } else {
+            const option = this.config.ttlOptions.find(item => item.key === key);
+            if (!option) return res.status(400).json({ error: 'Pick one of the listed lengths.', field: 'ttl' });
+            if (!stash.ttl_ms) return res.status(400).json({ error: 'This stash never expires, so there is nothing to extend.' });
+            const until = option.ms === null ? Infinity : now.getTime() + option.ms;
+            const current = stash.expires_at ? new Date(stash.expires_at).getTime() : Infinity;
+            if (until <= current) return res.status(409).json({ error: 'That ends sooner than the stash does now. Pick a longer time.', field: 'ttl' });
+            updated = this.model.setExpiry(stash.id, option.ms, now);
+        }
+        this.events.publish(updated.slug, 'stash-extended', { expiresAt: updated.expires_at });
+        this.audit('stash.extended', { req, stash: updated, detail: { by: this.isOwner(req, updated) ? 'owner' : 'visitor', ttl: key || 'restart' } });
+        res.json({ expiresAt: updated.expires_at, canExtend: Boolean(updated.ttl_ms), extendChoices: this.extendChoices(updated, now) });
     };
 
     remove = (req, res) => {

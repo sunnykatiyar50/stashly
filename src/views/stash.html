@@ -307,6 +307,18 @@
             </div>
         </div>
     </dialog>
+    <!-- Keep the stash longer: pick how long, from now (stash-options.js) -->
+    <dialog id="extendDialog" class="qr-dialog share-dialog" aria-labelledby="extendTitle">
+        <div class="qr-body share-body">
+            <h2 id="extendTitle">Keep this stash longer</h2>
+            <p class="muted" id="extendNow"></p>
+            <div id="extendChoices" class="extend-choices"></div>
+            <small class="field-error" id="extendError" role="alert"></small>
+            <div class="qr-actions">
+                <button type="button" id="extendCancel" class="ghost">Cancel</button>
+            </div>
+        </div>
+    </dialog>
     <dialog id="optionsDialog" class="qr-dialog share-dialog" aria-labelledby="optionsTitle">
         <div class="qr-body share-body">
             <h2 id="optionsTitle">Options</h2>
@@ -345,6 +357,14 @@
                     <strong>Keep only the last</strong>
                     <label class="opt"><select id="keepSelect"></select></label>
                     <span class="muted">Older items are deleted as new ones arrive, so the stash works like a rolling clipboard. Pinned items are never deleted by this.</span>
+                </div>
+                <!-- When it ends, and a way to keep it longer (the same choice as the clock chip in the header) -->
+                <div class="share-row hidden" data-option="expiry">
+                    <strong>Expires</strong>
+                    <span class="muted" id="optExpiry"></span>
+                    <div class="share-actions">
+                        <button type="button" id="optExtendButton" class="ghost small">Extend...</button>
+                    </div>
                 </div>
                 <!-- Only the owner (a signed-in user who made the stash, or was given it) sees this -->
                 <div class="share-row hidden" data-option="owner">

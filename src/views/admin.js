@@ -30,7 +30,7 @@
         el.classList.toggle('error', Boolean(isError));
         el.classList.remove('hidden');
         clearTimeout(toastTimer);
-        toastTimer = setTimeout(function () { el.classList.add('hidden'); }, isError ? 4000 : 2200);
+        toastTimer = setTimeout(function () { el.classList.add('hidden'); }, isError ? 4000 : 3600);
     }
 
     function show(name) {
@@ -149,6 +149,7 @@
 
     function buildRow(stash) {
         var tr = document.createElement('tr');
+        tr.dataset.slug = stash.slug;
         var link = document.createElement('a');
         link.href = '/s/' + encodeURIComponent(stash.slug);
         link.textContent = stash.slug;
@@ -212,8 +213,18 @@
     function extendStash(stash) {
         api('/api/admin/stashes/' + encodeURIComponent(stash.slug) + '/extend', { method: 'POST' }).then(function (res) {
             if (res.status === 401) return expired();
-            if (res.ok) { toast('Extended "' + stash.slug + '"'); loadStashes(); }
-            else toast((res.body && res.body.error) || 'Could not extend.', true);
+            if (res.ok) {
+                // Say which stash and until when, and light up its row once the list is redrawn
+                var ends = new Date(res.body.expiresAt);
+                toast('Extended "' + stash.slug + '". It now ends ' + ends.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' (' + expiryText(res.body.expiresAt) + ').');
+                Promise.resolve(loadStashes()).then(function () {
+                    var row = Array.prototype.filter.call(document.querySelectorAll('#stashBody tr'), function (tr) { return tr.dataset.slug === stash.slug; })[0];
+                    if (row) { row.classList.add('just-extended'); setTimeout(function () { row.classList.remove('just-extended'); }, 2400); }
+                });
+            } else {
+                toast((res.body && res.body.error) || 'Could not extend.', true);
+                if (res.status === 409) loadStashes();
+            }
         });
     }
 

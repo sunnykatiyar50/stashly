@@ -970,3 +970,15 @@ body:not(.stash-open) .in-topbar { display: none; }
 .mcp-detail { display: flex; flex-direction: column; gap: 8px; }
 .mcp-detail strong { margin-top: 8px; }
 .mcp-box .input-row { max-width: 640px; }
+
+/* Keeping a stash longer: the clock chip is a button when this person may extend it, and the dialog lists the lengths */
+.chip.extendable { cursor: pointer; }
+.chip.extendable:hover, .chip.extendable:focus-visible { border-color: var(--blue); color: var(--blue); outline: none; }
+.extend-choices { display: flex; flex-direction: column; gap: 8px; margin: 4px 0; }
+.extend-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 10px 12px; text-align: left; background: var(--surface-alt); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); cursor: pointer; }
+.extend-choice:hover:not(:disabled), .extend-choice:focus-visible { border-color: var(--blue); background: var(--blue-soft); outline: none; }
+.extend-choice.restart { border-color: var(--blue); }
+.extend-choice .muted { font-size: 12.5px; }
+.table tr.just-extended td { animation: extended-flash 2.4s ease-out; }
+@keyframes extended-flash { from { background: var(--success-soft); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .table tr.just-extended td { animation: none; background: var(--success-soft); } }
