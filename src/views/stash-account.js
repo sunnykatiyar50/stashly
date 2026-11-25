@@ -103,7 +103,8 @@
         // A stash you made is always in your list: nothing to press
         var owned = Boolean(state.stash && state.stash.owned);
         button.disabled = owned;
-        var word = owned ? 'Yours' : following ? 'Following' : 'Follow';
+        var word = owned ? 'Owner' : following ? 'Following' : 'Follow';
+        button.classList.toggle('is-owner', owned);
         button.querySelector('.btn-label').textContent = word;
         button.setAttribute('aria-label', owned ? 'You made this stash, so it is always in My stashes.' : following ? 'Following this stash. Press to stop following.' : 'Follow this stash in My stashes');
         if (owned) { button.title = 'You made this stash, so it is always in your My stashes list.'; return; }

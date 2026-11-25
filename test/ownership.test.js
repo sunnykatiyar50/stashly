@@ -26,7 +26,7 @@ const guestStash = (ctx, slug, body = {}) => request(ctx.app).post('/api/stashes
 
 // ---- an admin gives a guest's stash an owner ----
 
-test('an admin can give a stash with no owner to a user, who then owns it: in their list, first, marked Yours, opened with no password', async () => {
+test('an admin can give a stash with no owner to a user, who then owns it: in their list, first, marked Owner, opened with no password', async () => {
     const ctx = await accountApp();
     await addUser(ctx, 'sam');
     const sam = await signIn(ctx, 'sam');
@@ -242,4 +242,18 @@ test('the pages carry the controls: Set owner in the admin stash menu, and Owner
     // shown to the owner only
     assert.match(optionsJs, /data-option="owner"\]'\)\.classList\.toggle\('hidden', !\(full && state\.stash && state\.stash\.owned\)\)/);
     assert.match(optionsJs, /api\(base \+ '\/owner', \{ method: 'POST'/);
+});
+
+test('the Owner tag is green, Unfollow is red, and the stash page calls an owned stash Owner', async () => {
+    const ctx = makeApp({ adminPassword: ADMIN });
+    const account = (await request(ctx.app).get('/account.js').expect(200)).text;
+    assert.match(account, /make\('span', 'chip owner-chip', 'Owner'\)/);
+    assert.doesNotMatch(account, /'Yours'/);
+    assert.match(account, /make\('button', 'ghost small danger-ghost', 'Unfollow'\)/);
+    const stashPage = (await request(ctx.app).get('/stash-account.js').expect(200)).text;
+    assert.match(stashPage, /owned \? 'Owner' : following \? 'Following' : 'Follow'/);
+    const css = (await request(ctx.app).get('/styles.css').expect(200)).text;
+    assert.match(css, /\.chip\.owner-chip \{ background: var\(--success-soft\); color: var\(--success\); \}/);
+    assert.match(css, /#followStashButton\.is-owner[^{]*\{ color: var\(--success\)/);
+    assert.match(css, /button\.danger-ghost \{ color: var\(--danger\)/);
 });
