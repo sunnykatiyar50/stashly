@@ -1,5 +1,6 @@
 const { safeEntryName, fitsInZip, STORE, DEFLATE } = require('./zipWriter');
 const { deriveTitle } = require('./title');
+const { tagsOf } = require('./tags');
 
 // What goes into a stash's export zip, worked out before anything is sent so the size can be checked first and
 // stash.json can describe every entry.
@@ -41,6 +42,7 @@ function planExport({ stash, rows, fileSize, now }) {
             title: null,
             createdAt: row.created_at,
             pinned: Boolean(row.pinned),
+            tags: tagsOf(row),
             editedAt: row.edited_at || null,
         };
         if (row.kind === 'file') {

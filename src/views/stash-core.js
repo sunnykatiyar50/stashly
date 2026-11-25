@@ -23,7 +23,8 @@
         moreFailed: false, // the last "Show more" failed: it is not retried by scrolling, only by pressing the button
         dupes: 0,         // rows a later page repeated (an item moved while paging): added to the next page's offset
         loadGen: 0,        // counts loads, so an answer for an old search or page is thrown away
-        filters: { search: '', startDate: '', endDate: '' },
+        filters: { search: '', startDate: '', endDate: '', tags: [] },
+        tagList: [],       // the tags in use in the stash, with how many clips carry each: [{ name, count }]
         es: null,
         connectedOnce: false,
         selecting: false,  // select mode: rows have a tick box, and the bar above the list acts on the ticked ones

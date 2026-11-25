@@ -53,6 +53,8 @@
         // Pin is offered when a ticked clip is not pinned, Unpin when one is
         $('bulkPin').disabled = items.length === 0 || pinnedCount === items.length;
         $('bulkUnpin').disabled = pinnedCount === 0;
+        $('bulkTag').disabled = items.length === 0;
+        $('bulkUntag').disabled = !items.some(function (item) { return (item.tags || []).length; });
         $('bulkDelete').disabled = items.length === 0;
         Array.prototype.forEach.call($('items').children, function (el) {
             if (!el.dataset.id) return;
@@ -181,6 +183,31 @@
     $('bulkPin').addEventListener('click', function () { setPinnedMany(true); });
     $('bulkUnpin').addEventListener('click', function () { setPinnedMany(false); });
     $('bulkDelete').addEventListener('click', deleteMany);
+
+    // Adds one tag to the ticked clips, or takes one off. The name is asked for; the tags the ticked clips already
+    // have are offered when taking one off.
+    function tagManyAsk(add) {
+        var ids = pickedIds();
+        if (!ids.length) return;
+        var have = [];
+        ids.map(findItem).filter(Boolean).forEach(function (item) {
+            (item.tags || []).forEach(function (tag) { if (have.indexOf(tag) === -1) have.push(tag); });
+        });
+        var question = add ? 'Add which tag to ' + noun(ids.length) + '?' : 'Remove which tag from ' + noun(ids.length) + '? (' + have.join(', ') + ')';
+        var answer = window.prompt(question, '');
+        if (answer === null) return;
+        var tag = P.cleanTag(answer);
+        if (!tag) { if (answer.trim()) toast('A tag can only have letters, numbers, - and _ (up to 24 characters).', true); return; }
+        P.tagMany(add ? 'tag' : 'untag', ids, tag).then(function (body) {
+            if (!body) return;
+            body.items.forEach(onItemUpdated);
+            clearPicks();
+            var skipped = body.full && body.full.length ? ' (' + noun(body.full.length) + ' already had the most tags)' : '';
+            toast((add ? 'Tagged ' : 'Untagged ') + noun(body.items.length) + ' ' + (add ? 'with ' : 'from ') + tag + skipped, Boolean(skipped));
+        });
+    }
+    $('bulkTag').addEventListener('click', function () { tagManyAsk(true); });
+    $('bulkUntag').addEventListener('click', function () { tagManyAsk(false); });
     // Escape leaves select mode (when the keyboard is in the clip list or its bar)
     $('items').closest('.clip-pane').addEventListener('keydown', function (event) {
         if (event.key === 'Escape' && state.selecting) {

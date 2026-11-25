@@ -111,6 +111,7 @@ function createStashRoutes({ controller, config }) {
     router.post('/:slug/items/:id/restore', postLimiter, ...full, c.restore);
     router.put('/:slug/items/:id', ...full, c.editNote);
     router.post('/:slug/items/:id/pin', ...full, c.setPinned);
+    router.put('/:slug/items/:id/tags', ...full, c.setTags);
     // Dragging clips into a new order; a read-only or drop-box link cannot rearrange
     router.post('/:slug/reorder', ...full, c.reorder);
     router.put('/:slug/keep-last', ...full, c.setKeepLast);
