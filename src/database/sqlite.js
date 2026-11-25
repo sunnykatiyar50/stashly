@@ -238,6 +238,26 @@ const MIGRATIONS = [
         addColumn(db, 'items', 'tags', 'TEXT');
         addColumn(db, 'trash', 'tags', 'TEXT');
     },
+
+    // 12: a link to one clip. A row is the share link of one note or file: only the hash of its random token is kept (the
+    // link itself is shown once), it may expire, and it counts how often it was opened. There is at most one per clip
+    // (making a new one replaces the old). The link dies with its clip (a delete, even an undoable one, removes the row),
+    // with its stash, and when the stash's password is changed.
+    db => {
+        db.exec(
+            `CREATE TABLE IF NOT EXISTS item_shares (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token_hash TEXT NOT NULL UNIQUE,
+                stash_id INTEGER NOT NULL REFERENCES stashes(id) ON DELETE CASCADE,
+                item_id INTEGER NOT NULL UNIQUE REFERENCES items(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL,
+                expires_at TEXT,
+                views INTEGER NOT NULL DEFAULT 0,
+                last_viewed_at TEXT
+            )`
+        );
+        db.exec('CREATE INDEX IF NOT EXISTS idx_item_shares_stash ON item_shares (stash_id)');
+    },
 ];
 
 const SCHEMA_VERSION = MIGRATIONS.length;

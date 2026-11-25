@@ -112,6 +112,10 @@ function createStashRoutes({ controller, config }) {
     router.put('/:slug/items/:id', ...full, c.editNote);
     router.post('/:slug/items/:id/pin', ...full, c.setPinned);
     router.put('/:slug/items/:id/tags', ...full, c.setTags);
+    // A link to just this one clip (see the public routes in clipRoutes.js)
+    router.get('/:slug/items/:id/share', readLimiter, ...full, c.getClipShare);
+    router.post('/:slug/items/:id/share', postLimiter, ...full, c.createClipShare);
+    router.delete('/:slug/items/:id/share', postLimiter, ...full, c.revokeClipShare);
     // Dragging clips into a new order; a read-only or drop-box link cannot rearrange
     router.post('/:slug/reorder', ...full, c.reorder);
     router.put('/:slug/keep-last', ...full, c.setKeepLast);

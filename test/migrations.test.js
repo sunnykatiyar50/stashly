@@ -72,7 +72,7 @@ test('a schema 2 database gets the trash table (and then thumbnails) and keeps i
 
         const db = connect(file);
         assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
-        assert.equal(SCHEMA_VERSION, 11);
+        assert.equal(SCHEMA_VERSION, 12);
         assert.deepEqual(columns(db, 'trash'), [
             'id', 'stash_id', 'kind', 'title', 'text', 'file_name', 'file_type', 'file_size', 'created_at',
             'expires_at', 'burn', 'secret', 'pinned', 'edited_at', 'sort_order', 'deleted_at', 'has_thumb', 'tags',
@@ -175,7 +175,7 @@ test('a schema 5 database gets the users and follow tables at version 6, keeps i
 
         const db = connect(file);
         assert.equal(db.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
-        assert.equal(SCHEMA_VERSION, 11);
+        assert.equal(SCHEMA_VERSION, 12);
         assert.deepEqual(columns(db, 'users'), [
             'id', 'username', 'display_name', 'password_hash', 'password_salt', 'role', 'disabled', 'session_version',
             'created_at', 'created_by', 'last_login_at', 'managed', 'email',

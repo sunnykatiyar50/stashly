@@ -14,6 +14,7 @@ Stashly is self-hosted: you run it on your own machine or server, and your notes
 Everything else is optional:
 
 - **Protect it**: set a password, and share a **read-only link** or a **drop-box link** (add but not see) from the **Share links** button.
+- **Share one clip**: press **Share** on a note or file for a link that opens only that clip, no sign-in and nothing else from the stash. It expires (7 days by default) and can be cancelled.
 - **Let it expire**: a stash and everything in it is deleted after 1 hour to 30 days. **Extend** restarts the timer.
 - **Keep it tidy**: pin items, drag to reorder, search, filter by date, or keep only the last N items so a stash works like a rolling clipboard.
 - **Handle sensitive notes**: **Burn after reading** shows a note once and deletes it; **Secret** hides it as dots; a note can delete itself after 5 minutes to a day.
