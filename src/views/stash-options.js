@@ -129,12 +129,12 @@
         if ((event.key === 'Enter' || event.key === ' ') && canExtend()) { event.preventDefault(); openExtend(); }
     });
 
-    // Options > Stash > Expires: when it ends, and the same way to extend it
+    // Options > General > Expires: when it ends, and the same way to extend it
     function paintExpiryRow() {
         var row = document.querySelector('[data-option="expiry"]');
-        var full = role() === 'full';
-        row.classList.toggle('hidden', !full || !state.stash);
-        if (!full || !state.stash) return;
+        var manage = role() === 'full' && Boolean(state.stash && state.stash.canManage);
+        row.classList.toggle('hidden', !manage);
+        if (!manage) return;
         $('optExpiry').textContent = state.stash.expiresAt
             ? expiryText(state.stash.expiresAt) + ' (' + new Date(state.stash.expiresAt).toLocaleString(undefined, DATE_FORMAT) + ').'
             : 'This stash never expires.';
@@ -143,27 +143,21 @@
 
     P.paintExpiryAction = paintExpiryAction;
 
-    // Renaming the stash (full access only). The address changes, so this page moves to the new one when it is done.
+    // Renaming the stash (whoever manages it). The name is a field in Options > General that is always there: change it and
+    // press Rename. The address changes, so this page moves to the new one when it is done.
     var renameForm = $('renameForm');
 
+    // Back to the stash's own name, with the button waiting for a change
     function closeRenameForm() {
-        renameForm.classList.add('hidden');
-        renameForm.reset();
+        $('renameInput').value = slug;
         $('renameError').textContent = '';
-        $('renameToggle').classList.remove('hidden');
+        $('renameSave').disabled = true;
     }
 
-    $('renameCurrent').textContent = slug;
-
-    $('renameToggle').addEventListener('click', function (event) {
-        renameForm.classList.remove('hidden');
-        event.currentTarget.classList.add('hidden');
-        $('renameInput').value = slug;
-        $('renameInput').focus();
-        $('renameInput').select();
+    $('renameInput').addEventListener('input', function () {
+        $('renameSave').disabled = $('renameInput').value.trim().toLowerCase() === slug || !$('renameInput').value.trim();
+        $('renameError').textContent = '';
     });
-
-    $('renameCancel').addEventListener('click', closeRenameForm);
 
     renameForm.addEventListener('submit', function (event) {
         event.preventDefault();
@@ -366,17 +360,20 @@
         closeDeleteForm();
         var protectedStash = Boolean(state.stash && state.stash.hasPassword);
         document.querySelector('[data-option="session"]').classList.toggle('hidden', !protectedStash);
-        // The dialog sits outside the page section that carries the role classes, so the rows are hidden here. Only
-        // someone with full access can keep-last, delete the stash or change the password.
+        // The dialog sits outside the page section that carries the role classes, so the rows are hidden here. The stash's own
+        // settings (name, expiry, tags, what it holds, keep-last, delete) are for whoever manages it: its owner, or anyone with
+        // full access on a guest's stash (the server checks the same rule). Changing the password is for full access.
         var full = role() === 'full';
-        document.querySelector('[data-option="keep"]').classList.toggle('hidden', !full);
-        document.querySelector('[data-option="danger"]').classList.toggle('hidden', !full);
-        document.querySelector('[data-option="rename"]').classList.toggle('hidden', !full);
+        var manage = Boolean(full && state.stash && state.stash.canManage);
+        ['keep', 'danger', 'rename', 'content', 'tags'].forEach(function (name) {
+            document.querySelector('[data-option="' + name + '"]').classList.toggle('hidden', !manage);
+        });
         paintExpiryRow();
         // Only the owner can pass the stash on (the server checks it too)
-        document.querySelector('[data-option="owner"]').classList.toggle('hidden', !(full && state.stash && state.stash.owned));
+        document.querySelector('[data-option="owner"]').classList.toggle('hidden', !(manage && state.stash.owned));
         closeOwnerForm();
-        document.querySelector('[data-option="content"]').classList.toggle('hidden', !full);
+        paintMoveRow(manage);
+        renderTagManager();
         Array.prototype.forEach.call(document.querySelectorAll('input[name="stashContent"]'), function (input) {
             input.checked = input.value === stashContent();
         });
@@ -409,53 +406,159 @@
         select.appendChild(all);
         choices.forEach(function (n) { var el = make('option', null, n + ' items'); el.value = String(n); select.appendChild(el); });
         select.value = current ? String(current) : '';
-        updateOptionTabs();
+        updateOptionSections();
     }
 
-    var optionTabs = Array.prototype.slice.call(document.querySelectorAll('.opt-tab'));
+    // ---- the groups: General, Organize, Access, This device, Danger zone ----
+    // One scrolling page. A group is shown only when it has a row for this visitor, and the buttons at the top jump to one.
+    var jumpLinks = Array.prototype.slice.call(document.querySelectorAll('.opt-jump-link'));
+    var sections = Array.prototype.slice.call(document.querySelectorAll('.opt-section'));
 
-    var optionTab = null;
+    function sectionOf(key) { return document.getElementById('optSection-' + key); }
 
-    function panelOf(tab) { return $('optPanel-' + tab.dataset.tab); }
-
-    // A tab is shown only when its panel has something for this visitor; the last one picked stays picked
-    function updateOptionTabs() {
-        optionTabs.forEach(function (tab) {
-            var rows = panelOf(tab).querySelectorAll('.share-row');
+    function updateOptionSections() {
+        sections.forEach(function (section) {
+            var rows = section.querySelectorAll('.share-row');
             var any = Array.prototype.some.call(rows, function (row) { return !row.classList.contains('hidden'); });
-            tab.classList.toggle('hidden', !any);
+            section.classList.toggle('hidden', !any);
         });
-        var visible = optionTabs.filter(function (tab) { return !tab.classList.contains('hidden'); });
-        var pick = visible.filter(function (tab) { return tab.dataset.tab === optionTab; })[0] || visible[0];
-        if (pick) selectOptionTab(pick, false);
+        jumpLinks.forEach(function (link) { link.classList.toggle('hidden', sectionOf(link.dataset.jump).classList.contains('hidden')); });
+        // With a single group there is nothing to jump between
+        var shown = jumpLinks.filter(function (link) { return !link.classList.contains('hidden'); });
+        document.querySelector('.opt-jump').classList.toggle('hidden', shown.length < 2);
     }
 
-    function selectOptionTab(tab, focus) {
-        optionTab = tab.dataset.tab;
-        optionTabs.forEach(function (other) {
-            var on = other === tab;
-            other.setAttribute('aria-selected', on ? 'true' : 'false');
-            other.tabIndex = on ? 0 : -1;
-            panelOf(other).classList.toggle('hidden', !on);
-        });
-        if (focus) tab.focus();
+    function jumpTo(key, focus) {
+        var section = sectionOf(key);
+        if (!section || section.classList.contains('hidden')) return;
+        // The scrolling box is the dialog's own; scrollIntoView keeps it simple and works in every browser that has dialogs
+        section.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+        jumpLinks.forEach(function (link) { if (link.dataset.jump === key) link.setAttribute('aria-current', 'true'); else link.removeAttribute('aria-current'); });
+        if (focus) { var heading = section.querySelector('h3'); if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); } }
     }
 
-    optionTabs.forEach(function (tab) {
-        tab.addEventListener('click', function () { selectOptionTab(tab, false); });
-        // Arrow keys move between the tabs, Home and End go to the first and last
-        tab.addEventListener('keydown', function (event) {
-            var visible = optionTabs.filter(function (other) { return !other.classList.contains('hidden'); });
-            var index = visible.indexOf(tab);
-            var next = null;
-            if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = visible[(index + 1) % visible.length];
-            else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = visible[(index - 1 + visible.length) % visible.length];
-            else if (event.key === 'Home') next = visible[0];
-            else if (event.key === 'End') next = visible[visible.length - 1];
-            if (!next) return;
-            event.preventDefault();
-            selectOptionTab(next, true);
+    jumpLinks.forEach(function (link) {
+        link.addEventListener('click', function () { jumpTo(link.dataset.jump, true); });
+    });
+
+    // ---- Options > Organize > Tags: every tag with its count, to rename or delete across the whole stash ----
+
+    function tagError(message) { $('tagManagerError').textContent = message || ''; }
+
+    // Applies a rename or a delete to what this page knows: the tag list, the strip above the list, the tags being filtered by
+    function appliedTags(body, from, to) {
+        state.tagList = body.tags || [];
+        var filters = state.filters.tags || [];
+        if (filters.indexOf(from) !== -1) {
+            state.filters = { search: state.filters.search, startDate: state.filters.startDate, endDate: state.filters.endDate, tags: filters.filter(function (name) { return name !== from; }).concat(to && filters.indexOf(to) === -1 ? [to] : []) };
+        }
+        if (P.renderTagBar) P.renderTagBar();
+        renderTagManager();
+        // The rows show the new names: read the list again (other pages are told by the server)
+        lastOwnTagChange = Date.now();
+        load(true);
+    }
+
+    var lastOwnTagChange = 0;
+
+    // Another page changed the tags: read the list again, unless this page just did
+    function onTagsChanged() {
+        if (Date.now() - lastOwnTagChange < 1500) return;
+        load(true);
+    }
+
+    function tagRow(entry) {
+        var row = make('div', 'tag-manage-row');
+        var chip = make('span', 'tag-chip static');
+        chip.appendChild(make('span', null, entry.name));
+        row.appendChild(chip);
+        row.appendChild(make('span', 'muted tag-manage-count', entry.count + (entry.count === 1 ? ' clip' : ' clips')));
+        var actions = make('span', 'tag-manage-actions');
+        var rename = make('button', 'ghost small', 'Rename');
+        rename.type = 'button';
+        rename.setAttribute('aria-label', 'Rename the tag ' + entry.name);
+        var remove = make('button', 'danger-ghost small', 'Delete');
+        remove.type = 'button';
+        remove.setAttribute('aria-label', 'Delete the tag ' + entry.name);
+        actions.appendChild(rename);
+        actions.appendChild(remove);
+        row.appendChild(actions);
+
+        rename.addEventListener('click', function () {
+            tagError('');
+            row.textContent = '';
+            var form = make('form', 'tag-rename-form');
+            form.noValidate = true;
+            var input = make('input', 'mono');
+            input.type = 'text';
+            input.maxLength = 24;
+            input.value = entry.name;
+            input.autocomplete = 'off';
+            input.setAttribute('aria-label', 'New name for the tag ' + entry.name);
+            var save = make('button', 'primary small', 'Save');
+            save.type = 'submit';
+            var cancel = make('button', 'ghost small', 'Cancel');
+            cancel.type = 'button';
+            form.appendChild(input);
+            form.appendChild(save);
+            form.appendChild(cancel);
+            row.appendChild(form);
+            input.focus();
+            input.select();
+            cancel.addEventListener('click', renderTagManager);
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                var to = P.cleanTag(input.value);
+                if (!to) { tagError('A tag can only have letters, numbers, - and _ (up to 24 characters).'); input.focus(); return; }
+                if (to === entry.name) { renderTagManager(); return; }
+                save.disabled = true;
+                api(base + '/tags/rename', { method: 'POST', body: { from: entry.name, to: to } }).then(function (res) {
+                    if (res.ok) {
+                        appliedTags(res.body, entry.name, to);
+                        toast('Renamed ' + entry.name + ' to ' + to + ' on ' + res.body.changed + (res.body.changed === 1 ? ' clip' : ' clips'));
+                    } else if (res.status === 401) { $('optionsDialog').close(); locked(); }
+                    else { save.disabled = false; tagError((res.body && res.body.error) || 'Could not rename the tag.'); }
+                }).catch(function () { save.disabled = false; tagError('Could not reach the server.'); });
+            });
         });
+
+        remove.addEventListener('click', function () {
+            tagError('');
+            if (!window.confirm('Remove the tag "' + entry.name + '" from ' + entry.count + (entry.count === 1 ? ' clip' : ' clips') + '? The clips stay.')) return;
+            remove.disabled = true;
+            api(base + '/tags/' + encodeURIComponent(entry.name), { method: 'DELETE' }).then(function (res) {
+                if (res.ok) {
+                    appliedTags(res.body, entry.name, null);
+                    toast('Removed the tag ' + entry.name + ' from ' + res.body.changed + (res.body.changed === 1 ? ' clip' : ' clips'));
+                } else if (res.status === 401) { $('optionsDialog').close(); locked(); }
+                else { remove.disabled = false; tagError((res.body && res.body.error) || 'Could not remove the tag.'); }
+            }).catch(function () { remove.disabled = false; tagError('Could not reach the server.'); });
+        });
+        return row;
+    }
+
+    function renderTagManager() {
+        var box = $('tagManager');
+        box.textContent = '';
+        var list = state.tagList || [];
+        if (!list.length) {
+            box.appendChild(make('span', 'muted', 'No tags yet. Open a clip and add one on its Tags line.'));
+            return;
+        }
+        list.forEach(function (entry) { box.appendChild(tagRow(entry)); });
+    }
+
+    // ---- Options > Organize > Move or copy clips ----
+
+    // Offered to whoever manages the stash and is signed in (a clip can only go to a stash you own, and that needs an account)
+    function paintMoveRow(manage) {
+        var show = manage && P.signedIn && P.signedIn();
+        document.querySelector('[data-option="move"]').classList.toggle('hidden', !show);
+    }
+
+    $('optSelectClips').addEventListener('click', function () {
+        $('optionsDialog').close();
+        if (P.setSelecting) P.setSelecting(true);
     });
 
     // What the stash can hold
@@ -487,12 +590,12 @@
         });
     }
 
-    // Opens Options, on one tab when the caller names it (and only if that tab has something for this visitor)
-    function openOptions(tab) {
+    // Opens Options, scrolled to a group when the caller names one ('signin' is the Access group)
+    function openOptions(group) {
         renderOptions();
         if (typeof optionsDialog.showModal === 'function') optionsDialog.showModal(); else optionsDialog.setAttribute('open', '');
-        var chosen = optionTabs.filter(function (el) { return el.dataset.tab === tab && !el.classList.contains('hidden'); })[0];
-        if (chosen) selectOptionTab(chosen, false);
+        document.getElementById('optScroll').scrollTop = 0;
+        if (group) jumpTo(group === 'signin' ? 'access' : group, false);
     }
 
     $('optionsButton').addEventListener('click', function () { openOptions(); });
@@ -595,8 +698,9 @@
     P.leaveStash = leaveStash;
     P.closePasswordForm = closePasswordForm;
     P.renderOptions = renderOptions;
-    P.panelOf = panelOf;
-    P.updateOptionTabs = updateOptionTabs;
-    P.selectOptionTab = selectOptionTab;
+    P.updateOptionSections = updateOptionSections;
+    P.jumpToOptions = jumpTo;
+    P.renderTagManager = renderTagManager;
+    P.onTagsChanged = onTagsChanged;
     P.restoreContentChoice = restoreContentChoice;
 })();

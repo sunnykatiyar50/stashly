@@ -875,25 +875,38 @@ body:not(.stash-open) .in-topbar { display: none; }
 .clip .clip-copy:hover, .clip .clip-copy:focus-visible, .clip-pin.on { opacity: 1; }
 @media (hover: none) { .clip .clip-copy, .clip.selected .clip-copy { opacity: 0.85; } }
 
-/* ===== Options: tabs across the top, one panel at a time ===== */
-#optionsDialog { width: min(560px, calc(100vw - 24px)); }
-#optionsDialog .qr-body { gap: 14px; padding: 22px 24px; }
-.opt-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
-.opt-tabs::-webkit-scrollbar { display: none; }
-.opt-tab { display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 9px 12px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; background: none; color: var(--text-soft); font-size: 14px; white-space: nowrap; }
-.opt-tab svg { width: 16px; height: 16px; }
-.opt-tab.hidden { display: none; }
-.opt-tab:hover { color: var(--text); background: var(--surface-alt); }
-.opt-tab[aria-selected="true"] { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
-.opt-tab[data-tab="danger"][aria-selected="true"] { color: var(--danger); border-bottom-color: var(--danger); }
-.opt-panel { display: flex; flex-direction: column; gap: 12px; min-height: 220px; max-height: min(60vh, 520px); overflow-y: auto; }
-.opt-panel.hidden { display: none; }
-.opt-panel .share-row { padding: 14px 16px; gap: 8px; }
+/* ===== Options: one scrolling page in groups (General, Organize, Access, This device, Danger zone) ===== */
+#optionsDialog { width: min(600px, calc(100vw - 24px)); }
+#optionsDialog .qr-body { gap: 12px; padding: 20px 22px; }
+/* The buttons across the top jump to a group; on a phone they scroll sideways */
+.opt-jump { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.opt-jump::-webkit-scrollbar { display: none; }
+.opt-jump.hidden { display: none; }
+.opt-jump-link { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 6px 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-alt); color: var(--text-soft); font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.opt-jump-link svg { width: 15px; height: 15px; }
+.opt-jump-link:hover, .opt-jump-link:focus-visible, .opt-jump-link[aria-current="true"] { border-color: var(--blue); background: var(--blue-soft); color: var(--blue); outline: none; }
+.opt-jump-link.danger:hover, .opt-jump-link.danger:focus-visible, .opt-jump-link.danger[aria-current="true"] { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
+.opt-jump-link.hidden { display: none; }
+.opt-scroll { display: flex; flex-direction: column; gap: 20px; max-height: min(64vh, 560px); overflow-y: auto; padding-right: 4px; }
+.opt-section { display: flex; flex-direction: column; gap: 10px; }
+.opt-section.hidden { display: none; }
+.opt-section > h3 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.opt-section .share-row { padding: 12px 14px; gap: 8px; }
+.opt-danger > h3 { color: var(--danger); }
 .content-choices { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+/* The name is a field with its button, always there */
+.inline-form { display: flex; gap: 8px; align-items: center; }
+.inline-form input { flex: 1 1 auto; min-width: 0; }
+/* Tags: each with its count, and what can be done to it */
+.tag-manager { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
+.tag-manage-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 30px; }
+.tag-manage-count { font-size: 12.5px; }
+.tag-manage-actions { margin-left: auto; display: inline-flex; gap: 6px; }
+.tag-rename-form { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; flex-wrap: wrap; }
+.tag-rename-form input { flex: 1 1 120px; min-width: 0; max-width: 220px; }
 @media (max-width: 760px) {
     #optionsDialog .qr-body { padding: 16px; }
-    .opt-tab { padding: 8px 10px; font-size: 13px; gap: 6px; }
-    .opt-panel { min-height: 0; max-height: 65vh; }
+    .opt-scroll { max-height: 68vh; }
 }
 
 /* ===== What the stash takes: hide what cannot be added ===== */

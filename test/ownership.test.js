@@ -240,7 +240,7 @@ test('the pages carry the controls: Set owner in the admin stash menu, and Owner
     assert.match(stash, /id="ownerToggle"/);
     const optionsJs = (await request(ctx.app).get('/stash-options.js').expect(200)).text;
     // shown to the owner only
-    assert.match(optionsJs, /data-option="owner"\]'\)\.classList\.toggle\('hidden', !\(full && state\.stash && state\.stash\.owned\)\)/);
+    assert.match(optionsJs, /data-option="owner"\]'\)\.classList\.toggle\('hidden', !\(manage && state\.stash\.owned\)\)/);
     assert.match(optionsJs, /api\(base \+ '\/owner', \{ method: 'POST'/);
 });
 

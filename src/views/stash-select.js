@@ -53,6 +53,9 @@
         // Pin is offered when a ticked clip is not pinned, Unpin when one is
         $('bulkPin').disabled = items.length === 0 || pinnedCount === items.length;
         $('bulkUnpin').disabled = pinnedCount === 0;
+        // Move to... is for whoever manages the stash and is signed in (it goes to a stash of theirs)
+        $('bulkMove').classList.toggle('hidden', !canMove());
+        $('bulkMove').disabled = items.length === 0;
         $('bulkTag').disabled = items.length === 0;
         $('bulkUntag').disabled = !items.some(function (item) { return (item.tags || []).length; });
         $('bulkDelete').disabled = items.length === 0;
@@ -206,6 +209,85 @@
             toast((add ? 'Tagged ' : 'Untagged ') + noun(body.items.length) + ' ' + (add ? 'with ' : 'from ') + tag + skipped, Boolean(skipped));
         });
     }
+    // ---- Move to... : the ticked clips go to another stash of yours, or are copied there ----
+
+    function canMove() {
+        return Boolean(state.stash && state.stash.canManage && P.signedIn && P.signedIn());
+    }
+
+    var moveDialog = $('moveDialog');
+
+    function moveMode() {
+        return document.querySelector('input[name="moveMode"]:checked').value;
+    }
+
+    function paintMoveButton() {
+        $('moveSave').textContent = moveMode() === 'copy' ? 'Copy' : 'Move';
+        $('moveTitle').textContent = (moveMode() === 'copy' ? 'Copy ' : 'Move ') + noun(pickedIds().length);
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="moveMode"]'), function (input) { input.addEventListener('change', paintMoveButton); });
+
+    function openMove() {
+        var ids = pickedIds();
+        if (!ids.length || !canMove()) return;
+        document.querySelector('input[name="moveMode"][value="move"]').checked = true;
+        paintMoveButton();
+        $('moveIntro').textContent = 'The ticked clips go to another stash of yours. A moved clip keeps its tags and title, and a link made to it ends.';
+        $('moveError').textContent = '';
+        var select = $('moveTarget');
+        select.textContent = '';
+        select.disabled = true;
+        $('moveSave').disabled = true;
+        if (typeof moveDialog.showModal === 'function') moveDialog.showModal(); else moveDialog.setAttribute('open', '');
+        // The stashes that are yours, other than this one
+        api('/api/me/stashes').then(function (res) {
+            if (!res.ok || !res.body) { $('moveError').textContent = 'Could not load your stashes.'; return; }
+            var mine = res.body.stashes.filter(function (entry) { return entry.owned && entry.slug !== state.stash.slug; });
+            if (!mine.length) { $('moveError').textContent = 'You have no other stash of your own to move them to. Make one first.'; return; }
+            mine.forEach(function (entry) {
+                var option = document.createElement('option');
+                option.value = entry.slug;
+                option.textContent = entry.slug;
+                select.appendChild(option);
+            });
+            select.disabled = false;
+            $('moveSave').disabled = false;
+            select.focus();
+        }).catch(function () { $('moveError').textContent = 'Could not reach the server.'; });
+    }
+
+    $('moveCancel').addEventListener('click', function () { moveDialog.close(); });
+    moveDialog.addEventListener('click', function (event) { if (event.target === event.currentTarget) event.currentTarget.close(); });
+    $('bulkMove').addEventListener('click', openMove);
+    $('moveForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        var ids = pickedIds();
+        var to = $('moveTarget').value;
+        var copy = moveMode() === 'copy';
+        if (!ids.length || !to) return;
+        $('moveSave').disabled = true;
+        $('moveError').textContent = '';
+        api(base + '/items/move', { method: 'POST', body: { ids: ids, to: to, copy: copy } }).then(function (res) {
+            $('moveSave').disabled = false;
+            if (res.ok) {
+                moveDialog.close();
+                (res.body.moved || []).forEach(function (id) { onItemDeleted(id); });
+                clearPicks();
+                var done = copy ? res.body.copied.length : res.body.moved.length;
+                var skipped = res.body.skipped.length;
+                var reasons = { gone: 'no longer there', burn: 'burn-after-reading notes are not copied', kind: 'that stash does not take them' };
+                var why = skipped ? ' (' + skipped + ' left out: ' + Array.from(new Set(res.body.skipped.map(function (item) { return reasons[item.reason] || item.reason; }))).join(', ') + ')' : '';
+                toast((copy ? 'Copied ' : 'Moved ') + noun(done) + ' to ' + res.body.target + why, !done && skipped > 0);
+            } else if (res.status === 401) {
+                moveDialog.close();
+                locked();
+            } else {
+                $('moveError').textContent = (res.body && res.body.error) || 'Could not do that.';
+            }
+        }).catch(function () { $('moveSave').disabled = false; $('moveError').textContent = 'Could not reach the server.'; });
+    });
+
     $('bulkTag').addEventListener('click', function () { tagManyAsk(true); });
     $('bulkUntag').addEventListener('click', function () { tagManyAsk(false); });
     // Escape leaves select mode (when the keyboard is in the clip list or its bar)

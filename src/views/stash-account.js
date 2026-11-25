@@ -216,4 +216,6 @@
     document.addEventListener('visibilitychange', function () { if (!document.hidden) markSeen(); });
 
     P.afterRole = refresh;
+    // Whether someone is signed in to an account (known once the check at page start has answered)
+    P.signedIn = function () { return accounts; };
 })();

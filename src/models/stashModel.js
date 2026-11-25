@@ -608,6 +608,93 @@ class StashModel {
         return this.setTags(stashId, id, tags);
     }
 
+    // Changes one tag on every clip of the stash that carries it (the trash too, so an undo brings back the new tag).
+    // change(tags) returns the new list. Returns how many live clips changed.
+    mapTag(stashId, name, change) {
+        const like = `%"${escapeLike(name)}"%`;
+        let changed = 0;
+        this.db.exec('BEGIN');
+        try {
+            for (const table of ['items', 'trash']) {
+                const rows = this.db.prepare(`SELECT id, tags FROM ${table} WHERE stash_id = ? AND tags LIKE ? ESCAPE '\\'`).all(stashId, like);
+                const update = this.db.prepare(`UPDATE ${table} SET tags = ? WHERE id = ?`);
+                for (const row of rows) {
+                    update.run(serializeTags(change(tagsOf(row))), row.id);
+                    if (table === 'items') changed++;
+                }
+            }
+            this.db.exec('COMMIT');
+        } catch (err) {
+            this.db.exec('ROLLBACK');
+            throw err;
+        }
+        return changed;
+    }
+
+    // Renames a tag everywhere in the stash; a clip that already has the new name just loses the old one (they merge)
+    renameTag(stashId, from, to) {
+        return this.mapTag(stashId, from, tags => {
+            const out = [];
+            for (const tag of tags) {
+                const next = tag === from ? to : tag;
+                if (!out.includes(next)) out.push(next);
+            }
+            return out;
+        });
+    }
+
+    deleteTag(stashId, name) {
+        return this.mapTag(stashId, name, tags => tags.filter(tag => tag !== name));
+    }
+
+    // Moves clips (rows of the source stash, listed top first) to another stash. A clip keeps its id, so a file keeps its
+    // bytes where they are, and takes the top places in the target in the same order. A link made to a moved clip ends:
+    // it was given out for the old stash.
+    moveItems(sourceId, targetId, ids) {
+        this.db.exec('BEGIN');
+        try {
+            const place = this.db.prepare('UPDATE items SET stash_id = ?, sort_order = ? WHERE id = ? AND stash_id = ?');
+            const unshare = this.db.prepare('DELETE FROM item_shares WHERE item_id = ?');
+            // The last of the list goes first, so the first ends on top
+            for (const id of [...ids].reverse()) {
+                place.run(targetId, this.nextOrder(targetId), id, sourceId);
+                unshare.run(id);
+            }
+            this.db.exec('COMMIT');
+        } catch (err) {
+            this.db.exec('ROLLBACK');
+            throw err;
+        }
+    }
+
+    // Copies clips to another stash as new items (a file's bytes are copied too), listed top first. Returns the new rows.
+    // Not the pin, the edit time or the clip's links: those belong to the original.
+    copyItems(sourceId, targetId, ids) {
+        const made = [];
+        this.db.exec('BEGIN');
+        try {
+            const insert = this.db.prepare(
+                `INSERT INTO items (stash_id, kind, title, text, file_name, file_type, file_size, created_at, expires_at, burn, secret, pinned, edited_at, sort_order, has_thumb, tags)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, NULL, ?, ?, ?)`
+            );
+            for (const id of [...ids].reverse()) {
+                const row = this.getItem(sourceId, id);
+                if (!row) continue;
+                const result = insert.run(targetId, row.kind, row.title, row.text, row.file_name, row.file_type, row.file_size, row.created_at, row.expires_at, row.secret, this.nextOrder(targetId), row.has_thumb, row.tags);
+                const newId = Number(result.lastInsertRowid);
+                made.push({ from: id, id: newId, kind: row.kind });
+                if (row.kind === 'file') this.files.copy(id, newId);
+            }
+            this.db.exec('COMMIT');
+        } catch (err) {
+            this.db.exec('ROLLBACK');
+            // Bytes already copied for rows that were rolled back
+            this.files.remove(made.filter(item => item.kind === 'file').map(item => item.id));
+            throw err;
+        }
+        return made.reverse().map(item => this.getItem(targetId, item.id));
+    }
+
     // The tags in use in a stash with how many clips carry each, most used first (clips past their own expiry are left out)
     tagCounts(stashId, now = new Date(), limit = 200) {
         return this.db

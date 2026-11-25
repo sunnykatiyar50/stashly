@@ -178,6 +178,8 @@
             if (window.StashlyPage.paintExpiryAction) window.StashlyPage.paintExpiryAction();
             updateExpiry();
         });
+        // Tags were renamed or deleted across the stash (Options > Organize): the list is read again
+        es.addEventListener('tags-changed', function () { if (P.onTagsChanged) P.onTagsChanged(); });
         es.addEventListener('stash-gone', gone);
         // Someone changed what the stash takes
         es.addEventListener('content-changed', function (event) {
