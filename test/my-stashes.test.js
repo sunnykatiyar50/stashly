@@ -65,3 +65,13 @@ test('Extend in Options opens on top of Options, so Cancel comes back to it', as
     assert.match(options, /\$\('optExtendButton'\)\.addEventListener\('click', openExtend\);/);
     assert.doesNotMatch(options, /\$\('optionsDialog'\)\.close\(\);\s*openExtend\(\)/);
 });
+
+test('the Options dialog keeps one size whichever group is open: fixed width and a fixed content height, changing only with the window', async () => {
+    const css = await page(makeApp(), '/styles.css');
+    assert.match(css, /#optionsDialog \{ width: min\(780px, calc\(100vw - 24px\)\); \}/);
+    // A fixed height, not a minimum and maximum that the content moves between
+    assert.match(css, /\.opt-scroll \{ min-width: 0; height: min\(62vh, 480px\); overflow-y: auto;/);
+    assert.doesNotMatch(css, /\.opt-scroll \{[^}]*(?:min|max)-height/);
+    // The same on a phone
+    assert.match(css.slice(css.indexOf('.opt-nav-item { width: auto; flex: none;')), /\.opt-scroll \{ height: min\(64vh, 520px\); \}/);
+});
