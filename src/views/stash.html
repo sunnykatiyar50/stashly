@@ -148,6 +148,10 @@
                         <svg viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 3h6l-1 7 4 3v2H6v-2l4-3z"/></svg>
                         <span class="btn-label">Pin</span>
                     </button>
+                    <!-- Phone only: the buttons above collapse into this menu in the top bar (stash-more.js) -->
+                    <button type="button" id="moreButton" class="ghost icon-only more-button" title="More actions" aria-label="More actions" aria-haspopup="menu" aria-expanded="false">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
+                    </button>
                     <button type="button" id="logoutButton" class="ghost small icon-label" title="Close this stash" aria-label="Close">
                         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         <span class="btn-label">Close</span>
@@ -457,6 +461,7 @@
     <!-- The server puts the first page of items here when this visitor may read the stash (stash-load.js reads it) -->
     <!-- initial-page -->
     <script src="/pwa.js"></script>
+    <script src="/back.js"></script>
     <script src="/shell.js"></script>
     <script src="/account-nav.js"></script>
     <script src="/admin-nav.js"></script>
@@ -473,6 +478,7 @@
     <script src="/stash-select.js"></script>
     <script src="/stash-tags.js"></script>
     <script src="/stash-clipshare.js"></script>
+    <script src="/stash-more.js"></script>
     <script src="/stash-load.js"></script>
     <script src="/stash-live.js"></script>
     <script src="/stash-options.js"></script>

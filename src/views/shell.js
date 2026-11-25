@@ -72,6 +72,8 @@
         var sidebar = document.getElementById('sidebar');
         if (!button || !sidebar) return;
         function set(open) {
+            // Back closes the menu (back.js)
+            if (window.StashlyBack) { if (open) window.StashlyBack.push('drawer', function () { set(false); }); else window.StashlyBack.release('drawer'); }
             document.body.classList.toggle('drawer-open', open);
             button.setAttribute('aria-expanded', String(open));
             button.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');

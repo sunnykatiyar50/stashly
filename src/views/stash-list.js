@@ -466,7 +466,7 @@
     // stash name holds only the everyday buttons. On a wider screen they go back to the end of that row.
     (function placeTopButtons() {
         var phone = window.matchMedia('(max-width: 760px)');
-        var moved = [$('logoutButton'), $('optionsButton')];
+        var moved = [$('moreButton'), $('logoutButton'), $('optionsButton')];
         function place() {
             var target = phone.matches ? document.querySelector('.mobile-bar-actions') : document.querySelector('.header-actions');
             if (phone.matches) moved.slice().reverse().forEach(function (el) { target.insertBefore(el, target.firstChild); });
