@@ -1,5 +1,6 @@
-// The stash page's Options: one scrolling page in groups (General, Organize, Access, This device, Danger zone) instead of tabs, with the
-// name as a field, a tag manager and Move to... in select mode; the stash's own settings are shown to whoever manages the stash.
+// The stash page's Options: the groups (General, Organize, Access, This device, Danger zone) down the side, or across the top on a phone, one at a
+// time; short hints with the detail in a tooltip; the name as a field, a tag manager and Move to... in select mode; the stash's own settings are
+// shown to whoever manages the stash.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -17,27 +18,41 @@ const sectionOf = (dialog, key) => {
 };
 const rowsIn = text => [...text.matchAll(/data-option="([a-z]+)"/g)].map(m => m[1]);
 
-test('Options is one scrolling page in five groups with a jump bar, not tabs', () => {
+test('Options has five groups as a side list of tabs, one panel each, and the rows are where they belong', () => {
     const html = src('stash.html');
     const dialog = dialogOf(html);
-    assert.doesNotMatch(dialog, /role="tablist"|role="tabpanel"|opt-tab|optPanel/);
-    const jump = [...dialog.matchAll(/data-jump="([a-z]+)"/g)].map(m => m[1]);
-    assert.deepEqual(jump, ['general', 'organize', 'access', 'device', 'danger']);
-    const order = [...dialog.matchAll(/id="optSection-([a-z]+)"/g)].map(m => m[1]);
-    assert.deepEqual(order, ['general', 'organize', 'access', 'device', 'danger']);
-    // What is in each group
+    assert.match(dialog, /<div class="opt-layout" id="optLayout">\s*<nav class="opt-nav" role="tablist"[^>]*aria-orientation="vertical"/);
+    const tabs = [...dialog.matchAll(/class="opt-nav-item[^"]*" role="tab" id="optNav-([a-z]+)" data-group="([a-z]+)" aria-controls="optSection-\1"/g)].map(m => m[2]);
+    assert.deepEqual(tabs, ['general', 'organize', 'access', 'device', 'danger']);
+    const panels = [...dialog.matchAll(/id="optSection-([a-z]+)"[^>]*role="tabpanel" aria-labelledby="optNav-\1"/g)].map(m => m[1]);
+    assert.deepEqual(panels, tabs);
+    // Panels start hidden; the script shows the one that is open
+    assert.equal((dialog.match(/class="opt-section[^"]* hidden"/g) || []).length, 5);
     assert.deepEqual(rowsIn(sectionOf(dialog, 'general')), ['rename', 'expiry', 'owner']);
     assert.deepEqual(rowsIn(sectionOf(dialog, 'organize')), ['tags', 'move', 'content', 'keep']);
     assert.deepEqual(rowsIn(sectionOf(dialog, 'access')), ['session']);
     assert.deepEqual(rowsIn(sectionOf(dialog, 'device')), ['list', 'tab']);
     assert.deepEqual(rowsIn(sectionOf(dialog, 'danger')), ['danger']);
-    // Everything that was in the old tabs is still there, with the same ids the script wires up
     for (const id of ['renameInput', 'renameSave', 'optExtendButton', 'ownerToggle', 'tagManager', 'optSelectClips', 'keepSelect', 'changePasswordToggle', 'signOutOthers', 'logoutNow', 'contentLinesInput', 'autoCopyInput', 'notifyInput', 'deleteStashButton', 'optionsClose']) {
         assert.match(dialog, new RegExp(`id="${id}"`), id);
     }
     // The name is a field that is always there, with its button waiting for a change
     assert.match(dialog, /<form id="renameForm" class="inline-form"[\s\S]*id="renameInput"[\s\S]*id="renameSave"[^>]*disabled/);
-    assert.doesNotMatch(dialog, /id="renameToggle"|id="renameCancel"/);
+    assert.doesNotMatch(dialog, /id="renameToggle"|id="renameCancel"|opt-jump/);
+});
+
+test('the hints are short lines with the rest in data-more (a tooltip, and an "i" on touch screens)', () => {
+    const dialog = dialogOf(src('stash.html'));
+    const more = [...dialog.matchAll(/<(span|small) class="([^"]*)"[^>]*data-more="([^"]+)"[^>]*>([^<]+)<\//g)];
+    assert.ok(more.length >= 12, 'every long explanation moved into a tooltip: ' + more.length);
+    for (const [, , , detail, shortText] of more) {
+        assert.ok(shortText.length <= 60, `short hint too long: "${shortText}"`);
+        assert.ok(detail.length > 0);
+    }
+    // No static hint left that is a paragraph
+    for (const m of dialog.matchAll(/<(?:span|small) class="(?:muted|field-hint)[^"]*"[^>]*>([^<]+)</g)) {
+        assert.ok(m[1].trim().length <= 90, `still long: "${m[1].trim()}"`);
+    }
 });
 
 test('select mode has Move to..., and its dialog offers move or copy to a chosen stash', () => {
@@ -66,16 +81,26 @@ test('the settings are shown to whoever manages the stash, and the tag manager t
     // Another page's change reads the list again, unless this page made it
     assert.match(js, /Date\.now\(\) - lastOwnTagChange < 1500/);
     assert.match(src('stash-live.js'), /es\.addEventListener\('tags-changed'/);
-    // A group with nothing for this visitor is hidden, and so is the jump bar when only one is left
-    assert.match(js, /section\.classList\.toggle\('hidden', !any\)/);
-    assert.match(js, /classList\.toggle\('hidden', shown\.length < 2\)/);
+    // One group at a time, keyboard arrows between them, and a group with nothing for this visitor is hidden (the side list too when one is left)
+    assert.match(js, /function selectGroup\(key, focus\)/);
+    assert.match(js, /'ArrowDown' \|\| event\.key === 'ArrowRight'/);
+    assert.match(js, /classList\.toggle\('hidden', !hasRows\(sectionOf\(item\.dataset\.group\)\)\)/);
+    assert.match(js, /classList\.toggle\('single', visible\.length < 2\)/);
+    // Short hints: the detail is the tooltip and opens under the hint from the "i"
+    assert.match(js, /hint\.title = more;/);
+    assert.match(js, /make\('button', 'opt-info', 'i'\)/);
+    assert.match(js, /info\.setAttribute\('aria-expanded', String\(open\)\)/);
 });
 
-test('the styles drop the tabs and add the groups, the inline name and the tag manager', async () => {
+test('the styles put the groups down the side, and across the top on a phone, with the small "i"', async () => {
     const ctx = makeApp();
     const css = (await request(ctx.app).get('/styles.css').expect(200)).text;
-    assert.doesNotMatch(css, /\.opt-tab\b|\.opt-panel\b/);
-    for (const rule of ['.opt-jump', '.opt-jump-link', '.opt-scroll', '.opt-section', '.opt-danger', '.inline-form', '.tag-manage-row', '.tag-rename-form']) {
+    assert.doesNotMatch(css, /\.opt-jump|\.opt-tab\b|\.opt-panel\b/);
+    for (const rule of ['.opt-layout', '.opt-nav', '.opt-nav-item', '.opt-scroll', '.opt-section', '.opt-info', '.opt-detail', '.inline-form', '.tag-manage-row', '.tag-rename-form']) {
         assert.ok(css.includes(rule), rule);
     }
+    assert.match(css, /\.opt-layout \{ display: grid; grid-template-columns: 170px minmax\(0, 1fr\);/);
+    // On a phone: one column, and the list becomes a row of tabs
+    const phone = css.slice(css.indexOf('.opt-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }'));
+    assert.match(phone, /\.opt-nav \{ flex-direction: row; overflow-x: auto;/);
 });

@@ -410,35 +410,78 @@
     }
 
     // ---- the groups: General, Organize, Access, This device, Danger zone ----
-    // One scrolling page. A group is shown only when it has a row for this visitor, and the buttons at the top jump to one.
-    var jumpLinks = Array.prototype.slice.call(document.querySelectorAll('.opt-jump-link'));
+    // Down the left on a wide screen, across the top on a phone (the CSS decides), one group at a time. A group is shown only
+    // when it has a row for this visitor.
+    var navItems = Array.prototype.slice.call(document.querySelectorAll('.opt-nav-item'));
     var sections = Array.prototype.slice.call(document.querySelectorAll('.opt-section'));
+    var activeGroup = null;
 
     function sectionOf(key) { return document.getElementById('optSection-' + key); }
 
-    function updateOptionSections() {
-        sections.forEach(function (section) {
-            var rows = section.querySelectorAll('.share-row');
-            var any = Array.prototype.some.call(rows, function (row) { return !row.classList.contains('hidden'); });
-            section.classList.toggle('hidden', !any);
+    function hasRows(section) {
+        return Array.prototype.some.call(section.querySelectorAll('.share-row'), function (row) { return !row.classList.contains('hidden'); });
+    }
+
+    function selectGroup(key, focus) {
+        activeGroup = key;
+        navItems.forEach(function (item) {
+            var on = item.dataset.group === key;
+            item.setAttribute('aria-selected', on ? 'true' : 'false');
+            item.tabIndex = on ? 0 : -1;
+            sectionOf(item.dataset.group).classList.toggle('hidden', !on || !hasRows(sectionOf(item.dataset.group)));
+            if (on && focus) item.focus();
         });
-        jumpLinks.forEach(function (link) { link.classList.toggle('hidden', sectionOf(link.dataset.jump).classList.contains('hidden')); });
-        // With a single group there is nothing to jump between
-        var shown = jumpLinks.filter(function (link) { return !link.classList.contains('hidden'); });
-        document.querySelector('.opt-jump').classList.toggle('hidden', shown.length < 2);
+        document.getElementById('optScroll').scrollTop = 0;
     }
 
-    function jumpTo(key, focus) {
-        var section = sectionOf(key);
-        if (!section || section.classList.contains('hidden')) return;
-        // The scrolling box is the dialog's own; scrollIntoView keeps it simple and works in every browser that has dialogs
-        section.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-        jumpLinks.forEach(function (link) { if (link.dataset.jump === key) link.setAttribute('aria-current', 'true'); else link.removeAttribute('aria-current'); });
-        if (focus) { var heading = section.querySelector('h3'); if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); } }
+    // Which groups have anything for this visitor; keeps the one that was open, else the first
+    function updateOptionSections() {
+        navItems.forEach(function (item) { item.classList.toggle('hidden', !hasRows(sectionOf(item.dataset.group))); });
+        var visible = navItems.filter(function (item) { return !item.classList.contains('hidden'); });
+        // With a single group there is nothing to choose between
+        document.getElementById('optLayout').classList.toggle('single', visible.length < 2);
+        var pick = visible.filter(function (item) { return item.dataset.group === activeGroup; })[0] || visible[0];
+        if (pick) selectGroup(pick.dataset.group, false);
     }
 
-    jumpLinks.forEach(function (link) {
-        link.addEventListener('click', function () { jumpTo(link.dataset.jump, true); });
+    navItems.forEach(function (item) {
+        item.addEventListener('click', function () { selectGroup(item.dataset.group, false); });
+        // Arrow keys move between the groups (up and down down the side, left and right across the top), Home and End go to the ends
+        item.addEventListener('keydown', function (event) {
+            var visible = navItems.filter(function (other) { return !other.classList.contains('hidden'); });
+            var index = visible.indexOf(item);
+            var next = null;
+            if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = visible[(index + 1) % visible.length];
+            else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = visible[(index - 1 + visible.length) % visible.length];
+            else if (event.key === 'Home') next = visible[0];
+            else if (event.key === 'End') next = visible[visible.length - 1];
+            if (!next) return;
+            event.preventDefault();
+            selectGroup(next.dataset.group, true);
+        });
+    });
+
+    // ---- short hints, the rest in a tooltip ----
+    // A hint with data-more shows its short line. The rest is its tooltip (a mouse), and an "i" button next to it opens the
+    // same words under it (a touch screen has no hover).
+    Array.prototype.forEach.call(document.querySelectorAll('#optionsDialog [data-more]'), function (hint) {
+        var more = hint.getAttribute('data-more');
+        hint.title = more;
+        var line = make('span', 'opt-hintline');
+        hint.parentNode.insertBefore(line, hint);
+        line.appendChild(hint);
+        var info = make('button', 'opt-info', 'i');
+        info.type = 'button';
+        info.title = more;
+        info.setAttribute('aria-label', 'More about this');
+        info.setAttribute('aria-expanded', 'false');
+        line.appendChild(info);
+        var detail = make('span', 'muted opt-detail hidden', more);
+        line.parentNode.insertBefore(detail, line.nextSibling);
+        info.addEventListener('click', function () {
+            var open = detail.classList.toggle('hidden') === false;
+            info.setAttribute('aria-expanded', String(open));
+        });
     });
 
     // ---- Options > Organize > Tags: every tag with its count, to rename or delete across the whole stash ----
@@ -590,12 +633,12 @@
         });
     }
 
-    // Opens Options, scrolled to a group when the caller names one ('signin' is the Access group)
+    // Opens Options, on one group when the caller names it ('signin' is the Access group) and it has something for this visitor
     function openOptions(group) {
         renderOptions();
         if (typeof optionsDialog.showModal === 'function') optionsDialog.showModal(); else optionsDialog.setAttribute('open', '');
-        document.getElementById('optScroll').scrollTop = 0;
-        if (group) jumpTo(group === 'signin' ? 'access' : group, false);
+        var key = group === 'signin' ? 'access' : group;
+        if (key && !navItems.some(function (item) { return item.dataset.group === key && item.classList.contains('hidden'); })) selectGroup(key, false);
     }
 
     $('optionsButton').addEventListener('click', function () { openOptions(); });
@@ -699,7 +742,7 @@
     P.closePasswordForm = closePasswordForm;
     P.renderOptions = renderOptions;
     P.updateOptionSections = updateOptionSections;
-    P.jumpToOptions = jumpTo;
+    P.selectOptionGroup = selectGroup;
     P.renderTagManager = renderTagManager;
     P.onTagsChanged = onTagsChanged;
     P.restoreContentChoice = restoreContentChoice;

@@ -323,24 +323,25 @@
     <dialog id="optionsDialog" class="qr-dialog share-dialog" aria-labelledby="optionsTitle">
         <div class="qr-body share-body">
             <h2 id="optionsTitle">Options</h2>
-            <!-- One scrolling page in groups; the buttons jump to a group, and a group with nothing for this visitor is hidden -->
-            <nav class="opt-jump" aria-label="Groups of options">
-                <button type="button" class="opt-jump-link" data-jump="general"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/></svg><span>General</span></button>
-                <button type="button" class="opt-jump-link" data-jump="organize"><svg viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg><span>Organize</span></button>
-                <button type="button" class="opt-jump-link" data-jump="access"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Access</span></button>
-                <button type="button" class="opt-jump-link" data-jump="device"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>This device</span></button>
-                <button type="button" class="opt-jump-link danger" data-jump="danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg><span>Danger zone</span></button>
+            <!-- The groups: down the left on a wide screen, across the top on a phone. One group shows at a time; a group with nothing for this visitor is hidden. -->
+            <div class="opt-layout" id="optLayout">
+            <nav class="opt-nav" role="tablist" aria-label="Groups of options" aria-orientation="vertical">
+                <button type="button" class="opt-nav-item" role="tab" id="optNav-general" data-group="general" aria-controls="optSection-general" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/></svg><span>General</span></button>
+                <button type="button" class="opt-nav-item" role="tab" id="optNav-organize" data-group="organize" aria-controls="optSection-organize" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg><span>Organize</span></button>
+                <button type="button" class="opt-nav-item" role="tab" id="optNav-access" data-group="access" aria-controls="optSection-access" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Access</span></button>
+                <button type="button" class="opt-nav-item" role="tab" id="optNav-device" data-group="device" aria-controls="optSection-device" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>This device</span></button>
+                <button type="button" class="opt-nav-item danger" role="tab" id="optNav-danger" data-group="danger" aria-controls="optSection-danger" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg><span>Danger zone</span></button>
             </nav>
             <div class="opt-scroll" id="optScroll">
-            <section class="opt-section" id="optSection-general" data-section="general" aria-labelledby="optHead-general">
-                <h3 id="optHead-general">General</h3>
+            <section class="opt-section hidden" id="optSection-general" data-section="general" role="tabpanel" aria-labelledby="optNav-general">
+                <h3 id="optHead-general" class="offscreen">General</h3>
             <div class="share-row" data-option="rename">
                 <strong>Stash name</strong>
                 <form id="renameForm" class="inline-form" novalidate>
                     <input type="text" id="renameInput" class="mono" maxlength="64" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Stash name" />
                     <button type="submit" id="renameSave" class="primary small" disabled>Rename</button>
                 </form>
-                <small class="field-hint">Letters, numbers, - and _. The old address stops working at once, so anyone with it needs the new one. Read-only and drop-box links are cancelled, and on a password-protected stash everyone else has to sign in again.</small>
+                <small class="field-hint" data-more="The old address stops working at once, so anyone with it needs the new one. Read-only and drop-box links are cancelled, and on a password-protected stash everyone else has to sign in again.">Letters, numbers, - and _.</small>
                 <small class="field-error" id="renameError" role="alert"></small>
             </div>
             <div class="share-row hidden" data-option="expiry">
@@ -352,13 +353,13 @@
             </div>
             <div class="share-row hidden" data-option="owner">
                 <strong>Owner</strong>
-                <span class="muted">You own this stash. You can pass ownership to another user of this server. They then own it (it is always in their My stashes, they open it with no password and can change the password), and you stay on as a follower with the access you have, until the password is changed.</span>
+                <span class="muted" data-more="You can pass ownership to another user of this server. They then own it (it is always in their My stashes, they open it with no password and can change the password), and you stay on as a follower with the access you have, until the password is changed.">You own this stash.</span>
                 <div class="share-actions">
                     <button type="button" id="ownerToggle" class="ghost small">Pass it on...</button>
                 </div>
                 <form id="ownerForm" class="edit-form hidden" novalidate>
                     <input type="text" id="ownerInput" class="mono" maxlength="40" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Username of the new owner" placeholder="username" />
-                    <small class="field-hint">The exact username of an active account. You cannot take it back yourself: only the new owner can pass it on again.</small>
+                    <small class="field-hint" data-more="You cannot take it back yourself: only the new owner can pass it on again.">The exact username of an active account.</small>
                     <small class="field-error" id="ownerError" role="alert"></small>
                     <div class="share-actions">
                         <button type="submit" id="ownerSave" class="primary small">Pass on</button>
@@ -367,17 +368,17 @@
                 </form>
             </div>
             </section>
-            <section class="opt-section" id="optSection-organize" data-section="organize" aria-labelledby="optHead-organize">
-                <h3 id="optHead-organize">Organize</h3>
+            <section class="opt-section hidden" id="optSection-organize" data-section="organize" role="tabpanel" aria-labelledby="optNav-organize">
+                <h3 id="optHead-organize" class="offscreen">Organize</h3>
             <div class="share-row" data-option="tags">
                 <strong>Tags</strong>
-                <span class="muted" id="tagManagerHint">Every tag in this stash and how many clips have it. Renaming one to a tag that already exists merges them; deleting one only removes the tag, never the clips.</span>
+                <span class="muted" id="tagManagerHint" data-more="Renaming one to a tag that already exists merges them; deleting one only removes the tag, never the clips.">Rename or delete a tag across the whole stash.</span>
                 <div id="tagManager" class="tag-manager"></div>
                 <small class="field-error" id="tagManagerError" role="alert"></small>
             </div>
             <div class="share-row hidden" data-option="move">
                 <strong>Move or copy clips</strong>
-                <span class="muted">To another stash of yours: press <strong>Select clips</strong>, tick the clips, then <strong>Move to...</strong> in the bar above the list. A moved clip keeps its tags and title; a link made to it ends.</span>
+                <span class="muted" data-more="Press Select clips, tick the clips, then Move to... in the bar above the list. A moved clip keeps its tags and title; a link made to it ends.">To another stash of yours.</span>
                 <div class="share-actions">
                     <button type="button" id="optSelectClips" class="ghost small">Select clips</button>
                 </div>
@@ -389,23 +390,23 @@
                     <label class="opt"><input type="radio" name="stashContent" value="notes" /> Notes only</label>
                     <label class="opt"><input type="radio" name="stashContent" value="files" /> Files only</label>
                 </div>
-                <span class="muted">Applies to everyone who can add here, drop-box links too. What is already in the stash stays.</span>
+                <span class="muted" data-more="Drop-box links too. What is already in the stash stays.">Applies to everyone who can add here.</span>
             </div>
             <div class="share-row" data-option="keep">
                 <strong>Keep only the last</strong>
                 <label class="opt"><select id="keepSelect"></select></label>
-                <span class="muted">Older items are deleted as new ones arrive, so the stash works like a rolling clipboard. Pinned items are never deleted by this.</span>
+                <span class="muted" data-more="So the stash works like a rolling clipboard. Pinned items are never deleted by this.">Older items are deleted as new ones arrive.</span>
             </div>
             </section>
-            <section class="opt-section" id="optSection-access" data-section="access" aria-labelledby="optHead-access">
-                <h3 id="optHead-access">Access</h3>
+            <section class="opt-section hidden" id="optSection-access" data-section="access" role="tabpanel" aria-labelledby="optNav-access">
+                <h3 id="optHead-access" class="offscreen">Access</h3>
             <div class="share-row" data-option="session">
                 <strong>Sign-in</strong>
                 <span class="muted" id="sessionInfo"></span>
                 <label class="opt">Sign me out of this browser after
                     <select id="sessionChange"></select>
                 </label>
-                <span class="muted">Counted from now, for this browser only, and never more than 30 days after you signed in. Other browsers are not affected.</span>
+                <span class="muted" data-more="Counted from now, and never more than 30 days after you signed in. Other browsers are not affected.">For this browser only.</span>
                 <div class="share-actions">
                     <button type="button" id="changePasswordToggle" class="ghost small">Change password</button>
                     <button type="button" id="signOutOthers" class="ghost small">Sign out other devices</button>
@@ -413,7 +414,7 @@
                 </div>
                 <!-- Anyone who knows the current password can change it (there is no separate owner account) -->
                 <form id="changePasswordForm" class="edit-form hidden" novalidate>
-                    <span class="muted">Everyone else is signed out and the read-only and drop-box links are cancelled. You stay signed in here.</span>
+                    <span class="muted" data-more="The read-only and drop-box links are cancelled. You stay signed in here.">Everyone else is signed out.</span>
                     <input type="password" id="currentPasswordInput" autocomplete="current-password" maxlength="200" placeholder="Current password" aria-label="Current password" />
                     <input type="password" id="newPasswordInput" autocomplete="new-password" maxlength="200" placeholder="New password" aria-label="New password" />
                     <input type="password" id="repeatPasswordInput" autocomplete="new-password" maxlength="200" placeholder="New password again" aria-label="New password again" />
@@ -425,26 +426,26 @@
                 </form>
             </div>
             </section>
-            <section class="opt-section" id="optSection-device" data-section="device" aria-labelledby="optHead-device">
-                <h3 id="optHead-device">This device</h3>
+            <section class="opt-section hidden" id="optSection-device" data-section="device" role="tabpanel" aria-labelledby="optNav-device">
+                <h3 id="optHead-device" class="offscreen">This device</h3>
             <div class="share-row" data-option="list">
                 <strong>The list</strong>
                 <label class="opt"><input type="checkbox" id="contentLinesInput" /> Show note lines under each title</label>
-                <span class="muted">Two lines of each note under its title. Turn it off for a shorter list, or on a screen others can see. Remembered on this device only.</span>
+                <span class="muted" data-more="Two lines of each note under its title. Turn it off for a shorter list, or on a screen others can see.">Remembered on this device only.</span>
             </div>
             <div class="share-row" data-option="tab">
                 <strong>This tab</strong>
                 <label class="opt"><input type="checkbox" id="autoCopyInput" /> Copy new notes automatically</label>
-                <span class="muted">When a note arrives from another device it goes straight to this computer's clipboard. Stays on in this tab until you turn it off or close the tab. Browsers only allow it while this tab is in front; otherwise it is copied the moment you come back.</span>
-                <label class="opt"><input type="checkbox" id="notifyInput" /> Notify me about new items</label>
-                <span class="muted" id="notifyHint">A desktop notification when something arrives while this tab is in the background. Secret and burn-after-reading notes show no text.</span>
+                <span class="muted" data-more="Stays on in this tab until you turn it off or close the tab. Browsers only allow it while this tab is in front; otherwise it is copied the moment you come back.">Notes from other devices go to the clipboard.</span>
+                <label class="opt" title="Secret and burn-after-reading notes show no text."><input type="checkbox" id="notifyInput" /> Notify me about new items</label>
+                <span class="muted" id="notifyHint">A desktop notification while this tab is in the background.</span>
             </div>
             </section>
-            <section class="opt-section opt-danger" id="optSection-danger" data-section="danger" aria-labelledby="optHead-danger">
-                <h3 id="optHead-danger">Danger zone</h3>
+            <section class="opt-section opt-danger hidden" id="optSection-danger" data-section="danger" role="tabpanel" aria-labelledby="optNav-danger">
+                <h3 id="optHead-danger" class="offscreen">Danger zone</h3>
             <div class="share-row danger-row" data-option="danger">
                 <strong>Delete this stash</strong>
-                <span class="muted">Deletes the stash with every note and file in it, for everyone. This cannot be undone.</span>
+                <span class="muted" data-more="For everyone. This cannot be undone.">Deletes the stash and everything in it.</span>
                 <div class="share-actions">
                     <button type="button" id="deleteStashButton" class="danger-ghost small">Delete this stash...</button>
                 </div>
@@ -458,6 +459,7 @@
                 </form>
             </div>
             </section>
+            </div>
             </div>
             <div class="qr-actions">
                 <button type="button" id="optionsClose" class="primary">Close</button>
