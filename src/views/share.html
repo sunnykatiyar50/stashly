@@ -21,7 +21,7 @@
                 <header class="view-header">
                     <div class="view-title">
                         <h1>Share to a stash</h1>
-                        <span class="muted">Sends what you shared as a note.</span>
+                        <span class="muted">Sends what you shared as a note, and any files with it.</span>
                     </div>
                 </header>
 
@@ -33,6 +33,11 @@
                     <div class="field">
                         <label for="shareText">Note</label>
                         <textarea id="shareText" rows="5"></textarea>
+                    </div>
+                    <!-- Files that were shared (only when some arrived with the share, see share.js) -->
+                    <div class="field hidden" id="shareFilesField">
+                        <label id="shareFilesLabel">Files</label>
+                        <ul id="shareFiles" class="share-files" aria-labelledby="shareFilesLabel"></ul>
                     </div>
                     <div class="field">
                         <label for="shareStash">Stash</label>
@@ -49,10 +54,12 @@
                     </div>
                     <p id="shareStatus" class="form-status" role="status"></p>
                 </form>
+                <div id="shareUploads" class="uploads"></div>
             </div>
         </section>
     </main>
     <script src="/pwa.js"></script>
+    <script src="/upload.js"></script>
     <script src="/share.js"></script>
     <div id="pageReady" hidden></div>
 </body>
