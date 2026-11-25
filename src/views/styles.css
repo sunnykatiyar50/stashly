@@ -396,6 +396,7 @@ body.has-account-nav #logoutButton { display: none; }
 .bulk-count { margin-right: auto; font-size: 13px; font-weight: 600; }
 .bulk-actions { order: 3; flex: 1 0 100%; display: flex; gap: 6px; }
 .bulk-actions button { flex: 1 1 0; padding-left: 4px; padding-right: 4px; }
+.bulk-actions .icon-action svg { width: 18px; height: 18px; }
 
 /* Tags. A tag is a small pill; in a row they sit on one line under the title, above the list they are one scrolling
    strip, and in the open clip they are an editable line. Only the strip and the open clip take up room when unused. */
