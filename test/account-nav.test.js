@@ -36,12 +36,13 @@ test('the account block asks who is signed in, shows the name, the username and 
     assert.ok(view('admin.js').includes('StashlyAccountNav.refresh'));
 });
 
-test('Theme sits above the account block: the block is added last in the footer', () => {
+test('the theme switch and the version sit above the account card: it is added last in the footer', () => {
     const script = view('account-nav.js');
     assert.ok(script.includes('footer.appendChild(block)'));
     assert.ok(!script.includes('footer.insertBefore(block, footer.firstChild)'));
-    // its separator is a line above it, between Theme and the name
-    assert.match(view('styles.css'), /\.nav-account\s*\{[^}]*border-top:/);
+    // a card with Settings and Sign out under the name; the footer order is theme switch, version, account
+    assert.match(view('styles.css'), /\.nav-account\s*\{[^}]*order: 10;[^}]*border-radius: 10px/);
+    assert.ok(script.includes("actions.className = 'nav-actions'"));
 });
 
 test('the admin page does not show two Sign out buttons once the account block is there', () => {
