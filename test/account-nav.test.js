@@ -40,9 +40,9 @@ test('the theme switch sits above the account card, and the version below it', (
     const script = view('account-nav.js');
     assert.ok(script.includes('footer.appendChild(block)'));
     assert.ok(!script.includes('footer.insertBefore(block, footer.firstChild)'));
-    // a card with Settings and Sign out under the name; the footer order is theme switch, account, version
+    // Settings and Sign out at the top of the footer, the card with the name last; the footer order is theme switch, account, version
     assert.match(view('styles.css'), /\.nav-account\s*\{[^}]*order: 10;[^}]*border-radius: 10px/);
-    assert.ok(script.includes("actions.className = 'nav-actions'"));
+    assert.ok(script.includes('footer.appendChild(block._signOut)'));
 });
 
 test('the admin page does not show two Sign out buttons once the account block is there', () => {
