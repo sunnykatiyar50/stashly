@@ -31,8 +31,11 @@
         return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || /\.localhost$/.test(host);
     }
 
-    function showQr() {
-        var url = location.origin + location.pathname;
+    // The code for the stash's address, or (given a link) for that link: a clip's link is shown this way too
+    function showQr(link) {
+        var clip = typeof link === 'string';
+        var url = clip ? link : location.origin + location.pathname;
+        $('qrIntro').textContent = clip ? 'Scan this with a phone camera to open this clip.' : 'Scan this with a phone camera to open the stash.';
         var qr = window.qrcode(0, 'M');
         qr.addData(url);
         qr.make();
@@ -45,13 +48,13 @@
         warn.textContent = local
             ? "This address only works on this computer. Open Stashly with the computer's network address or its domain name (not localhost), then show the code again."
             : '';
-        $('qrLockNote').classList.toggle('hidden', !(state.stash && state.stash.hasPassword));
+        $('qrLockNote').classList.toggle('hidden', clip || !(state.stash && state.stash.hasPassword));
         var dialog = $('qrDialog');
         if (typeof dialog.showModal === 'function') dialog.showModal();
         else dialog.setAttribute('open', '');
     }
 
-    $('qrButton').addEventListener('click', showQr);
+    $('qrButton').addEventListener('click', function () { showQr(); });
 
     $('qrClose').addEventListener('click', function () { $('qrDialog').close(); });
 

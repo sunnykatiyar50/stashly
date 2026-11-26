@@ -96,6 +96,7 @@
                         if (ok) { target.textContent = 'Copied'; setTimeout(function () { target.textContent = 'Copy link'; }, 1500); }
                     });
                 }));
+                row.appendChild(button('QR code', 'ghost', function () { if (P.showQr) P.showQr(mine.link); }));
                 content.appendChild(row);
                 content.appendChild(make('span', 'muted', 'Anyone with this link can see this clip. Copy it now: it is not shown again.'));
             }
