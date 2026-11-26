@@ -42,7 +42,7 @@
         }
     }
 
-    // Which release is running (the server says so in /api/config), in the footer of the menu above the account, with a
+    // Which release is running (the server says so in /api/config), in the footer of the menu below the account card, with a
     // "What's new" link to the release notes. The last version seen is drawn at once, so it does not pop in after the
     // page; the server's answer replaces it (a new release shows up on the next load).
     function showVersion() {

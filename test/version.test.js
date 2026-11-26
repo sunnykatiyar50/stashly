@@ -13,7 +13,7 @@ test('the public config says which release is running, taken from package.json',
     assert.equal(res.body.version, version);
 });
 
-test('the footer of the menu shows the version with a "What is new" link, between the theme switch and the account card', () => {
+test('the footer of the menu shows the version with a "What is new" link, below the theme switch and the account card', () => {
     const script = fs.readFileSync(path.join(__dirname, '..', 'src', 'views', 'shell.js'), 'utf8');
     assert.ok(script.includes('/api/config'));
     assert.ok(script.includes('res.body.version'));
@@ -24,9 +24,9 @@ test('the footer of the menu shows the version with a "What is new" link, betwee
     assert.ok(script.includes('/releases'));
     const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'views', 'styles.css'), 'utf8');
     assert.match(css, /\.theme-switch button\.active/);
-    // Footer order: theme switch, version, account
+    // Footer order: theme switch, account, version
     assert.match(css, /\.sidebar-footer \.theme-switch \{ order: 1;/);
-    assert.match(css, /\.version-btn \{ order: 2;/);
+    assert.match(css, /\.version-btn \{ order: 20;/);
     assert.match(css, /\.nav-account \{ order: 10;/);
     for (const page of ['index', 'stash', 'account', 'admin', 'settings']) {
         const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'views', page + '.html'), 'utf8');
