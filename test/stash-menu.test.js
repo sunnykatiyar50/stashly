@@ -88,7 +88,7 @@ test('the page has the Sign in link in the footer above Theme, and Sign out keep
     const html = (await request(ctx.app).get('/s/any-stash-name').expect(200)).text;
     const footer = html.slice(html.indexOf('<div class="sidebar-footer">'));
     assert.ok(footer.indexOf('id="signInLink"') > 0, 'the link is in the footer');
-    assert.ok(footer.indexOf('id="signInLink"') < footer.indexOf('id="themeButton"'), 'above Theme, as on the home page');
+    assert.ok(footer.indexOf('id="signInLink"') < footer.indexOf('id="themeSwitch"'), 'above the theme switch, as on the home page');
     assert.match(footer, /id="signInLink" class="nav-link hidden"/);
     assert.match(footer, /href="\/account" id="signInLink"/);
     // Same order in the main menu as ever: Home, My stashes, then this stash

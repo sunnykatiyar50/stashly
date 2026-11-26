@@ -42,18 +42,28 @@
         }
     }
 
-    // Which release is running, as a small centred label right under the logo and name (the server says so in /api/config)
-    // The last version seen is drawn at once, so the label does not pop in after the page; the server's answer
-    // replaces it (a new release shows up on the next load).
+    // Which release is running (the server says so in /api/config), in the footer of the menu above the account, with a
+    // "What's new" link to the release notes. The last version seen is drawn at once, so it does not pop in after the
+    // page; the server's answer replaces it (a new release shows up on the next load).
     function showVersion() {
-        var brand = document.querySelector('.sidebar-brand');
-        if (!brand || typeof fetch !== 'function') return;
-        var label = document.createElement('div');
-        label.className = 'app-version label';
+        var footer = document.querySelector('.sidebar-footer');
+        if (!footer || typeof fetch !== 'function') return;
+        var link = document.createElement('a');
+        link.className = 'version-btn label';
+        link.href = 'https://github.com/sunnykatiyar50/stashly/releases';
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        var text = document.createElement('span');
+        text.className = 'app-version';
+        var hint = document.createElement('span');
+        hint.className = 'version-hint';
+        hint.textContent = "What's new";
+        link.appendChild(text);
+        link.appendChild(hint);
         function paint(version) {
-            label.textContent = 'v' + version;
-            label.title = 'Stashly ' + version;
-            if (!label.parentNode) brand.insertAdjacentElement('afterend', label);
+            text.textContent = 'v' + version;
+            link.title = 'Stashly ' + version + ': see what is new in this release';
+            if (!link.parentNode) footer.appendChild(link);
         }
         try {
             var remembered = localStorage.getItem(VERSION_KEY);
