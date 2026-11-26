@@ -24,8 +24,8 @@ test('the footer of the menu shows the version with a "What is new" link, below 
     assert.ok(script.includes('/releases'));
     const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'views', 'styles.css'), 'utf8');
     assert.match(css, /\.theme-switch button\.active/);
-    // Footer order: theme switch, account, version
-    assert.match(css, /\.sidebar-footer \.theme-switch \{ order: 1;/);
+    // Footer order: theme switch, Settings, Sign out, account, version
+    assert.match(css, /\.sidebar-footer \.theme-switch \{ order: -1;/);
     assert.match(css, /\.version-btn \{ order: 20;/);
     assert.match(css, /\.nav-account \{ order: 10;/);
     for (const page of ['index', 'stash', 'account', 'admin', 'settings']) {

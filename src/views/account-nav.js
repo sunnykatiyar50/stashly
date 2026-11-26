@@ -28,11 +28,11 @@
 
     var ICON = '<svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
 
-    // What to show for a user: the display name (or the username), and under it the username and role
+    // What to show for a user: the display name (or the username), under it the username (when it is not the name already), and the role
     function describe(user) {
         var name = user.displayName || user.username;
         var role = user.role === 'admin' ? 'Admin' : 'User';
-        return { name: name, sub: (user.displayName ? user.username + ' · ' : '') + role };
+        return { name: name, handle: user.displayName ? '@' + user.username : '', sub: role };
     }
 
     // The last person seen is drawn at once, so the block does not pop in after the page; the server's answer confirms
@@ -67,9 +67,12 @@
         text.className = 'nav-user-text label';
         var name = document.createElement('span');
         name.className = 'nav-user-name';
+        var handle = document.createElement('span');
+        handle.className = 'nav-user-handle';
         var sub = document.createElement('span');
         sub.className = 'nav-user-sub';
         text.appendChild(name);
+        text.appendChild(handle);
         text.appendChild(sub);
         who.appendChild(avatar);
         who.appendChild(text);
@@ -88,8 +91,9 @@
         out.appendChild(label);
         out.addEventListener('click', signOut);
 
-        // Your own details and settings, on every page
+        // Your own details and settings, on every page: its own link at the top of the footer, lit while Settings is open
         var settings = document.createElement('a');
+        settings.id = 'settingsLink';
         settings.className = 'nav-link' + (location.pathname === '/settings' ? ' active' : '');
         settings.href = '/settings';
         settings.title = 'Settings';
@@ -100,14 +104,10 @@
         settingsLabel.textContent = 'Settings';
         settings.appendChild(settingsLabel);
 
-        // Settings and Sign out side by side under the name, in the same card
-        var actions = document.createElement('div');
-        actions.className = 'nav-actions';
-        actions.appendChild(settings);
-        actions.appendChild(out);
         group.appendChild(who);
-        group.appendChild(actions);
-        group._parts = { who: who, avatar: avatar, name: name, sub: sub };
+        group._settings = settings;
+        group._signOut = out;
+        group._parts = { who: who, avatar: avatar, name: name, handle: handle, sub: sub };
         return group;
     }
 
@@ -115,14 +115,19 @@
         if (!block) {
             block = build();
             // Last in the footer, so the theme switch and the version sit above the account
+            // Settings, then Sign out, at the top of the footer; the card with the name is last
+            footer.appendChild(block._settings);
+            footer.appendChild(block._signOut);
             footer.appendChild(block);
             document.body.classList.add('has-account-nav');
         }
         var parts = block._parts;
         parts.name.textContent = info.name;
+        parts.handle.textContent = info.handle || '';
+        parts.handle.hidden = !info.handle;
         parts.sub.textContent = info.sub;
         parts.avatar.textContent = Array.from(info.name)[0] || '?';
-        parts.who.title = 'Signed in as ' + info.name + (info.sub ? ' (' + info.sub + ')' : '');
+        parts.who.title = 'Signed in as ' + info.name + (info.handle ? ' ' + info.handle : '') + (info.sub ? ' (' + info.sub + ')' : '');
     }
 
     // ---- pinned stashes: quick links under the main menu, on every page ----
@@ -215,7 +220,7 @@
         rememberPins([]);
         setOpenStashVisible(true);
         document.body.classList.remove('pins-new');
-        if (block) block.remove();
+        if (block) { block._settings.remove(); block._signOut.remove(); block.remove(); }
         block = null;
         document.body.classList.remove('has-account-nav');
     }
