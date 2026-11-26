@@ -36,11 +36,11 @@ test('the account block asks who is signed in, shows the name, the username and 
     assert.ok(view('admin.js').includes('StashlyAccountNav.refresh'));
 });
 
-test('the theme switch and the version sit above the account card: it is added last in the footer', () => {
+test('the theme switch sits above the account card, and the version below it', () => {
     const script = view('account-nav.js');
     assert.ok(script.includes('footer.appendChild(block)'));
     assert.ok(!script.includes('footer.insertBefore(block, footer.firstChild)'));
-    // a card with Settings and Sign out under the name; the footer order is theme switch, version, account
+    // a card with Settings and Sign out under the name; the footer order is theme switch, account, version
     assert.match(view('styles.css'), /\.nav-account\s*\{[^}]*order: 10;[^}]*border-radius: 10px/);
     assert.ok(script.includes("actions.className = 'nav-actions'"));
 });
