@@ -1023,6 +1023,15 @@ body:not(.stash-open) .in-topbar { display: none; }
 .share-state { font-size: 13px; }
 .share-link-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .share-link-row input { flex: 1 1 220px; min-width: 0; }
+.share-link-row svg { width: 15px; height: 15px; }
+@media (max-width: 760px) {
+    /* Phones: the link and its buttons (icons only) share one row */
+    .share-link-row { flex-wrap: nowrap; }
+    .share-link-row input { flex: 1 1 0; }
+    .share-link-row .has-icon { padding: 7px 9px; flex: 0 0 auto; }
+    .share-link-row .has-icon .btn-text { display: none; }
+    .share-link-row svg { width: 17px; height: 17px; }
+}
 .share-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .share-expiry { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-soft); }
 .share-expiry select { width: auto; padding: 4px 8px; }
