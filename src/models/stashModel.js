@@ -739,6 +739,16 @@ class StashModel {
         return this.getStashById(id);
     }
 
+    setPrivate(id, isPrivate) {
+        this.db.prepare('UPDATE stashes SET is_private = ? WHERE id = ?').run(isPrivate ? 1 : 0, id);
+        return this.getStashById(id);
+    }
+
+    setFileTypes(id, fileTypes) {
+        this.db.prepare('UPDATE stashes SET file_types = ? WHERE id = ?').run(fileTypes, id);
+        return this.getStashById(id);
+    }
+
     setKeepLast(id, keepLast) {
         this.db.prepare('UPDATE stashes SET keep_last = ? WHERE id = ?').run(keepLast, id);
         return this.getStashById(id);

@@ -186,10 +186,10 @@ test('a blocked extension is refused before any byte is sent, but only in the mo
     const base = await stash(ctx);
     assert.match((await start(request(ctx.app), base, { name: 'setup.exe', size: 100 }).expect(415)).body.error, /\.exe files aren't allowed/);
     await start(request(ctx.app), base, { name: 'logo.svg', size: 100 }).expect(415);
-    ctx.config.fileTypes = 'no-programs';
+    await request(ctx.app).put(`${base}/file-types`).send({ fileTypes: 'no-programs' }).expect(200);
     await start(request(ctx.app), base, { name: 'setup.exe', size: 100 }).expect(415);
     await start(request(ctx.app), base, { name: 'backup.7z', size: 100 }).expect(201);
-    ctx.config.fileTypes = 'any';
+    await request(ctx.app).put(`${base}/file-types`).send({ fileTypes: 'any' }).expect(200);
     await start(request(ctx.app), base, { name: 'setup.exe', size: 100 }).expect(201);
 });
 
@@ -607,7 +607,7 @@ test('the content is checked when it is complete: a bad type is a 415 and the pa
     await finish(request(ctx.app), base, other.body.id).expect(415);
     assert.equal(ctx.model.countUploads(), 0);
     // ...but is stored in the "any" mode
-    ctx.config.fileTypes = 'any';
+    await request(ctx.app).put(`${base}/file-types`).send({ fileTypes: 'any' }).expect(200);
     const third = await start(request(ctx.app), base, { name: 'thing.bin', size: blob.length }).expect(201);
     await piece(request(ctx.app), base, third.body.id, 0, blob).expect(200);
     const stored = await finish(request(ctx.app), base, third.body.id).expect(201);
@@ -618,11 +618,11 @@ test('the file types mode in force at the end decides the content check', async 
     const ctx = small();
     const base = await stash(ctx);
     // A program, called .bin: accepted by "any", refused by "no-programs"
-    ctx.config.fileTypes = 'any';
+    await request(ctx.app).put(`${base}/file-types`).send({ fileTypes: 'any' }).expect(200);
     const exe = Buffer.concat([Buffer.from('MZ'), pattern(300)]);
     const { body } = await start(request(ctx.app), base, { name: 'tool.bin', size: exe.length }).expect(201);
     await piece(request(ctx.app), base, body.id, 0, exe).expect(200);
-    ctx.config.fileTypes = 'no-programs';
+    await request(ctx.app).put(`${base}/file-types`).send({ fileTypes: 'no-programs' }).expect(200);
     assert.match((await finish(request(ctx.app), base, body.id).expect(415)).body.error, /Programs/);
     assert.equal(ctx.model.countUploads(), 0);
 });

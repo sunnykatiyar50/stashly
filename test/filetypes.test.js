@@ -86,8 +86,9 @@ test('the safe list still refuses unknown binaries', async () => {
 });
 
 test('the "any file except programs" mode accepts other binaries but not programs', async () => {
-    const ctx = makeApp({ fileTypes: 'no-programs' });
+    const ctx = makeApp();
     const base = await stash(ctx);
+    await request(ctx.app).put(`${base}/file-types`).send({ fileTypes: 'no-programs' }).expect(200);
     for (const name of ['data.bin', 'backup.tar.gz', 'pack.7z', 'app.apk', 'noextension']) {
         const up = await upload(ctx, base, name, BINARY).expect(201);
         assert.equal(up.body.fileType, 'application/octet-stream', name);
@@ -106,8 +107,9 @@ test('the "any file except programs" mode accepts other binaries but not program
 });
 
 test('the "any file" mode accepts everything, stored so nothing is shown or run', async () => {
-    const ctx = makeApp({ fileTypes: 'any' });
+    const ctx = makeApp();
     const base = await stash(ctx);
+    await request(ctx.app).put(`${base}/file-types`).send({ fileTypes: 'any' }).expect(200);
     for (const [name, body] of [
         ['setup.exe', MZ],
         ['logo.svg', Buffer.from('<svg onload=alert(1)>')],

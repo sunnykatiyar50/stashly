@@ -393,6 +393,15 @@
                 </div>
                 <span class="muted" data-more="Drop-box links too. What is already in the stash stays.">Applies to everyone who can add here.</span>
             </div>
+            <div class="share-row" data-option="filetypes">
+                <strong>Which files it accepts</strong>
+                <div class="content-choices" role="radiogroup" aria-label="Which files this stash accepts">
+                    <label class="opt"><input type="radio" name="stashFileTypes" value="safe" /> Safe list</label>
+                    <label class="opt"><input type="radio" name="stashFileTypes" value="no-programs" /> Any file except programs</label>
+                    <label class="opt"><input type="radio" name="stashFileTypes" value="any" /> Any file</label>
+                </div>
+                <span class="muted" data-more="Safe list: images, audio, video, PDF, zip, Office files, certificates and text. Except programs also allows archives, APKs and other binaries, but still refuses executables, SVG and macro-enabled Office files. Uploads are never run or shown by Stashly, whatever the type. Files already in the stash stay.">Applies to everyone who can add here.</span>
+            </div>
             <div class="share-row" data-option="keep">
                 <strong>Keep only the last</strong>
                 <label class="opt"><select id="keepSelect"></select></label>
@@ -401,6 +410,11 @@
             </section>
             <section class="opt-section hidden" id="optSection-access" data-section="access" role="tabpanel" aria-labelledby="optNav-access">
                 <h3 id="optHead-access" class="offscreen">Access</h3>
+            <div class="share-row hidden" data-option="private">
+                <strong>Private</strong>
+                <label class="opt"><input type="checkbox" id="privateToggle" /> Only I can open this stash</label>
+                <span class="muted" data-more="While it is on, nobody else can open this stash: the password, read-only and drop-box links and everyone following it stop working, and it looks like it does not exist. They work again when you turn it off. You open it signed in, with no password. Links to single clips keep working.">Not even with the password.</span>
+            </div>
             <div class="share-row" data-option="session">
                 <strong>Sign-in</strong>
                 <span class="muted" id="sessionInfo"></span>

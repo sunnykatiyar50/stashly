@@ -12,7 +12,6 @@ Most of these are changed in the admin area, under **Admin > Settings**, and app
 |---|---|
 | **Limits** | Largest note and file, files and items per stash, file space per stash and on the server, number of stashes |
 | **Security** | Shortest stash password and shortest open name, days a given-up name stays reserved, how long account sign-ins last, wrong account passwords allowed, wrong stash passwords before a lockout and how long it lasts |
-| **Files** | Which file types can be uploaded |
 | **Stashes** | Default expiry, stashes that never expire, how long a delete can be undone, who can create stashes, whether an admin can reset stash passwords |
 | **Rate limits** | Stashes created, notes added, files uploaded and reads, each per minute per address |
 | **Email** | The SMTP server, login, From address, the address of this server used in links, emails per hour, and a "Send test email" button |
@@ -28,7 +27,6 @@ Rate limits and lockouts count per address in memory, so a restart starts the co
 | `MAX_STASH_MB` | 100 | Total file size in one stash Also in **Admin > Settings > Limits** (the environment gives the starting value). |
 | `MAX_TOTAL_MB` | 2048 | Total file size on the whole server Also in **Admin > Settings > Limits** (the environment gives the starting value). |
 | `MAX_STASHES` | 1000 | Stashes on the whole server Also in **Admin > Settings > Limits** (the environment gives the starting value). |
-| `FILE_TYPES` | safe | Which files can be uploaded: `safe`, `no-programs` or `any` (see File types). Also in **Admin > Settings > Files** (the environment gives the starting value). |
 | `ALLOW_NO_EXPIRY` | false | Allow stashes that never expire. Also in **Admin > Settings > Stashes** (the environment gives the starting value). |
 | `REQUIRE_ADMIN_TO_CREATE` | false | Only the admin can create stashes (needs `ADMIN_PASSWORD`). Also in **Admin > Settings > Stashes** (the environment gives the starting value). |
 | `RATE_CREATE` | 20 | Stashes one address may create a minute. Also in **Admin > Settings > Rate limits** (the environment gives the starting value). |
@@ -78,7 +76,7 @@ The per-stash lockout is on top of the per-address limit, so guessing from many 
 
 ### File types
 
-Set `FILE_TYPES` (or change it in Admin > Settings, no restart needed):
+Each stash chooses what it accepts, in **Options > Organize > Which files it accepts** (anyone who manages the stash can change it, and it takes effect at once). A stash starts on `safe`. What is already in a stash stays when its choice changes.
 
 | Mode | What can be uploaded |
 |---|---|

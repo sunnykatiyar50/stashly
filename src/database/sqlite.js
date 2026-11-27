@@ -258,6 +258,18 @@ const MIGRATIONS = [
         );
         db.exec('CREATE INDEX IF NOT EXISTS idx_item_shares_stash ON item_shares (stash_id)');
     },
+
+    // 13: which files a stash takes: 'safe', 'no-programs' or 'any' (null = the safe list). It used to be one setting for
+    // the whole server; a stash that has not chosen takes the safe list.
+    db => {
+        addColumn(db, 'stashes', 'file_types', 'TEXT');
+    },
+
+    // 14: a private stash. Its owner (a signed-in account) can turn it on: from then on only that account opens the
+    // stash, whatever the password, share links or follows say, and they work again when it is turned off.
+    db => {
+        addColumn(db, 'stashes', 'is_private', 'INTEGER NOT NULL DEFAULT 0');
+    },
 ];
 
 const SCHEMA_VERSION = MIGRATIONS.length;

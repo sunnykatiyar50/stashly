@@ -28,7 +28,7 @@ for (const file of walk(path.join(root, 'src'))) {
 const IN_SETTINGS = [
     'MAX_NOTE_KB', 'MAX_FILE_MB', 'MAX_FILES_PER_STASH', 'MAX_ITEMS_PER_STASH', 'MAX_STASH_MB', 'MAX_TOTAL_MB', 'MAX_STASHES',
     'MIN_OPEN_NAME_LENGTH', 'MIN_PASSWORD_LENGTH', 'RESERVE_OLD_NAMES_DAYS', 'USER_SESSION_DAYS', 'STASH_UNLOCK_FAILURES',
-    'STASH_UNLOCK_WINDOW_MIN', 'RATE_USER_LOGIN', 'RATE_ADMIN_LOGIN', 'FILE_TYPES', 'ALLOW_NO_EXPIRY', 'UNDO_SECONDS',
+    'STASH_UNLOCK_WINDOW_MIN', 'RATE_USER_LOGIN', 'RATE_ADMIN_LOGIN', 'ALLOW_NO_EXPIRY', 'UNDO_SECONDS',
     'REQUIRE_ADMIN_TO_CREATE', 'REQUIRE_LOGIN_TO_CREATE', 'ADMIN_CAN_RESET_STASH_PASSWORDS', 'RATE_CREATE', 'RATE_POST',
     'RATE_UPLOAD', 'RATE_READ', 'SMTP_ENABLED', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURITY', 'SMTP_USER', 'SMTP_PASSWORD',
     'SMTP_FROM', 'SMTP_FROM_NAME', 'EMAIL_PER_HOUR', 'PUBLIC_URL', 'MCP_ENABLED',
@@ -66,5 +66,5 @@ test('every variable that has a setting is a real setting, and is documented in 
     }
     // the settings page has a setting for each group the configuration doc names
     const groups = new Set(Object.values(FIELDS).map(field => field.group));
-    for (const group of ['Limits', 'Security', 'Files', 'Stashes', 'Rate limits', 'Email', 'MCP']) assert.ok(groups.has(group), group);
+    for (const group of ['Limits', 'Security', 'Stashes', 'Rate limits', 'Email', 'MCP']) assert.ok(groups.has(group), group);
 });

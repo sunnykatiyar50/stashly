@@ -32,8 +32,8 @@ test('Options has five groups as a side list of tabs, one panel each, and the ro
     // Panels start hidden; the script shows the one that is open
     assert.equal((dialog.match(/class="opt-section[^"]* hidden"/g) || []).length, 5);
     assert.deepEqual(rowsIn(sectionOf(dialog, 'general')), ['rename', 'expiry', 'owner']);
-    assert.deepEqual(rowsIn(sectionOf(dialog, 'organize')), ['tags', 'move', 'content', 'keep']);
-    assert.deepEqual(rowsIn(sectionOf(dialog, 'access')), ['session']);
+    assert.deepEqual(rowsIn(sectionOf(dialog, 'organize')), ['tags', 'move', 'content', 'filetypes', 'keep']);
+    assert.deepEqual(rowsIn(sectionOf(dialog, 'access')), ['private', 'session']);
     assert.deepEqual(rowsIn(sectionOf(dialog, 'device')), ['list', 'tab']);
     assert.deepEqual(rowsIn(sectionOf(dialog, 'danger')), ['danger']);
     for (const id of ['renameInput', 'renameSave', 'optExtendButton', 'ownerToggle', 'tagManager', 'optSelectClips', 'keepSelect', 'changePasswordToggle', 'signOutOthers', 'logoutNow', 'contentLinesInput', 'autoCopyInput', 'notifyInput', 'deleteStashButton', 'optionsClose']) {
@@ -82,7 +82,7 @@ test('select mode has Move to..., and its dialog offers move or copy to a chosen
 test('the settings are shown to whoever manages the stash, and the tag manager talks to the tags routes', () => {
     const js = src('stash-options.js');
     assert.match(js, /var manage = Boolean\(full && state\.stash && state\.stash\.canManage\);/);
-    assert.match(js, /\['keep', 'danger', 'rename', 'content', 'tags'\]\.forEach/);
+    assert.match(js, /\['keep', 'danger', 'rename', 'content', 'filetypes', 'tags'\]\.forEach/);
     assert.match(js, /\$\('optSelectClips'\)\.addEventListener\('click'/);
     assert.match(js, /api\(base \+ '\/tags\/rename', \{ method: 'POST', body: \{ from: entry\.name, to: to \} \}\)/);
     assert.match(js, /api\(base \+ '\/tags\/' \+ encodeURIComponent\(entry\.name\), \{ method: 'DELETE' \}\)/);

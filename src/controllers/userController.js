@@ -408,7 +408,7 @@ class UserController {
         const slug = slugFrom(body.slug) || slugFrom(typeof body.link === 'string' ? body.link : '');
         if (!slug) return res.status(400).json({ error: 'Enter the stash name.', field: 'slug' });
         const stash = this.stashes.liveStash(slug);
-        if (!stash) return res.status(404).json({ error: 'This stash has expired or does not exist.' });
+        if (!stash || this.stashes.hiddenFrom(req.user, stash)) return res.status(404).json({ error: 'This stash has expired or does not exist.' });
         // So the access log tags this request with the stash (as a hash) like any other stash request
         req.stash = stash;
 
@@ -496,7 +496,8 @@ class UserController {
     listStashes = (req, res) => {
         // Own stashes are always listed: make sure each has its row before reading the list
         this.users.ensureOwnerFollows(req.user.id);
-        const rows = this.users.listFollows(req.user.id, this.now());
+        // Someone else's private stash is not shown at all: nothing about it leaks, and it comes back when it is opened up
+        const rows = this.users.listFollows(req.user.id, this.now()).filter(row => !(row.is_private && row.owner_id && row.owner_id !== req.user.id));
         const out = rows.map(row => {
             const owned = row.owner_id === req.user.id;
             // The owner needs no password, so an owned stash never "needs the password again"

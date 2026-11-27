@@ -254,7 +254,7 @@ class UserModel {
         return this.db
             .prepare(
                 `SELECT us.stash_id, us.pinned_at, us.added_at, us.last_seen_at, us.grant_role, us.grant_salt, us.grant_version, us.grant_view_hash,
-                        s.slug, s.owner_id, s.password_hash, s.password_salt, s.session_version, s.view_token_hash, s.expires_at,
+                        s.slug, s.owner_id, s.is_private, s.password_hash, s.password_salt, s.session_version, s.view_token_hash, s.expires_at,
                         (SELECT COUNT(*) FROM items i WHERE i.stash_id = s.id AND (i.expires_at IS NULL OR i.expires_at > ?)) AS items,
                         (SELECT COUNT(*) FROM items i WHERE i.stash_id = s.id AND i.kind = 'file' AND (i.expires_at IS NULL OR i.expires_at > ?)) AS files,
                         (SELECT COUNT(*) FROM items i WHERE i.stash_id = s.id AND i.created_at > us.last_seen_at AND (i.expires_at IS NULL OR i.expires_at > ?)) AS new_items,

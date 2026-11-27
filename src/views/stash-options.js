@@ -374,18 +374,22 @@
         // full access on a guest's stash (the server checks the same rule). Changing the password is for full access.
         var full = role() === 'full';
         var manage = Boolean(full && state.stash && state.stash.canManage);
-        ['keep', 'danger', 'rename', 'content', 'tags'].forEach(function (name) {
+        ['keep', 'danger', 'rename', 'content', 'filetypes', 'tags'].forEach(function (name) {
             document.querySelector('[data-option="' + name + '"]').classList.toggle('hidden', !manage);
         });
         paintExpiryRow();
         // Only the owner can pass the stash on (the server checks it too)
         document.querySelector('[data-option="owner"]').classList.toggle('hidden', !(manage && state.stash.owned));
+        // So can the Private switch: it only means something for a stash that has an owner
+        document.querySelector('[data-option="private"]').classList.toggle('hidden', !(manage && state.stash.owned));
+        $('privateToggle').checked = Boolean(state.stash.private);
         closeOwnerForm();
         paintMoveRow(manage);
         renderTagManager();
         Array.prototype.forEach.call(document.querySelectorAll('input[name="stashContent"]'), function (input) {
             input.checked = input.value === stashContent();
         });
+        restoreFileTypesChoice((state.stash && state.stash.fileTypes) || 'safe');
         closeRenameForm();
         closePasswordForm();
         $('changePasswordToggle').classList.toggle('hidden', role() !== 'full');
@@ -641,6 +645,56 @@
             input.checked = input.value === value;
         });
     }
+
+    // Private: only the owner opens the stash
+    $('privateToggle').addEventListener('change', function () {
+        var box = $('privateToggle');
+        var wanted = box.checked;
+        if (wanted && !window.confirm('Make this stash private? Nobody else can open it, even with the password or a link, and anyone following it loses it until you turn this off. Links to single clips keep working.')) {
+            box.checked = false;
+            return;
+        }
+        api(base + '/private', { method: 'PUT', body: { private: wanted } }).then(function (res) {
+            if (res.ok) {
+                state.stash.private = res.body.private;
+                toast(res.body.private ? 'This stash is now private' : 'This stash is no longer private');
+            } else {
+                box.checked = !wanted;
+                toast((res.body && res.body.error) || 'Could not change that.', true);
+            }
+        }, function () {
+            box.checked = !wanted;
+            toast('Could not reach the server.', true);
+        });
+    });
+
+    // Which files the stash takes
+    var FILE_TYPES_WORDS = { safe: 'This stash takes the safe list of files', 'no-programs': 'This stash takes any file except programs', any: 'This stash takes any file' };
+
+    function restoreFileTypesChoice(value) {
+        Array.prototype.forEach.call(document.querySelectorAll('input[name="stashFileTypes"]'), function (input) {
+            input.checked = input.value === value;
+        });
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="stashFileTypes"]'), function (input) {
+        input.addEventListener('change', function () {
+            if (!input.checked) return;
+            var previous = (state.stash && state.stash.fileTypes) || 'safe';
+            api(base + '/file-types', { method: 'PUT', body: { fileTypes: input.value } }).then(function (res) {
+                if (res.ok) {
+                    state.stash.fileTypes = res.body.fileTypes;
+                    toast(FILE_TYPES_WORDS[res.body.fileTypes]);
+                } else {
+                    restoreFileTypesChoice(previous);
+                    toast((res.body && res.body.error) || 'Could not change that.', true);
+                }
+            }, function () {
+                restoreFileTypesChoice(previous);
+                toast('Could not reach the server.', true);
+            });
+        });
+    });
 
     // Opens Options, on one group when the caller names it ('signin' is the Access group) and it has something for this visitor
     function openOptions(group) {
