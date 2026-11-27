@@ -31,7 +31,7 @@ test('Options has five groups as a side list of tabs, one panel each, and the ro
     assert.match(dialog, /<span class="opt-long">Danger zone<\/span><span class="opt-short">Danger<\/span>/);
     // Panels start hidden; the script shows the one that is open
     assert.equal((dialog.match(/class="opt-section[^"]* hidden"/g) || []).length, 5);
-    assert.deepEqual(rowsIn(sectionOf(dialog, 'general')), ['rename', 'expiry', 'owner']);
+    assert.deepEqual(rowsIn(sectionOf(dialog, 'general')), ['rename', 'displayname', 'expiry', 'owner']);
     assert.deepEqual(rowsIn(sectionOf(dialog, 'organize')), ['tags', 'move', 'content', 'filetypes', 'keep']);
     assert.deepEqual(rowsIn(sectionOf(dialog, 'access')), ['private', 'session']);
     assert.deepEqual(rowsIn(sectionOf(dialog, 'device')), ['list', 'tab']);

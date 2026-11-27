@@ -1069,3 +1069,8 @@ body:not(.stash-open) .in-topbar { display: none; }
 @keyframes extended-flash { from { background: var(--success-soft); } to { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { .table tr.just-extended td { animation: none; background: var(--success-soft); } }
 .extend-note { margin: 2px 0 0; font-size: 12.5px; }
+
+/* A stash with a label (the Clipboard stash) hides what would show its key: nobody but the owner can open it anyway */
+body.stash-labelled #copyLinkButton, body.stash-labelled #qrButton, body.stash-labelled #shareButton { display: none; }
+.stash-key { font-size: 13px; align-self: center; }
+.follow-key { font-size: 12.5px; margin-left: 8px; }

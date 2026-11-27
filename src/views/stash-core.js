@@ -44,16 +44,42 @@
 
     var narrow = window.matchMedia('(max-width: 760px)');
 
-    document.title = slug + ' · Stashly';
+    // The name shown for the stash: its label when it has one (your Clipboard stash, whose own name is only a random key),
+    // else its name. Before the stash has loaded, this device's memory of its Clipboard stash stands in, so the key is
+    // never on screen.
+    function knownLabel() {
+        if (state.stash) return state.stash.label || null;
+        try { return localStorage.getItem('sl_clip_slug') === slug ? 'Clipboard' : null; } catch (e) { return null; }
+    }
+
+    // Whether this is your Clipboard stash, whose name is only a key that is never shown
+    function isClipboard() {
+        if (state.stash) return Boolean(state.stash.clipboard);
+        try { return localStorage.getItem('sl_clip_slug') === slug; } catch (e) { return false; }
+    }
+
+    function paintName() {
+        var label = knownLabel();
+        var shown = label || slug;
+        var clipboard = isClipboard();
+        document.title = shown + ' · Stashly';
+        $('navStashName').textContent = shown;
+        $('stashTitle').textContent = shown;
+        $('stashTitle').classList.toggle('mono', !label);
+        // A display name sits above the stash's own name, which stays on screen (it is what people open the stash by)
+        $('stashKey').textContent = slug;
+        $('stashKey').classList.toggle('hidden', !label || clipboard);
+        // The link, QR code and share links would show the key, and nobody but the owner can open a Clipboard stash anyway
+        document.body.classList.toggle('stash-labelled', clipboard);
+        if ($('deleteStashSlug')) $('deleteStashSlug').textContent = shown;
+    }
 
     // Lets the phone layout tighten the top bar on this page only
     document.body.classList.add('stash-page');
 
     $('thisStashLink').href = location.pathname;
 
-    $('navStashName').textContent = slug;
-
-    $('stashTitle').textContent = slug;
+    paintName();
 
     $('createThisLink').href = '/';
 
@@ -147,6 +173,8 @@
 
     // Copy works on plain HTTP too (LAN addresses), where navigator.clipboard is unavailable
     function copyText(text) {
+        // Text Stashly copies itself is not saved again by the Clipboard stash (see clipboard.js)
+        try { localStorage.setItem('sl_clip_last', text); } catch (e) { /* not remembered */ }
         if (navigator.clipboard && window.isSecureContext) {
             return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return fallbackCopy(text); });
         }
@@ -348,6 +376,9 @@
 
     // What the other parts use
     P.slug = slug;
+    P.paintName = paintName;
+    P.isClipboard = isClipboard;
+    P.shownName = function () { return knownLabel() || slug; };
     P.base = base;
     P.$ = $;
     P.tabId = tabId;

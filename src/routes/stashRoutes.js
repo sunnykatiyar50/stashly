@@ -124,6 +124,7 @@ function createStashRoutes({ controller, config }) {
     router.put('/:slug/content', ...manage, c.setContent);
     router.put('/:slug/file-types', ...manage, c.setFileTypes);
     router.put('/:slug/private', ...manage, c.setPrivate);
+    router.put('/:slug/display-name', ...manage, c.setDisplayName);
     router.post('/:slug/extend', ...full, c.extend);
     // The wrong-password limit applies here too: a stranger at an unlocked browser cannot guess the current password
     router.post('/:slug/password', unlockLimiter, ...full, c.changePassword);

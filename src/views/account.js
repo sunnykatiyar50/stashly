@@ -163,8 +163,12 @@
     function buildRow(stash) {
         var li = make('li', 'stash-row card' + (stash.needsPassword ? ' stale' : ''));
 
+        // A stash with a label (your Clipboard stash) is shown by it: its own name is only a random key
+        var shown = stash.label || stash.slug;
         var id = make('div', 'stash-id');
-        id.appendChild(make('span', 'mono follow-name', stash.slug));
+        id.appendChild(make('span', stash.label ? 'follow-name' : 'mono follow-name', shown));
+        // A display name covers the name people open the stash by, so that is shown small beside it (never for the Clipboard stash)
+        if (stash.label && !stash.clipboard) id.appendChild(make('span', 'mono muted follow-key', stash.slug));
         if (stash.needsPassword) {
             id.appendChild(make('span', 'chip warn', 'Needs the password'));
         } else {
@@ -205,7 +209,7 @@
             pin.type = 'button';
             pin.innerHTML = PIN_ICON;
             pin.setAttribute('aria-pressed', String(Boolean(stash.pinned)));
-            pin.setAttribute('aria-label', (stash.pinned ? 'Unpin ' : 'Pin ') + stash.slug);
+            pin.setAttribute('aria-label', (stash.pinned ? 'Unpin ' : 'Pin ') + shown);
             pin.title = stash.pinned ? 'Pinned: press to remove it from the left menu' : 'Pin it to the left menu for quick switching';
             pin.addEventListener('click', function () { pinStash(stash, !stash.pinned); });
             actions.appendChild(pin);
@@ -214,7 +218,7 @@
                 var settings = make('a', 'button-link ghost small icon-action');
                 settings.href = '/s/' + encodeURIComponent(stash.slug) + '#options';
                 settings.innerHTML = GEAR_ICON;
-                settings.setAttribute('aria-label', 'Settings for ' + stash.slug);
+                settings.setAttribute('aria-label', 'Settings for ' + shown);
                 settings.title = 'Settings: name, expiry, tags, owner...';
                 actions.appendChild(settings);
             }
@@ -378,6 +382,51 @@
         if (window.StashlyAccountNav) window.StashlyAccountNav.refresh();
     }
 
+    // The Clipboard stash card: save what you copy to a private stash of your own, on this device (see clipboard.js)
+    function paintClipboard() {
+        var C = window.StashlyClipboard;
+        if (!C) return;
+        var button = $('clipboardToggle');
+        var error = $('clipboardError');
+        error.textContent = '';
+        $('clipboardCard').classList.remove('hidden');
+        if (!C.supported()) {
+            button.disabled = true;
+            button.textContent = 'Not available in this browser';
+            error.textContent = 'This browser does not let Stashly read the clipboard. Chrome, Edge and Safari do, on a secure (https) page.';
+            return;
+        }
+        var on = C.enabled();
+        button.disabled = false;
+        button.textContent = on ? 'Turn off for this device' : 'Turn on for this device';
+        button.className = on ? 'ghost small' : 'primary small';
+        // The link to the stash itself shows whenever the account has one, on or off
+        api('/api/me/clipboard').then(function (res) {
+            var link = $('clipboardOpen');
+            var slug = res.ok && res.body && res.body.slug;
+            link.classList.toggle('hidden', !slug);
+            if (slug) link.href = '/s/' + encodeURIComponent(slug);
+        });
+    }
+
+    $('clipboardToggle').addEventListener('click', function () {
+        var C = window.StashlyClipboard;
+        if (!C) return;
+        if (C.enabled()) {
+            C.disable();
+            toast('Saving your clipboard is off on this device');
+            paintClipboard();
+            return;
+        }
+        $('clipboardToggle').disabled = true;
+        C.enable().then(function (result) {
+            paintClipboard();
+            if (result.error) { $('clipboardError').textContent = result.error; return; }
+            toast('Saving your clipboard to your Clipboard stash');
+            loadList();
+        });
+    });
+
     function start(justSignedIn) {
         api('/api/me').then(function (res) {
             if (!res.ok) return toast('Could not reach the server.', true);
@@ -391,6 +440,7 @@
             $('roleChip').textContent = me.role === 'admin' ? 'Admin' : 'User';
             refreshAdminNav();
             show('account');
+            paintClipboard();
             loadList();
             startRefresh();
             return null;

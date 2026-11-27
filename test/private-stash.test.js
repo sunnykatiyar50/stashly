@@ -126,7 +126,7 @@ test('an older database gets the private column, off for every stash', () => {
         connect(file).close();
         const raw = new DatabaseSync(file);
         raw.exec('ALTER TABLE stashes DROP COLUMN is_private');
-        raw.exec(`PRAGMA user_version = ${SCHEMA_VERSION - 1}`);
+        raw.exec('PRAGMA user_version = 13'); // the version the release before this setting left
         raw.exec("INSERT INTO stashes (slug, created_at) VALUES ('older-stash', '2025-01-01T00:00:00Z')");
         raw.close();
         const db = connect(file);

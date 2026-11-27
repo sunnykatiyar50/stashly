@@ -192,6 +192,35 @@
         }).catch(function () { $('renameSave').disabled = false; error.textContent = 'Could not reach the server.'; });
     });
 
+    // The display name (the owner only; empty goes back to showing the stash name)
+    var displayNameForm = $('displayNameForm');
+
+    $('displayNameInput').addEventListener('input', function () {
+        $('displayNameSave').disabled = $('displayNameInput').value.trim().replace(/\s+/g, ' ') === ((state.stash && state.stash.label) || '');
+        $('displayNameError').textContent = '';
+    });
+
+    displayNameForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var error = $('displayNameError');
+        error.textContent = '';
+        $('displayNameSave').disabled = true;
+        api(base + '/display-name', { method: 'PUT', body: { name: $('displayNameInput').value } }).then(function (res) {
+            if (res.ok) {
+                state.stash.label = res.body.label;
+                $('displayNameInput').value = res.body.label || '';
+                P.paintName();
+                toast(res.body.label ? 'Display name saved' : 'Showing the stash name again');
+            } else if (res.status === 401) {
+                $('optionsDialog').close();
+                locked();
+            } else {
+                $('displayNameSave').disabled = false;
+                error.textContent = (res.body && res.body.error) || 'Could not save the display name.';
+            }
+        }).catch(function () { $('displayNameSave').disabled = false; error.textContent = 'Could not reach the server.'; });
+    });
+
     // Passing ownership on (the owner only). The server checks everything; this asks once more, since only the new owner can
     // undo it. Afterwards the page is loaded again, because it no longer belongs to you.
     var ownerForm = $('ownerForm');
@@ -244,7 +273,7 @@
         $('deleteStashButton').classList.remove('hidden');
     }
 
-    $('deleteStashSlug').textContent = slug;
+    $('deleteStashSlug').textContent = P.shownName();
 
     $('deleteStashButton').addEventListener('click', function (event) {
         deleteForm.classList.remove('hidden');
@@ -255,12 +284,12 @@
     $('deleteStashCancel').addEventListener('click', closeDeleteForm);
 
     $('deleteStashName').addEventListener('input', function (event) {
-        $('deleteStashConfirm').disabled = event.target.value.trim().toLowerCase() !== slug;
+        $('deleteStashConfirm').disabled = event.target.value.trim().toLowerCase() !== P.shownName().toLowerCase();
     });
 
     deleteForm.addEventListener('submit', function (event) {
         event.preventDefault();
-        if ($('deleteStashName').value.trim().toLowerCase() !== slug) return;
+        if ($('deleteStashName').value.trim().toLowerCase() !== P.shownName().toLowerCase()) return;
         $('deleteStashConfirm').disabled = true;
         api(base, { method: 'DELETE' }).then(function (res) {
             if (res.ok) {
@@ -377,6 +406,13 @@
         ['keep', 'danger', 'rename', 'content', 'filetypes', 'tags'].forEach(function (name) {
             document.querySelector('[data-option="' + name + '"]').classList.toggle('hidden', !manage);
         });
+        // The Clipboard stash has no name to change and is always called Clipboard; any other stash of yours can have a display name
+        var clipboard = Boolean(state.stash && state.stash.clipboard);
+        if (clipboard) document.querySelector('[data-option="rename"]').classList.add('hidden');
+        document.querySelector('[data-option="displayname"]').classList.toggle('hidden', !(manage && state.stash.owned && !clipboard));
+        $('displayNameInput').value = (state.stash && state.stash.label) || '';
+        $('displayNameSave').disabled = true;
+        $('displayNameError').textContent = '';
         paintExpiryRow();
         // Only the owner can pass the stash on (the server checks it too)
         document.querySelector('[data-option="owner"]').classList.toggle('hidden', !(manage && state.stash.owned));

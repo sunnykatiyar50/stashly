@@ -90,6 +90,7 @@ function parseRange(header, size) {
 const CONTENT_KINDS = ['all', 'notes', 'files'];
 const contentOf = stash => (CONTENT_KINDS.includes(stash.content) ? stash.content : 'all');
 // Which files a stash takes: its own choice, or the safe list when it has made none
+const MAX_DISPLAY_NAME = 60;
 const FILE_MODES = ['safe', 'no-programs', 'any'];
 const fileTypesOf = stash => (FILE_MODES.includes(stash.file_types) ? stash.file_types : 'safe');
 
@@ -543,6 +544,7 @@ class StashController {
     // Open pages are told the new address and follow it.
     rename = (req, res) => {
         const stash = req.stash;
+        if (this.model.isClipboardStash(stash.id)) return res.status(403).json({ error: 'This stash cannot be renamed.' });
         const parsed = parseSlug(req.body && req.body.slug);
         if (parsed.error) return res.status(400).json({ error: parsed.error, field: 'slug' });
         if (parsed.slug === stash.slug) return res.status(400).json({ error: 'That is already the name of this stash.', field: 'slug' });
@@ -765,6 +767,10 @@ class StashController {
             content: contentOf(stash),
             // Whether only the owner can open it (the page shows the switch to the owner only)
             private: this.isPrivate(stash),
+            // The display name the owner gave it (null = show its name), and whether it is a user's Clipboard stash, whose
+            // name is only a key that is never shown
+            label: stash.label || null,
+            clipboard: this.model.isClipboardStash(stash.id),
             fileTypes: fileTypesOf(stash),
             usage: dropOnly ? { items: 0, files: 0, bytes: 0 } : this.model.usage(stash.id),
             limits: this.limits(),
@@ -1129,6 +1135,23 @@ class StashController {
         this.model.setContent(req.stash.id, value);
         this.events.publish(req.stash.slug, 'content-changed', { content: value });
         res.json({ content: value });
+    };
+
+    // The display name: free text that need not be unique, shown instead of the stash's name at the top of the page and in
+    // lists. People still open the stash by its name. Only the owner sets it; empty clears it.
+    setDisplayName = (req, res) => {
+        if (!this.isOwner(req)) {
+            return res.status(403).json({ error: req.stash.owner_id ? 'Only the owner of this stash can set its display name.' : 'Only a stash made while signed in has a display name. This one has no owner.' });
+        }
+        if (this.model.isClipboardStash(req.stash.id)) return res.status(403).json({ error: 'This stash is always called Clipboard.' });
+        const raw = req.body && req.body.name;
+        if (raw !== null && raw !== undefined && typeof raw !== 'string') return res.status(400).json({ error: 'The display name must be text.', field: 'name' });
+        // Plain text on one line: control characters go, runs of spaces become one
+        const name = (raw || '').replace(/[\x00-\x1f\x7f]+/g, ' ').replace(/\s+/g, ' ').trim();
+        if (name.length > MAX_DISPLAY_NAME) return res.status(400).json({ error: `The display name can be at most ${MAX_DISPLAY_NAME} characters.`, field: 'name' });
+        this.model.setLabel(req.stash.id, name || null);
+        this.events.publish(req.stash.slug, 'label-changed', { label: name || null });
+        res.json({ label: name || null });
     };
 
     // Only the owner, signed in, can make a stash private or open it up again

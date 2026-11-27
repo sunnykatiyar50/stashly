@@ -248,7 +248,7 @@
             mine.forEach(function (entry) {
                 var option = document.createElement('option');
                 option.value = entry.slug;
-                option.textContent = entry.slug;
+                option.textContent = entry.label || entry.slug;
                 select.appendChild(option);
             });
             select.disabled = false;

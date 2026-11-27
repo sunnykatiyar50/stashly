@@ -206,6 +206,17 @@ class UserModel {
             .run(userId);
     }
 
+    // The stash this user's copied text goes to, or null (none made yet, or it was deleted)
+    getClipboardStash(userId) {
+        return this.db
+            .prepare('SELECT s.* FROM users u JOIN stashes s ON s.id = u.clipboard_stash_id WHERE u.id = ?')
+            .get(userId) || null;
+    }
+
+    setClipboardStash(userId, stashId) {
+        this.db.prepare('UPDATE users SET clipboard_stash_id = ? WHERE id = ?').run(stashId, userId);
+    }
+
     // Makes toUserId the owner of the stash (a stash row as read from the database). Both people are put in each other's
     // position in one step: the new owner gets a follow row (an owner needs none to open the stash, but the dashboard and the
     // new-items counts work from it), and the previous owner, when there was one, stays on as a follower with the access they
@@ -254,7 +265,7 @@ class UserModel {
         return this.db
             .prepare(
                 `SELECT us.stash_id, us.pinned_at, us.added_at, us.last_seen_at, us.grant_role, us.grant_salt, us.grant_version, us.grant_view_hash,
-                        s.slug, s.owner_id, s.is_private, s.password_hash, s.password_salt, s.session_version, s.view_token_hash, s.expires_at,
+                        s.slug, s.label, (s.id IN (SELECT clipboard_stash_id FROM users WHERE clipboard_stash_id IS NOT NULL)) AS is_clipboard, s.owner_id, s.is_private, s.password_hash, s.password_salt, s.session_version, s.view_token_hash, s.expires_at,
                         (SELECT COUNT(*) FROM items i WHERE i.stash_id = s.id AND (i.expires_at IS NULL OR i.expires_at > ?)) AS items,
                         (SELECT COUNT(*) FROM items i WHERE i.stash_id = s.id AND i.kind = 'file' AND (i.expires_at IS NULL OR i.expires_at > ?)) AS files,
                         (SELECT COUNT(*) FROM items i WHERE i.stash_id = s.id AND i.created_at > us.last_seen_at AND (i.expires_at IS NULL OR i.expires_at > ?)) AS new_items,
