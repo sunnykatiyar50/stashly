@@ -195,3 +195,73 @@ test('a stash with a display name can still be renamed (its name, the key), and 
     await ctx.olive.post('/api/stashes/olives-stash-three/rename').send({ slug: 'olives-renamed-three' }).expect(200);
     assert.equal((await ctx.olive.get('/api/stashes/olives-renamed-three').expect(200)).body.label, 'Keep me');
 });
+
+// ---- saving copied text ----
+
+const save = (agent, text, device) => agent.post('/api/me/clipboard/notes').send({ text, device });
+const noteList = async (agent, slug) => (await agent.get(`/api/stashes/${slug}`).expect(200)).body.items;
+
+test('saving copied text makes the Clipboard stash when there is none, and tags the note with the device', async () => {
+    const ctx = await setup();
+    const first = await save(ctx.olive, 'first copy', 'Chrome Windows').expect(201);
+    assert.equal(first.body.saved, true);
+    // The stash was made by saving, and it is the same one the account then has
+    assert.deepEqual((await ctx.olive.get('/api/me/clipboard').expect(200)).body, { slug: first.body.slug, label: 'Clipboard' });
+    const items = await noteList(ctx.olive, first.body.slug);
+    assert.equal(items.length, 1);
+    assert.equal(items[0].text, 'first copy');
+    assert.deepEqual(items[0].tags, ['chrome-windows']);
+    // It can be filtered by that device like any tag
+    const filtered = (await ctx.olive.get(`/api/stashes/${first.body.slug}?tag=chrome-windows`).expect(200)).body;
+    assert.equal(filtered.total, 1);
+});
+
+test('text that repeats the newest note is skipped, however many devices send it; older text is saved again', async () => {
+    const ctx = await setup();
+    const a = await save(ctx.olive, 'same text', 'Chrome Windows').expect(201);
+    const dup = await save(ctx.olive, 'same text', 'Safari iOS').expect(200);
+    assert.deepEqual(dup.body, { saved: false, duplicate: true, slug: a.body.slug });
+    await save(ctx.olive, 'something else', 'Safari iOS').expect(201);
+    await save(ctx.olive, 'same text', 'Chrome Windows').expect(201);
+    const texts = (await noteList(ctx.olive, a.body.slug)).map(i => i.text);
+    assert.deepEqual(texts.sort(), ['same text', 'same text', 'something else']);
+});
+
+test('the device name is tidied into a tag, and a name with nothing usable just leaves the note untagged', async () => {
+    const ctx = await setup();
+    const one = await save(ctx.olive, 'one', '  Chrome / Windows 11!! ').expect(201);
+    await save(ctx.olive, 'two', '???').expect(201);
+    await save(ctx.olive, 'three').expect(201);
+    await save(ctx.olive, 'four', 'x'.repeat(60)).expect(201);
+    const byText = Object.fromEntries((await noteList(ctx.olive, one.body.slug)).map(i => [i.text, i.tags]));
+    assert.deepEqual(byText.one, ['chrome-windows-11']);
+    assert.deepEqual(byText.two, []);
+    assert.deepEqual(byText.three, []);
+    assert.equal(byText.four.length, 1);
+    assert.ok(byText.four[0].length <= 24);
+});
+
+test('saving needs a sign-in, some text, and text within the note size', async () => {
+    const ctx = await setup({ maxNoteBytes: 100 });
+    await request(ctx.app).post('/api/me/clipboard/notes').send({ text: 'hi' }).expect(401);
+    await save(ctx.olive, '   ').expect(400);
+    await save(ctx.olive, 42).expect(400);
+    await save(ctx.olive, 'x'.repeat(101)).expect(413);
+    await save(ctx.olive, 'x'.repeat(100)).expect(201);
+});
+
+test('each user saves to their own Clipboard stash, which nobody else can open', async () => {
+    const ctx = await setup();
+    const olive = await save(ctx.olive, 'olive secret', 'Chrome Windows').expect(201);
+    const sam = await save(ctx.sam, 'olive secret', 'Chrome Windows').expect(201);
+    assert.notEqual(olive.body.slug, sam.body.slug);
+    await ctx.sam.get(`/api/stashes/${olive.body.slug}`).expect(404);
+});
+
+test('a new Clipboard stash is made again if the old one is gone', async () => {
+    const ctx = await setup();
+    const first = await save(ctx.olive, 'before').expect(201);
+    await ctx.olive.delete(`/api/stashes/${first.body.slug}`).expect(200);
+    const second = await save(ctx.olive, 'before').expect(201);
+    assert.notEqual(second.body.slug, first.body.slug);
+});

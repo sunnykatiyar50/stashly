@@ -3,6 +3,7 @@
 // name in the audit log (a user is named there by id, a stash by the usual keyed hash).
 const { hashPassword, verifyPassword, MAX_PASSWORD } = require('../utils/password');
 const { generateSlug } = require('../utils/slug');
+const { parseTag } = require('../utils/tags');
 const { linkTokenMatches, signToken, verifyToken } = require('../utils/token');
 const { validAddress } = require('../utils/mailer');
 const templates = require('../utils/emailTemplates');
@@ -512,11 +513,18 @@ class UserController {
     makeClipboardStash = (req, res) => {
         const existing = this.liveClipboardStash(req.user.id);
         if (existing) return res.json({ slug: existing.slug, label: existing.label, created: false });
+        const made = this.createClipboardStash(req);
+        if (made.error) return res.status(made.status).json({ error: made.error });
+        res.status(201).json({ slug: made.stash.slug, label: CLIPBOARD_LABEL, created: true });
+    };
+
+    // Makes the stash: { stash } or { status, error }
+    createClipboardStash(req) {
         if (!this.stashes.canCreate(req)) {
-            return res.status(403).json({ error: 'This server does not let you create stashes, so it cannot make your Clipboard stash.' });
+            return { status: 403, error: 'This server does not let you create stashes, so it cannot make your Clipboard stash.' };
         }
         if (this.model.countStashes() >= this.config.maxStashes) {
-            return res.status(503).json({ error: 'This server has reached its limit of stashes. Try again later.' });
+            return { status: 503, error: 'This server has reached its limit of stashes. Try again later.' };
         }
         // Never expires when the server allows that, otherwise the longest time it offers
         const lasts = this.config.ttlOptions.find(option => option.ms === null) ||
@@ -530,7 +538,43 @@ class UserController {
         this.users.follow(req.user.id, stash.id, { role: 'full', salt: stash.password_salt, version: stash.session_version || 0, viewHash: null }, this.now());
         this.users.setClipboardStash(req.user.id, stash.id);
         this.audit('stash.created', { req, stash, detail: { password: false, ttl: lasts.key, owned: true, clipboard: true } });
-        res.status(201).json({ slug: stash.slug, label: CLIPBOARD_LABEL, created: true });
+        return { stash };
+    }
+
+    // The tag a device's saves carry: "Chrome Windows" becomes "chrome-windows" (null when nothing usable is left)
+    deviceTag(raw) {
+        if (typeof raw !== 'string') return null;
+        const word = raw.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 24).replace(/-+$/g, '');
+        const tag = word ? parseTag(word) : null;
+        return tag && tag.value ? tag.value : null;
+    }
+
+    // Saves copied text to the user's Clipboard stash, making the stash if there is none. The same text as the newest note is
+    // skipped (two devices that share a clipboard would both save it), and the note is tagged with the device that saved it.
+    saveClipboardNote = (req, res) => {
+        const raw = req.body && req.body.text;
+        if (typeof raw !== 'string' || !raw.trim()) return res.status(400).json({ error: 'There is no text to save.', field: 'text' });
+        const text = raw.replace(/\r\n/g, '\n');
+        if (Buffer.byteLength(text) > this.config.maxNoteBytes) {
+            return res.status(413).json({ error: `A note can be at most ${Math.round(this.config.maxNoteBytes / 1024)} KB.`, field: 'text' });
+        }
+        let stash = this.liveClipboardStash(req.user.id);
+        if (!stash) {
+            const made = this.createClipboardStash(req);
+            if (made.error) return res.status(made.status).json({ error: made.error });
+            stash = made.stash;
+        }
+        if (this.model.latestNoteText(stash.id) === text) return res.json({ saved: false, duplicate: true, slug: stash.slug });
+        if (this.model.usage(stash.id).items >= this.config.maxItemsPerStash) {
+            return res.status(413).json({ error: `Your Clipboard stash is full (${this.config.maxItemsPerStash} items). Delete some clips first.` });
+        }
+        const now = this.now();
+        let row = this.model.addNote(stash.id, text, now, null, { expiresAt: null, burn: false, secret: false });
+        const tag = this.deviceTag(req.body.device);
+        if (tag) row = this.model.setTags(stash.id, row.id, [tag]) || row;
+        this.stashes.events.publish(stash.slug, 'item-added', this.stashes.withOrigin(this.stashes.presentItem(stash.slug, row), req));
+        this.stashes.trim(stash);
+        res.status(201).json({ saved: true, slug: stash.slug });
     };
 
     // The dashboard. A grant that no longer works shows only that the password is needed again: no counts, no times, so

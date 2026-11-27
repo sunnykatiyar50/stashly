@@ -55,6 +55,7 @@ Add `preview` (`true` in the body, or `?preview=1`) to a listing and notes longe
 | GET | `/api/me` | `{ enabled, user: {id, username, displayName, role, managed} \| null }`, `200` either way (`{ enabled: false }` when accounts are off) |
 | POST | `/api/me/password` | `{currentPassword, newPassword}`: changes your own password, signs out your other sessions |
 | GET | `/api/me/stashes` | the stashes you follow with counts and `newItems`; a stash whose grant ended shows only `slug`, `role: null`, `needsPassword: true`, `addedAt` |
+| POST | `/api/me/clipboard/notes` | signed in: `{text, device?}` saves copied text to the user's Clipboard stash (made if there is none). Text identical to the newest note is skipped (`200 {saved: false, duplicate: true}`); `device` (for example `Chrome Windows`) becomes the note's tag (`chrome-windows`). `201 {saved: true, slug}`, `413` when too long or the stash is full |
 | GET | `/api/me/clipboard` | signed in: `{slug}` of the user's Clipboard stash, or `{slug: null}` |
 | POST | `/api/me/clipboard` | signed in: makes the user's Clipboard stash (a private stash they own that lasts as long as the server allows) unless they have one, and answers `{slug, created}` (`201` when made) |
 | POST | `/api/me/stashes` | follow: `{slug, password?, link?}` (a link is the token or the whole address; `{slug, current: true}` follows with the access this browser already has). `401 {locked: true}` for a wrong or missing password, counted by the unlock lockout; a drop-box link is `400` |

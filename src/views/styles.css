@@ -1074,3 +1074,6 @@ body:not(.stash-open) .in-topbar { display: none; }
 body.stash-labelled #copyLinkButton, body.stash-labelled #qrButton, body.stash-labelled #shareButton { display: none; }
 .stash-key { font-size: 13px; align-self: center; }
 .follow-key { font-size: 12.5px; margin-left: 8px; }
+.nav-guest { text-decoration: none; cursor: pointer; }
+.nav-guest:hover { background: rgba(255, 255, 255, 0.1); }
+.nav-guest .nav-avatar { background: linear-gradient(135deg, #64748b, #94a3b8); }

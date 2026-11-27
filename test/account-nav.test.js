@@ -80,3 +80,14 @@ test('the stash page reuses the config and /api/me answers the page start alread
     assert.ok(view('stash.js').includes('window.StashlyConfig ? window.StashlyConfig()'));
     assert.ok(view('stash-account.js').includes('nav.firstMe()'));
 });
+
+test('a visitor who is not signed in, on a server with accounts, sees a Guest chip that links to sign in', () => {
+    const script = view('account-nav.js');
+    assert.match(script, /function paintGuest\(\)/);
+    assert.ok(script.includes("guestBlock.href = '/account'"));
+    assert.ok(script.includes("name.textContent = 'Guest'"));
+    // It is drawn only when accounts are on and nobody is signed in, and goes away on sign in
+    assert.ok(script.includes('if (body && body.enabled) paintGuest(); else clearGuest();'));
+    assert.match(script, /body\.enabled && body\.user\) \{\s*clearGuest\(\);/);
+    assert.match(view('styles.css'), /\.nav-guest\s*\{/);
+});
