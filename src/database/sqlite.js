@@ -258,6 +258,32 @@ const MIGRATIONS = [
         );
         db.exec('CREATE INDEX IF NOT EXISTS idx_item_shares_stash ON item_shares (stash_id)');
     },
+
+    // 13: which files a stash takes: 'safe', 'no-programs' or 'any' (null = the safe list). It used to be one setting for
+    // the whole server; a stash that has not chosen takes the safe list.
+    db => {
+        addColumn(db, 'stashes', 'file_types', 'TEXT');
+    },
+
+    // 14: a private stash. Its owner (a signed-in account) can turn it on: from then on only that account opens the
+    // stash, whatever the password, share links or follows say, and they work again when it is turned off.
+    db => {
+        addColumn(db, 'stashes', 'is_private', 'INTEGER NOT NULL DEFAULT 0');
+    },
+
+    // 15: the stash a user's copied text is saved to (their "Clipboard" stash, made for them when they ask for it). It is
+    // only a pointer: the stash is an ordinary private stash they own, and if it is deleted the pointer clears itself.
+    db => {
+        addColumn(db, 'users', 'clipboard_stash_id', 'INTEGER REFERENCES stashes(id) ON DELETE SET NULL');
+    },
+
+    // 16: a display name for a stash (null = show its name). The name is the unique key people open it by; the display name
+    // is free text that need not be unique. The owner sets it after the stash is made; a user's Clipboard stash is
+    // always called "Clipboard" and its key is never shown.
+    db => {
+        addColumn(db, 'stashes', 'label', 'TEXT');
+        db.exec("UPDATE stashes SET label = 'Clipboard' WHERE id IN (SELECT clipboard_stash_id FROM users WHERE clipboard_stash_id IS NOT NULL)");
+    },
 ];
 
 const SCHEMA_VERSION = MIGRATIONS.length;

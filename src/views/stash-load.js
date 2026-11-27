@@ -224,6 +224,7 @@
             var list = $('items');
             var scrolled = list.scrollTop;
             state.stash = out.first;
+            P.paintName();
             state.tagList = out.first.tags || [];
             state.items = out.items;
             state.total = out.last.total;
@@ -232,7 +233,7 @@
             // Pages come in the server's order; sorting is only a guard for a list that shifted between them
             P.sortItems();
             // Only a stash opened with full access is worth suggesting on the share page
-            if (window.StashlyRemember && out.first.role === 'full') window.StashlyRemember(slug);
+            if (window.StashlyRemember && out.first.role === 'full' && !out.first.label) window.StashlyRemember(slug);
             // The installed app reopens this stash next time it is launched (whatever the role: a link visitor too)
             if (window.StashlyLast) window.StashlyLast.set(slug);
             applyRole();

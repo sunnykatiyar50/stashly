@@ -2,6 +2,7 @@
 // the users. No handler ever returns a password, a hash or a salt, and none puts a username, password, token or stash
 // name in the audit log (a user is named there by id, a stash by the usual keyed hash).
 const { hashPassword, verifyPassword, MAX_PASSWORD } = require('../utils/password');
+const { generateSlug } = require('../utils/slug');
 const { linkTokenMatches, signToken, verifyToken } = require('../utils/token');
 const { validAddress } = require('../utils/mailer');
 const templates = require('../utils/emailTemplates');
@@ -10,6 +11,7 @@ const { noopAudit } = require('../utils/auditLog');
 const { noopMetrics } = require('../utils/metrics');
 const { grantRole, normalizeUsername, USERNAME_PATTERN, ROLES } = require('../models/userModel');
 const MAX_PINS = 20;
+const CLIPBOARD_LABEL = 'Clipboard';
 const RESET_MINUTES = 60;
 const RESET_COOLDOWN_MS = 5 * 60 * 1000;
 const BAD_LINK = 'This link is not valid or has expired. Ask for a new one.';
@@ -408,7 +410,7 @@ class UserController {
         const slug = slugFrom(body.slug) || slugFrom(typeof body.link === 'string' ? body.link : '');
         if (!slug) return res.status(400).json({ error: 'Enter the stash name.', field: 'slug' });
         const stash = this.stashes.liveStash(slug);
-        if (!stash) return res.status(404).json({ error: 'This stash has expired or does not exist.' });
+        if (!stash || this.stashes.hiddenFrom(req.user, stash)) return res.status(404).json({ error: 'This stash has expired or does not exist.' });
         // So the access log tags this request with the stash (as a hash) like any other stash request
         req.stash = stash;
 
@@ -491,19 +493,62 @@ class UserController {
         res.json({ ok: true, pinned });
     }
 
+    // ---- the Clipboard stash ----
+
+    // The user's live Clipboard stash (the one their copied text is saved to), or null. One that has expired is gone.
+    liveClipboardStash(userId) {
+        const stash = this.users.getClipboardStash(userId);
+        if (!stash) return null;
+        return this.stashes.liveStash(stash.slug);
+    }
+
+    clipboardStash = (req, res) => {
+        const stash = this.liveClipboardStash(req.user.id);
+        res.json({ slug: stash ? stash.slug : null, label: stash ? stash.label : null });
+    };
+
+    // Makes the user's Clipboard stash when they have none (or it expired), and answers with its name. It is an ordinary
+    // stash they own, private so nobody else can open it, with no password to type, that lasts as long as the server allows.
+    makeClipboardStash = (req, res) => {
+        const existing = this.liveClipboardStash(req.user.id);
+        if (existing) return res.json({ slug: existing.slug, label: existing.label, created: false });
+        if (!this.stashes.canCreate(req)) {
+            return res.status(403).json({ error: 'This server does not let you create stashes, so it cannot make your Clipboard stash.' });
+        }
+        if (this.model.countStashes() >= this.config.maxStashes) {
+            return res.status(503).json({ error: 'This server has reached its limit of stashes. Try again later.' });
+        }
+        // Never expires when the server allows that, otherwise the longest time it offers
+        const lasts = this.config.ttlOptions.find(option => option.ms === null) ||
+            this.config.ttlOptions.reduce((best, option) => (option.ms > best.ms ? option : best));
+        // The name is only a random key (the page shows the label, "Clipboard", instead)
+        let slug = generateSlug();
+        for (let i = 0; i < 5 && this.model.findBySlug(slug); i++) slug = generateSlug();
+        const stash = this.model.createStash({ slug, ttlMs: lasts.ms, ownerId: req.user.id, now: this.now() });
+        this.model.setPrivate(stash.id, true);
+        this.model.setLabel(stash.id, CLIPBOARD_LABEL);
+        this.users.follow(req.user.id, stash.id, { role: 'full', salt: stash.password_salt, version: stash.session_version || 0, viewHash: null }, this.now());
+        this.users.setClipboardStash(req.user.id, stash.id);
+        this.audit('stash.created', { req, stash, detail: { password: false, ttl: lasts.key, owned: true, clipboard: true } });
+        res.status(201).json({ slug: stash.slug, label: CLIPBOARD_LABEL, created: true });
+    };
+
     // The dashboard. A grant that no longer works shows only that the password is needed again: no counts, no times, so
     // nothing about a stash leaks to someone who can no longer open it. Working grants come first, newest activity first.
     listStashes = (req, res) => {
         // Own stashes are always listed: make sure each has its row before reading the list
         this.users.ensureOwnerFollows(req.user.id);
-        const rows = this.users.listFollows(req.user.id, this.now());
+        // Someone else's private stash is not shown at all: nothing about it leaks, and it comes back when it is opened up
+        const rows = this.users.listFollows(req.user.id, this.now()).filter(row => !(row.is_private && row.owner_id && row.owner_id !== req.user.id));
         const out = rows.map(row => {
             const owned = row.owner_id === req.user.id;
             // The owner needs no password, so an owned stash never "needs the password again"
             const role = owned ? 'full' : grantRole(row, row);
-            if (!role) return { slug: row.slug, role: null, needsPassword: true, owned: false, addedAt: row.added_at, pinned: Boolean(row.pinned_at) };
+            if (!role) return { slug: row.slug, label: row.label || null, clipboard: Boolean(row.is_clipboard), role: null, needsPassword: true, owned: false, addedAt: row.added_at, pinned: Boolean(row.pinned_at) };
             return {
                 slug: row.slug,
+                label: row.label || null,
+                clipboard: Boolean(row.is_clipboard),
                 owned,
                 role,
                 needsPassword: false,

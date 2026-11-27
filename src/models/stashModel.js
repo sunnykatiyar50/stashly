@@ -739,6 +739,26 @@ class StashModel {
         return this.getStashById(id);
     }
 
+    // Whether this is some user's Clipboard stash (its name is only a key, and it cannot be renamed or relabelled)
+    isClipboardStash(id) {
+        return Boolean(this.db.prepare('SELECT 1 AS yes FROM users WHERE clipboard_stash_id = ?').get(id));
+    }
+
+    setLabel(id, label) {
+        this.db.prepare('UPDATE stashes SET label = ? WHERE id = ?').run(label, id);
+        return this.getStashById(id);
+    }
+
+    setPrivate(id, isPrivate) {
+        this.db.prepare('UPDATE stashes SET is_private = ? WHERE id = ?').run(isPrivate ? 1 : 0, id);
+        return this.getStashById(id);
+    }
+
+    setFileTypes(id, fileTypes) {
+        this.db.prepare('UPDATE stashes SET file_types = ? WHERE id = ?').run(fileTypes, id);
+        return this.getStashById(id);
+    }
+
     setKeepLast(id, keepLast) {
         this.db.prepare('UPDATE stashes SET keep_last = ? WHERE id = ?').run(keepLast, id);
         return this.getStashById(id);

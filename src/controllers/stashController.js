@@ -89,6 +89,10 @@ function parseRange(header, size) {
 // What a stash takes: notes and files, notes only, or files only (older rows have no value: everything)
 const CONTENT_KINDS = ['all', 'notes', 'files'];
 const contentOf = stash => (CONTENT_KINDS.includes(stash.content) ? stash.content : 'all');
+// Which files a stash takes: its own choice, or the safe list when it has made none
+const MAX_DISPLAY_NAME = 60;
+const FILE_MODES = ['safe', 'no-programs', 'any'];
+const fileTypesOf = stash => (FILE_MODES.includes(stash.file_types) ? stash.file_types : 'safe');
 
 class StashController {
     // audit(event, { req, stash, actor, detail }) writes the audit log and metrics counts what is worth counting; both
@@ -169,20 +173,32 @@ class StashController {
 
     // ---- middleware ----
 
-    // Whether a stash with this name exists, and whether it has a password. Nothing else is told.
+    // Whether a stash with this name exists, and whether it has a password. Nothing else is told. A private stash looks
+    // like one that does not exist, to everyone but its owner.
     exists = (req, res) => {
         const stash = this.liveStash(req.params.slug);
-        if (!stash) return res.status(404).json({ exists: false });
+        if (!stash || this.hiddenFrom(req.user, stash)) return res.status(404).json({ exists: false });
         res.json({ exists: true, locked: Boolean(stash.password_hash) });
     };
 
     // Finds the stash named in the URL. A stash whose time is up is deleted on the spot.
     loadStash = (req, res, next) => {
         const stash = this.liveStash(req.params.slug);
-        if (!stash) return res.status(404).json({ error: 'This stash has expired or does not exist.' });
+        if (!stash || this.hiddenFrom(req.user, stash)) return res.status(404).json({ error: 'This stash has expired or does not exist.' });
         req.stash = stash;
         next();
     };
+
+    // A private stash is the owner's alone. (If its owner's account is gone it has no owner to keep it for, and goes back
+    // to being opened by its password, or its name.)
+    isPrivate(stash) {
+        return Boolean(stash && stash.is_private && stash.owner_id);
+    }
+
+    // True when this visitor must not even learn that the stash is there: it is private and they are not its owner
+    hiddenFrom(user, stash) {
+        return this.isPrivate(stash) && !this.ownedBy(user, stash);
+    }
 
     // The stash with this name, or null when there is none. A stash whose time is up is deleted on the spot.
     liveStash(slug) {
@@ -211,6 +227,8 @@ class StashController {
     access(req, stash, user = req.user) {
         // The owner of a stash (the signed-in user who created it) always has full access, password or not
         if (this.ownedBy(user, stash)) return { role: 'full', token: null };
+        // Private: no password, share link or follow opens it (they stay as they were, and work again when it is not private)
+        if (this.isPrivate(stash)) return { role: null, token: null };
         if (!stash.password_hash) return { role: 'full', token: null };
         const cookies = parseCookies(req.headers.cookie);
         const now = this.now().getTime();
@@ -288,7 +306,6 @@ class StashController {
             sessionOptions: this.config.sessionOptions.map(({ key, label }) => ({ key, label })),
             defaultSession: this.config.defaultSession,
             itemTtlOptions: this.config.itemTtlOptions.map(({ key, label }) => ({ key, label })),
-            fileTypes: this.config.fileTypes,
             // false when creating is limited (to admins, or to signed-in users) and the visitor does not qualify
             canCreate: this.canCreate(req),
             // Who may create: 'open' (anyone, the default), 'login' (signed-in users and admins) or 'admin'
@@ -527,6 +544,7 @@ class StashController {
     // Open pages are told the new address and follow it.
     rename = (req, res) => {
         const stash = req.stash;
+        if (this.model.isClipboardStash(stash.id)) return res.status(403).json({ error: 'This stash cannot be renamed.' });
         const parsed = parseSlug(req.body && req.body.slug);
         if (parsed.error) return res.status(400).json({ error: parsed.error, field: 'slug' });
         if (parsed.slug === stash.slug) return res.status(400).json({ error: 'That is already the name of this stash.', field: 'slug' });
@@ -747,6 +765,13 @@ class StashController {
             neverAllowed: Boolean(this.config.allowNoExpiry),
             keepLast: stash.keep_last || null,
             content: contentOf(stash),
+            // Whether only the owner can open it (the page shows the switch to the owner only)
+            private: this.isPrivate(stash),
+            // The display name the owner gave it (null = show its name), and whether it is a user's Clipboard stash, whose
+            // name is only a key that is never shown
+            label: stash.label || null,
+            clipboard: this.model.isClipboardStash(stash.id),
+            fileTypes: fileTypesOf(stash),
             usage: dropOnly ? { items: 0, files: 0, bytes: 0 } : this.model.usage(stash.id),
             limits: this.limits(),
             // Every match, not just this page
@@ -1112,6 +1137,44 @@ class StashController {
         res.json({ content: value });
     };
 
+    // The display name: free text that need not be unique, shown instead of the stash's name at the top of the page and in
+    // lists. People still open the stash by its name. Only the owner sets it; empty clears it.
+    setDisplayName = (req, res) => {
+        if (!this.isOwner(req)) {
+            return res.status(403).json({ error: req.stash.owner_id ? 'Only the owner of this stash can set its display name.' : 'Only a stash made while signed in has a display name. This one has no owner.' });
+        }
+        if (this.model.isClipboardStash(req.stash.id)) return res.status(403).json({ error: 'This stash is always called Clipboard.' });
+        const raw = req.body && req.body.name;
+        if (raw !== null && raw !== undefined && typeof raw !== 'string') return res.status(400).json({ error: 'The display name must be text.', field: 'name' });
+        // Plain text on one line: control characters go, runs of spaces become one
+        const name = (raw || '').replace(/[\x00-\x1f\x7f]+/g, ' ').replace(/\s+/g, ' ').trim();
+        if (name.length > MAX_DISPLAY_NAME) return res.status(400).json({ error: `The display name can be at most ${MAX_DISPLAY_NAME} characters.`, field: 'name' });
+        this.model.setLabel(req.stash.id, name || null);
+        this.events.publish(req.stash.slug, 'label-changed', { label: name || null });
+        res.json({ label: name || null });
+    };
+
+    // Only the owner, signed in, can make a stash private or open it up again
+    setPrivate = (req, res) => {
+        const value = req.body && req.body.private;
+        if (typeof value !== 'boolean') return res.status(400).json({ error: 'Send "private": true or false.' });
+        if (!this.isOwner(req)) {
+            return res.status(403).json({ error: req.stash.owner_id ? 'Only the owner of this stash can make it private.' : 'Only a stash made while signed in can be private. This one has no owner.' });
+        }
+        this.model.setPrivate(req.stash.id, value);
+        this.audit('stash.private', { req, stash: req.stash, detail: { private: value } });
+        res.json({ private: value });
+    };
+
+    // Which files the stash takes: the safe list, anything except programs, or anything. Files already in it stay.
+    setFileTypes = (req, res) => {
+        const value = req.body && req.body.fileTypes;
+        if (!FILE_MODES.includes(value)) return res.status(400).json({ error: 'Pick the safe list, any file except programs, or any file.' });
+        this.model.setFileTypes(req.stash.id, value);
+        this.events.publish(req.stash.slug, 'file-types-changed', { fileTypes: value });
+        res.json({ fileTypes: value });
+    };
+
     // Run before the body is read, so a stash that takes no files refuses an upload without receiving it
     acceptsNotes = (req, res, next) => {
         if (contentOf(req.stash) === 'files') return res.status(403).json({ error: 'This stash only takes files.' });
@@ -1185,18 +1248,19 @@ class StashController {
     // one so they cannot drift apart. With `head` (the first bytes) the type is detected from the content; without it
     // (a resumable upload that has not sent anything yet) only the extension can be judged, and the content is checked
     // when the upload completes. Returns { fileName, mime, title } or { status, error, field? }.
-    fileMeta({ rawName, rawTitle, head = null, nameError }) {
+    fileMeta({ stash, rawName, rawTitle, head = null, nameError }) {
         const fileName = cleanFileName(rawName);
         if (!fileName) return { status: 400, error: nameError };
 
+        const mode = fileTypesOf(stash);
         let mime = null;
         if (head) {
             // File types are recognised from the first bytes, which is all that was kept in memory
-            const detected = detectFile(fileName, head, this.config.fileTypes);
+            const detected = detectFile(fileName, head, mode);
             if (detected.error) return { status: 415, error: detected.error };
             mime = detected.mime;
         } else {
-            const refused = extensionProblem(fileName, this.config.fileTypes);
+            const refused = extensionProblem(fileName, mode);
             if (refused) return { status: 415, error: refused };
         }
 
@@ -1224,7 +1288,7 @@ class StashController {
                 // keep the raw header value
             }
         }
-        const meta = this.fileMeta({ rawName, rawTitle, head, nameError: 'The file needs a name (X-File-Name header).' });
+        const meta = this.fileMeta({ stash: req.stash, rawName, rawTitle, head, nameError: 'The file needs a name (X-File-Name header).' });
         if (meta.error) return res.status(meta.status).json({ error: meta.error, ...(meta.field ? { field: meta.field } : {}) });
 
         const problem = this.limitProblem(stash, { file: true, size });
@@ -1295,7 +1359,7 @@ class StashController {
             return res.status(400).json({ error: 'The title must be text.', field: 'title' });
         }
 
-        const meta = this.fileMeta({ rawName: body.name, rawTitle: body.title, nameError: 'The file needs a name.' });
+        const meta = this.fileMeta({ stash: req.stash, rawName: body.name, rawTitle: body.title, nameError: 'The file needs a name.' });
         if (meta.error) return res.status(meta.status).json({ error: meta.error, ...(meta.field ? { field: meta.field } : {}) });
         if (size > this.config.maxFileBytes) {
             return res.status(413).json({ error: `A file can be at most ${Math.round(this.config.maxFileBytes / 1048576)} MB.`, field: 'size' });
@@ -1413,7 +1477,7 @@ class StashController {
             if (offset !== row.size) {
                 return res.status(409).set('Upload-Offset', String(offset)).json({ error: 'The upload is not complete yet.', offset, size: row.size });
             }
-            const meta = this.fileMeta({ rawName: row.name, rawTitle: row.title, head: this.model.files.readPartHead(row.id), nameError: 'The file needs a name.' });
+            const meta = this.fileMeta({ stash: req.stash, rawName: row.name, rawTitle: row.title, head: this.model.files.readPartHead(row.id), nameError: 'The file needs a name.' });
             if (meta.error) {
                 // The bytes will never be acceptable: nothing to keep
                 this.model.dropUploads([row.id]);

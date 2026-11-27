@@ -18,6 +18,9 @@ Add `preview` (`true` in the body, or `?preview=1`) to a listing and notes longe
 | POST | `/api/stashes/:slug/files` | raw body, `X-File-Name` header, optional `X-Title` header (both URI-encoded) |
 | PUT | `/api/stashes/:slug/items/:id` | a note: `{title?, text}`; a file: `{title}` (empty goes back to the file name). Optional `baseEditedAt` (the item's `editedAt` you started from, `null` if never edited): if the item was edited since, nothing changes and the answer is `409 { error, conflict: true, item }` with the current item in full. Leave it out to skip the check (last write wins) |
 | PUT | `/api/stashes/:slug/content` | `{content: "all" \| "notes" \| "files"}` what the stash takes (full access only) |
+| PUT | `/api/stashes/:slug/file-types` | `{fileTypes: "safe" \| "no-programs" \| "any"}` which files the stash accepts (see File types in the configuration doc; full access only; a new stash starts on `safe`) |
+| PUT | `/api/stashes/:slug/private` | `{private: true \| false}` only the owner (signed in) can: while on, nobody else can open the stash, whatever the password, read-only or drop-box links, or follows say. Every other request answers `404`, as if the stash did not exist. Links to single clips keep working. `403` for a stash with no owner. Answers `{private}` |
+| PUT | `/api/stashes/:slug/display-name` | `{name}` only the owner: a display name of up to 60 characters (free text, not unique; empty or `null` clears it). The stash is still opened by its name. `403` for a guest stash (no owner) and for a Clipboard stash. A stash's `label` is its display name and `clipboard` says whether it is a Clipboard stash. Answers `{label}` |
 | POST | `/api/stashes/:slug/uploads` | start a resumable upload: `{name, size, title?}`. Runs every check a single upload does that needs no bytes (role, stash content kind, size, quotas, name, blocked extension) and answers `201 {id, offset: 0, size, chunkSize}` with a `Location`. See **Resumable uploads** |
 | GET, HEAD | `/api/stashes/:slug/uploads/:id` | where the upload stands: `{id, offset, size, chunkSize}` (HEAD: the `Upload-Offset` header only) |
 | PATCH | `/api/stashes/:slug/uploads/:id` | send one piece: header `Upload-Offset` (must equal the current offset, else `409` with the right one), the raw bytes as the body (at most `chunkSize`: `413`). Answers `200 {offset, ...}` |
@@ -52,6 +55,8 @@ Add `preview` (`true` in the body, or `?preview=1`) to a listing and notes longe
 | GET | `/api/me` | `{ enabled, user: {id, username, displayName, role, managed} \| null }`, `200` either way (`{ enabled: false }` when accounts are off) |
 | POST | `/api/me/password` | `{currentPassword, newPassword}`: changes your own password, signs out your other sessions |
 | GET | `/api/me/stashes` | the stashes you follow with counts and `newItems`; a stash whose grant ended shows only `slug`, `role: null`, `needsPassword: true`, `addedAt` |
+| GET | `/api/me/clipboard` | signed in: `{slug}` of the user's Clipboard stash, or `{slug: null}` |
+| POST | `/api/me/clipboard` | signed in: makes the user's Clipboard stash (a private stash they own that lasts as long as the server allows) unless they have one, and answers `{slug, created}` (`201` when made) |
 | POST | `/api/me/stashes` | follow: `{slug, password?, link?}` (a link is the token or the whole address; `{slug, current: true}` follows with the access this browser already has). `401 {locked: true}` for a wrong or missing password, counted by the unlock lockout; a drop-box link is `400` |
 | DELETE | `/api/me/stashes/:slug` | unfollow (the stash is untouched) |
 | POST | `/api/me/stashes/:slug/seen` | mark a followed stash as seen now (resets its new count) |

@@ -187,6 +187,16 @@
             state.stash.content = JSON.parse(event.data).content;
             applyContent();
         });
+        // The owner changed the stash's display name
+        es.addEventListener('label-changed', function (event) {
+            if (!state.stash) return;
+            state.stash.label = JSON.parse(event.data).label;
+            if (P.paintName) P.paintName();
+        });
+        // Someone changed which files the stash takes
+        es.addEventListener('file-types-changed', function (event) {
+            if (state.stash) state.stash.fileTypes = JSON.parse(event.data).fileTypes;
+        });
         // The stash was renamed (by someone else, or by this page, which moves itself): follow it to the new address
         es.addEventListener('stash-renamed', function (event) {
             var data = {};

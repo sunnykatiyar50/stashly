@@ -64,7 +64,6 @@ function loadConfig(env = process.env, overrides = {}) {
         uploadIdleHours: num(env.UPLOAD_IDLE_HOURS, 24) || 24,
         allowNoExpiry,
         // Which files can be uploaded: 'safe', 'no-programs' or 'any' (see utils/fileType.js)
-        fileTypes: ['safe', 'no-programs', 'any'].includes(env.FILE_TYPES) ? env.FILE_TYPES : 'safe',
         // The admin area is only on when a password is set
         adminPassword,
         // The name of the admin account that ADMIN_PASSWORD belongs to. It signs in on the same page as everyone else;

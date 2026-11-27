@@ -1,6 +1,6 @@
 const path = require('path');
 
-// What can be uploaded depends on the "file types" mode (Admin > Settings, or FILE_TYPES):
+// What can be uploaded depends on the stash's "file types" mode (Options > Organize); the safe list until it is changed:
 //
 //   safe         images, audio and video, PDF, zip and Office files (content must match the extension),
 //                certificates, and any text file. The default.
@@ -133,7 +133,7 @@ function detectFile(fileName, buffer, mode = 'safe') {
 
     // Any other file: text is always fine; other content depends on the mode
     if (isText(buffer)) return { mime: PLAIN, image: false };
-    if (mode === 'safe') return { error: `This file type isn't allowed. Allowed: ${ALLOWED_SUMMARY}.` };
+    if (mode === 'safe') return { error: `This file type isn't allowed. Allowed: ${ALLOWED_SUMMARY}. Whoever manages the stash can allow more in its Options.` };
     if (mode === 'no-programs' && isProgram(buffer)) return { error: "Programs aren't allowed." };
     return { mime: OCTET, image: false };
 }

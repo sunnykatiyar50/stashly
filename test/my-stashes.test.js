@@ -23,7 +23,7 @@ test('owned stashes and followed ones go to their own list; the row has Open, a 
     assert.match(js, /\$\(name \+ 'Group'\)\.classList\.toggle\('hidden', stashes\.length === 0\)/);
     // The gear opens the stash on its Options, and only for a stash you own
     assert.match(js, /if \(stash\.owned\) \{\s*var settings = make\('a', 'button-link ghost small icon-action'\);\s*settings\.href = '\/s\/' \+ encodeURIComponent\(stash\.slug\) \+ '#options';/);
-    assert.match(js, /settings\.setAttribute\('aria-label', 'Settings for ' \+ stash\.slug\)/);
+    assert.match(js, /settings\.setAttribute\('aria-label', 'Settings for ' \+ shown\)/);
     // The green Owner tag stays; Unfollow only for stashes someone else made
     assert.match(js, /if \(stash\.owned\) id\.appendChild\(make\('span', 'chip owner-chip', 'Owner'\)\)/);
     assert.match(js, /if \(!stash\.owned\) \{\s*var unfollow = make\('button', 'ghost small danger-ghost', 'Unfollow'\)/);

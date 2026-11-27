@@ -76,16 +76,6 @@ const FIELDS = {
         help: 'How long a lockout lasts, and how long wrong passwords are counted for.',
         read: c => Math.round(c.stashUnlockWindowMs / 60000), write: (c, v) => { c.stashUnlockWindowMs = v * 60000; },
     },
-    fileTypes: {
-        group: 'Files', label: 'File types', type: 'choice',
-        options: [
-            { value: 'safe', label: 'Safe list: images, audio, video, PDF, zip, Office files, certificates, text' },
-            { value: 'no-programs', label: 'Any file except programs' },
-            { value: 'any', label: 'Any file at all' },
-        ],
-        help: 'Which files can be uploaded. "Except programs" also allows archives and other binaries, but still refuses executables, SVG and macro-enabled Office files. Uploads are never run or shown by Stashly, whatever the type.',
-        read: c => c.fileTypes, write: (c, v) => { c.fileTypes = v; },
-    },
     allowNoExpiry: {
         group: 'Stashes', label: 'Allow stashes that never expire', type: 'bool',
         help: 'Adds a "Never" choice to the expiry list.',

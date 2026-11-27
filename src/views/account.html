@@ -114,6 +114,17 @@
                 </div>
             </header>
 
+            <!-- Saving what you copy to a private stash of your own (clipboard.js, account.js) -->
+            <section id="clipboardCard" class="card clipboard-card hidden" aria-labelledby="clipboardTitle">
+                <h2 id="clipboardTitle" class="group-title">Clipboard stash</h2>
+                <p class="muted" id="clipboardText">Save text you copy to a private stash that only you can open. When you come back to Stashly, anything new on your clipboard is added. Text only, and only on devices where you turn it on.</p>
+                <div class="share-actions">
+                    <button type="button" id="clipboardToggle" class="primary small">Turn on for this device</button>
+                    <a id="clipboardOpen" class="button-link small hidden" href="#">Open Clipboard stash</a>
+                </div>
+                <small class="field-error" id="clipboardError" role="alert"></small>
+            </section>
+
             <!-- Two lists: the stashes you own, and the ones you follow (account.js) -->
             <section id="ownedGroup" class="stash-group hidden" aria-labelledby="ownedTitle">
                 <h2 id="ownedTitle" class="group-title">Your stashes <span id="ownedCount" class="group-count"></span></h2>
@@ -166,6 +177,7 @@
     <script src="/shell.js"></script>
     <script src="/account-nav.js"></script>
     <script src="/admin-nav.js"></script>
+    <script src="/clipboard.js"></script>
     <script src="/account.js"></script>
     <div id="pageReady" hidden></div>
 </body>

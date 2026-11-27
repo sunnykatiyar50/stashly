@@ -163,6 +163,16 @@
     function rememberPins(slugs) {
         try { localStorage.setItem(PINS_KEY, JSON.stringify(slugs)); } catch (e) { /* not remembered */ }
     }
+    // The names to show for pinned stashes that have one besides their own (the Clipboard stash), by stash name
+    var LABELS_KEY = PINS_KEY + '_labels';
+    function rememberedLabels() {
+        try { return JSON.parse(localStorage.getItem(LABELS_KEY) || '{}') || {}; } catch (e) { return {}; }
+    }
+    function rememberLabels(stashes) {
+        var map = {};
+        stashes.forEach(function (s) { if (s.label) map[s.slug] = s.label; });
+        try { localStorage.setItem(LABELS_KEY, JSON.stringify(map)); } catch (e) { /* not remembered */ }
+    }
     if (here && rememberedPins().indexOf(here) !== -1) setOpenStashVisible(false);
 
     function drawPins(stashes) {
@@ -170,6 +180,7 @@
         if (!nav) return;
         var pinned = stashes.filter(function (s) { return s.pinned && !s.needsPassword; });
         rememberPins(pinned.map(function (s) { return s.slug; }));
+        rememberLabels(pinned);
         // On a phone the menu is closed, so a dot on its button says a pinned stash has something new
         document.body.classList.toggle('pins-new', pinned.some(function (s) { return s.newItems > 0; }));
         setOpenStashVisible(!(here && pinned.some(function (s) { return s.slug === here; })));
@@ -192,11 +203,11 @@
             var link = document.createElement('a');
             link.className = 'nav-link nav-pin' + (stash.slug === here ? ' active' : '');
             link.href = '/s/' + encodeURIComponent(stash.slug);
-            link.title = stash.slug + (stash.newItems ? ' (' + stash.newItems + ' new)' : '');
+            link.title = (stash.label || stash.slug) + (stash.newItems ? ' (' + stash.newItems + ' new)' : '');
             link.appendChild(pinIcon());
             var label = document.createElement('span');
             label.className = 'label';
-            label.textContent = stash.slug;
+            label.textContent = stash.label || stash.slug;
             link.appendChild(label);
             if (stash.newItems > 0) {
                 var badge = document.createElement('span');
@@ -284,7 +295,8 @@
         // The pinned stashes seen last time are drawn at once too, so the menu does not grow after the page appears;
         // the server's answer (with the new-item counts) replaces them a moment later
         var pins = rememberedPins();
-        if (pins.length) drawPins(pins.map(function (slug) { return { slug: slug, pinned: true }; }));
+        var labels = rememberedLabels();
+        if (pins.length) drawPins(pins.map(function (slug) { return { slug: slug, label: labels[slug] || null, pinned: true }; }));
     }
     refresh();
 })();

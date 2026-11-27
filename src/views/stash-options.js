@@ -192,6 +192,35 @@
         }).catch(function () { $('renameSave').disabled = false; error.textContent = 'Could not reach the server.'; });
     });
 
+    // The display name (the owner only; empty goes back to showing the stash name)
+    var displayNameForm = $('displayNameForm');
+
+    $('displayNameInput').addEventListener('input', function () {
+        $('displayNameSave').disabled = $('displayNameInput').value.trim().replace(/\s+/g, ' ') === ((state.stash && state.stash.label) || '');
+        $('displayNameError').textContent = '';
+    });
+
+    displayNameForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var error = $('displayNameError');
+        error.textContent = '';
+        $('displayNameSave').disabled = true;
+        api(base + '/display-name', { method: 'PUT', body: { name: $('displayNameInput').value } }).then(function (res) {
+            if (res.ok) {
+                state.stash.label = res.body.label;
+                $('displayNameInput').value = res.body.label || '';
+                P.paintName();
+                toast(res.body.label ? 'Display name saved' : 'Showing the stash name again');
+            } else if (res.status === 401) {
+                $('optionsDialog').close();
+                locked();
+            } else {
+                $('displayNameSave').disabled = false;
+                error.textContent = (res.body && res.body.error) || 'Could not save the display name.';
+            }
+        }).catch(function () { $('displayNameSave').disabled = false; error.textContent = 'Could not reach the server.'; });
+    });
+
     // Passing ownership on (the owner only). The server checks everything; this asks once more, since only the new owner can
     // undo it. Afterwards the page is loaded again, because it no longer belongs to you.
     var ownerForm = $('ownerForm');
@@ -244,7 +273,7 @@
         $('deleteStashButton').classList.remove('hidden');
     }
 
-    $('deleteStashSlug').textContent = slug;
+    $('deleteStashSlug').textContent = P.shownName();
 
     $('deleteStashButton').addEventListener('click', function (event) {
         deleteForm.classList.remove('hidden');
@@ -255,12 +284,12 @@
     $('deleteStashCancel').addEventListener('click', closeDeleteForm);
 
     $('deleteStashName').addEventListener('input', function (event) {
-        $('deleteStashConfirm').disabled = event.target.value.trim().toLowerCase() !== slug;
+        $('deleteStashConfirm').disabled = event.target.value.trim().toLowerCase() !== P.shownName().toLowerCase();
     });
 
     deleteForm.addEventListener('submit', function (event) {
         event.preventDefault();
-        if ($('deleteStashName').value.trim().toLowerCase() !== slug) return;
+        if ($('deleteStashName').value.trim().toLowerCase() !== P.shownName().toLowerCase()) return;
         $('deleteStashConfirm').disabled = true;
         api(base, { method: 'DELETE' }).then(function (res) {
             if (res.ok) {
@@ -374,18 +403,29 @@
         // full access on a guest's stash (the server checks the same rule). Changing the password is for full access.
         var full = role() === 'full';
         var manage = Boolean(full && state.stash && state.stash.canManage);
-        ['keep', 'danger', 'rename', 'content', 'tags'].forEach(function (name) {
+        ['keep', 'danger', 'rename', 'content', 'filetypes', 'tags'].forEach(function (name) {
             document.querySelector('[data-option="' + name + '"]').classList.toggle('hidden', !manage);
         });
+        // The Clipboard stash has no name to change and is always called Clipboard; any other stash of yours can have a display name
+        var clipboard = Boolean(state.stash && state.stash.clipboard);
+        if (clipboard) document.querySelector('[data-option="rename"]').classList.add('hidden');
+        document.querySelector('[data-option="displayname"]').classList.toggle('hidden', !(manage && state.stash.owned && !clipboard));
+        $('displayNameInput').value = (state.stash && state.stash.label) || '';
+        $('displayNameSave').disabled = true;
+        $('displayNameError').textContent = '';
         paintExpiryRow();
         // Only the owner can pass the stash on (the server checks it too)
         document.querySelector('[data-option="owner"]').classList.toggle('hidden', !(manage && state.stash.owned));
+        // So can the Private switch: it only means something for a stash that has an owner
+        document.querySelector('[data-option="private"]').classList.toggle('hidden', !(manage && state.stash.owned));
+        $('privateToggle').checked = Boolean(state.stash.private);
         closeOwnerForm();
         paintMoveRow(manage);
         renderTagManager();
         Array.prototype.forEach.call(document.querySelectorAll('input[name="stashContent"]'), function (input) {
             input.checked = input.value === stashContent();
         });
+        restoreFileTypesChoice((state.stash && state.stash.fileTypes) || 'safe');
         closeRenameForm();
         closePasswordForm();
         $('changePasswordToggle').classList.toggle('hidden', role() !== 'full');
@@ -641,6 +681,56 @@
             input.checked = input.value === value;
         });
     }
+
+    // Private: only the owner opens the stash
+    $('privateToggle').addEventListener('change', function () {
+        var box = $('privateToggle');
+        var wanted = box.checked;
+        if (wanted && !window.confirm('Make this stash private? Nobody else can open it, even with the password or a link, and anyone following it loses it until you turn this off. Links to single clips keep working.')) {
+            box.checked = false;
+            return;
+        }
+        api(base + '/private', { method: 'PUT', body: { private: wanted } }).then(function (res) {
+            if (res.ok) {
+                state.stash.private = res.body.private;
+                toast(res.body.private ? 'This stash is now private' : 'This stash is no longer private');
+            } else {
+                box.checked = !wanted;
+                toast((res.body && res.body.error) || 'Could not change that.', true);
+            }
+        }, function () {
+            box.checked = !wanted;
+            toast('Could not reach the server.', true);
+        });
+    });
+
+    // Which files the stash takes
+    var FILE_TYPES_WORDS = { safe: 'This stash takes the safe list of files', 'no-programs': 'This stash takes any file except programs', any: 'This stash takes any file' };
+
+    function restoreFileTypesChoice(value) {
+        Array.prototype.forEach.call(document.querySelectorAll('input[name="stashFileTypes"]'), function (input) {
+            input.checked = input.value === value;
+        });
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="stashFileTypes"]'), function (input) {
+        input.addEventListener('change', function () {
+            if (!input.checked) return;
+            var previous = (state.stash && state.stash.fileTypes) || 'safe';
+            api(base + '/file-types', { method: 'PUT', body: { fileTypes: input.value } }).then(function (res) {
+                if (res.ok) {
+                    state.stash.fileTypes = res.body.fileTypes;
+                    toast(FILE_TYPES_WORDS[res.body.fileTypes]);
+                } else {
+                    restoreFileTypesChoice(previous);
+                    toast((res.body && res.body.error) || 'Could not change that.', true);
+                }
+            }, function () {
+                restoreFileTypesChoice(previous);
+                toast('Could not reach the server.', true);
+            });
+        });
+    });
 
     // Opens Options, on one group when the caller names it ('signin' is the Access group) and it has something for this visitor
     function openOptions(group) {
