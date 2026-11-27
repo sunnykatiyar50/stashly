@@ -57,6 +57,7 @@ function createUserRoutes({ controller, config }) {
     router.put('/me/email', c.requireUser, passwordLimiter, c.setEmail);
     router.get('/me/clipboard', c.requireUser, c.clipboardStash);
     router.post('/me/clipboard', c.requireUser, followLimiter, c.makeClipboardStash);
+    router.post('/me/clipboard/notes', c.requireUser, c.saveClipboardNote);
     router.get('/me/stashes', c.requireUser, c.listStashes);
     router.post('/me/stashes', c.requireUser, followLimiter, missLimiter, c.follow);
     router.delete('/me/stashes/:slug', c.requireUser, c.unfollow);

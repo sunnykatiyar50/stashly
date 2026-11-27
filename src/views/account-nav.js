@@ -1,5 +1,5 @@
-// Who is signed in, and Sign out, at the very bottom of the left menu (below the theme switch and the version) of every page that has one. Nothing is drawn for a visitor
-// without an account, or when the server has accounts off. The pages that sign people in or out call
+// Who is signed in, and Sign out, at the very bottom of the left menu (below the theme switch and the version) of every page that has one. A visitor who is not
+// signed in sees a "Guest" chip that links to the sign-in page; nothing is drawn when the server has accounts off. The pages that sign people in or out call
 // StashlyAccountNav.refresh() so the block appears or goes away without a reload.
 (function () {
     'use strict';
@@ -226,6 +226,41 @@
             .catch(function () { /* keeps what it shows */ });
     }
 
+    // A visitor who is not signed in (on a server that has accounts) sees a "Guest" chip where the account card is. It is a
+    // link to the sign-in page.
+    var guestBlock = null;
+    function paintGuest() {
+        if (guestBlock) return;
+        guestBlock = document.createElement('a');
+        guestBlock.className = 'nav-account nav-guest';
+        guestBlock.href = '/account';
+        guestBlock.title = 'You are using Stashly as a guest. Sign in to keep your stashes together.';
+        var avatar = document.createElement('span');
+        avatar.className = 'nav-avatar';
+        avatar.setAttribute('aria-hidden', 'true');
+        avatar.textContent = 'G';
+        var text = document.createElement('span');
+        text.className = 'nav-user-text label';
+        var name = document.createElement('span');
+        name.className = 'nav-user-name';
+        name.textContent = 'Guest';
+        var sub = document.createElement('span');
+        sub.className = 'nav-user-sub';
+        sub.textContent = 'Sign in';
+        text.appendChild(name);
+        text.appendChild(sub);
+        var row = document.createElement('span');
+        row.className = 'nav-user';
+        row.appendChild(avatar);
+        row.appendChild(text);
+        guestBlock.appendChild(row);
+        footer.appendChild(guestBlock);
+    }
+    function clearGuest() {
+        if (guestBlock) guestBlock.remove();
+        guestBlock = null;
+    }
+
     function clear() {
         if (pinBox) { pinBox.remove(); pinBox = null; }
         rememberPins([]);
@@ -254,6 +289,7 @@
             .then(function (res) { return res.body; })
             .then(function (body) {
                 if (body && body.enabled && body.user) {
+                    clearGuest();
                     var info = describe(body.user);
                     remember(info);
                     paint(info);
@@ -261,6 +297,7 @@
                 } else {
                     remember(null);
                     clear();
+                    if (body && body.enabled) paintGuest(); else clearGuest();
                 }
             })
             .catch(function () { /* keeps what it shows */ });

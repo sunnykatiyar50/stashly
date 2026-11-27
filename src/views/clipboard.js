@@ -50,8 +50,20 @@
         });
     }
 
-    function addNote(slug, text) {
-        return send('/api/stashes/' + encodeURIComponent(slug) + '/notes', 'POST', { text: text });
+    // "Chrome Windows": which browser and system saved a note. It becomes the note's tag (chrome-windows), so the clips can be
+    // filtered by device. Nothing else about the device is sent.
+    function deviceName() {
+        var ua = navigator.userAgent || '';
+        var browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /SamsungBrowser/.test(ua) ? 'Samsung' : /Firefox\//.test(ua) ? 'Firefox'
+            : /Chrome\//.test(ua) || /CriOS/.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+        var os = /Android/.test(ua) ? 'Android' : /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'Mac'
+            : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : '';
+        return (browser + ' ' + os).trim();
+    }
+
+    // The server saves it to the Clipboard stash (making the stash if there is none) unless it repeats the newest note
+    function saveNote(text) {
+        return send('/api/me/clipboard/notes', 'POST', { text: text, device: deviceName() });
     }
 
     var busy = false;
@@ -64,13 +76,10 @@
             var previous = get(LAST_KEY);
             if (!text || !text.trim() || text === previous) return null;
             set(LAST_KEY, text);
-            var slug = get(SLUG_KEY);
-            var saved = slug ? addNote(slug, text) : Promise.resolve({ status: 404 });
-            // Its stash is gone (deleted or ended): make a new one and try once more
-            return saved.then(function (res) {
-                if (res.status !== 404) return res;
-                return ensureStash().then(function (made) { return made.slug ? addNote(made.slug, text) : { ok: false, status: made.status, body: { error: made.error } }; });
-            }).then(function (res) {
+            return saveNote(text).then(function (res) {
+                if (res.ok && res.body && res.body.slug) set(SLUG_KEY, res.body.slug);
+                // Another device already saved this same text: nothing to say
+                if (res.ok && res.body && res.body.duplicate) return;
                 if (res.ok) toast('Saved to your Clipboard stash');
                 else if (res.status === 401) set(LAST_KEY, previous || ''); // signed out: save it once signed in again
                 else if (res.status === 413) toast('That text is too long to save', true);

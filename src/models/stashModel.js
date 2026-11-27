@@ -739,6 +739,12 @@ class StashModel {
         return this.getStashById(id);
     }
 
+    // The text of the newest note in a stash, or null (used to skip a copy that repeats the last one)
+    latestNoteText(stashId) {
+        const row = this.db.prepare("SELECT text FROM items WHERE stash_id = ? AND kind = 'note' ORDER BY id DESC LIMIT 1").get(stashId);
+        return row ? row.text : null;
+    }
+
     // Whether this is some user's Clipboard stash (its name is only a key, and it cannot be renamed or relabelled)
     isClipboardStash(id) {
         return Boolean(this.db.prepare('SELECT 1 AS yes FROM users WHERE clipboard_stash_id = ?').get(id));
